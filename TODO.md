@@ -13,7 +13,7 @@ Download flags:
 ## Main parts
 - [x] Create simple API request (DO NOT MOVE TO THE NEXT STEPS BEFORE THIS ONE)
 - [x] Create [MangaDex API](https://api.mangadex.org/docs/) client
-- [ ] Add client method to get manga chapters (_by manga id_)
+- [x] Add client method to get manga chapters (_by manga id_)
 - [ ] Create `Downloader` struct (_insdide `internal/downloader/downloader.go`_)
 - [ ] Add downloader method to download manga's chapter (_by chapter id_)
 - [ ] Add *middle* app layer to simplify function calls (?)

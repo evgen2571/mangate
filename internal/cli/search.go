@@ -22,7 +22,7 @@ var searchCmd = &cobra.Command{
 		}
 
 		for idx, manga := range resp.Data {
-			fmt.Printf("%v. Title: %v\n   ID: %v\n\n", idx+1, manga.Attributes.Title, manga.ID)
+			fmt.Printf("%v. Title: %v\n   ID: %v\n\n", idx+1, manga.MangaAttributes.Title, manga.ID)
 		}
 
 		return nil

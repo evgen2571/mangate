@@ -9,13 +9,11 @@ import (
 type Manga struct {
 	ID         string          `json:"id"`
 	Type       string          `json:"type"`
-	Attributes MangaAttributes `json:"attributes"`
-}
-
-type MangaAttributes struct {
-	Title       map[string]string `json:"title"`
-	Description map[string]string `json:"description"`
-	Status      string            `json:"status"`
+	MangaAttributes struct {
+		Title       map[string]string `json:"title"`
+		Description map[string]string `json:"description"`
+		Status      string            `json:"status"`
+	} `json:"attributes"`
 }
 
 func (m *Manga) GetID() string {
