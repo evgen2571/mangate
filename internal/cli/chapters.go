@@ -1,7 +1,9 @@
 package cli
 
 import (
-	// "github.com/evgen2571/manga-downloader/internal/api"
+	"fmt"
+	
+	"github.com/evgen2571/manga-downloader/internal/api"
 	"github.com/spf13/cobra"
 )
 
@@ -10,12 +12,18 @@ var chaptersCmd = &cobra.Command{
 	Short: "Search for manga chapters by manga id",
 
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// mangaID := args[0]
+		mangaID := args[0]
 
-		// client := api.NewClient()
+		client := api.NewClient()
 
-		// TODO: Client request to get available manga chapters
+		resp, err := client.GetChapters(mangaID);
+		if err != nil {
+			panic(err)
+		}
 
+		for idx, chapter := range resp.Data {
+			fmt.Printf("%v.  ID: %v\n", idx+1, chapter.ID)
+		}
 		return nil
 	},
 }

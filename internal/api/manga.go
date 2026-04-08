@@ -26,7 +26,7 @@ func (c *MangaDexClient) GetManga(title string) (MangaDexResponse[Manga], error)
 	params := url.Values{}
 	params.Set("title", title)
 
-	url := c.baseUrl + "?" + params.Encode()
+	url := c.baseUrl + "manga/?" + params.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {

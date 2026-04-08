@@ -20,6 +20,6 @@ type MangaDexResponse[T any] struct {
 func NewClient() MangaDexClient {
 	return MangaDexClient{
 		httpClient: &http.Client{},
-		baseUrl:    "https://api.mangadex.org/manga",
+		baseUrl:    "https://api.mangadex.org/",
 	}
 }
