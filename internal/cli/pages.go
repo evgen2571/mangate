@@ -10,7 +10,7 @@ import (
 
 var pagesCmd = &cobra.Command{
 	Use:   "pages <manga-id> <chapter-number>",
-	Short: "Output chapter pages using manga ID",
+	Short: "Output chapter pages using manga id. Example: pages <manga-id> <chapter-number>",
 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mangaID := args[0]
