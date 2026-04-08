@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"net/url"
 )
 
 type Manga struct {
@@ -23,7 +23,10 @@ func (m *Manga) GetId() string {
 }
 
 func (c *MangaDexClient) GetManga(title string) (MangaDexResponse[Manga], error) {
-	url := c.baseUrl + fmt.Sprintf("?title=%v", title)
+	params := url.Values{}
+	params.Set("title", title)
+
+	url := c.baseUrl + "?" + params.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {

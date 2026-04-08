@@ -33,7 +33,7 @@ func main() {
 		}
 
 		for idx, manga := range resp.Data {
-			fmt.Printf("%v. %v\n", idx+1, manga.Attributes.Title)
+			fmt.Printf("%v. Title: %v\n   Id: %v\n\n", idx+1, manga.Attributes.Title, manga.Id)
 		}
 
 	case "chapters":

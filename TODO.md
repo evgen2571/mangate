@@ -16,7 +16,7 @@ Download flags:
 - [ ] Add client method to get manga chapters (_by manga id_)
 - [ ] Create `Downloader` struct (_insdide `internal/downloader/downloader.go`_) that will be like 2nd client
 - [ ] Add downloader method to download manga's chapter (_by chapter id_)
-- [ ] Create simple CLI interface (_temp solution to complete MVP_)
+- [x] Create simple CLI interface (_temp solution to complete MVP_)
 - [ ] Create TUI interface (using [bubbltea](https://github.com/charmbracelet/bubbletea) i guess)
 
 ## Features
