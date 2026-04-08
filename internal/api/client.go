@@ -2,14 +2,13 @@ package api
 
 import (
 	"net/http"
-	"time"
 )
 
 type MangaDexClient struct {
 	httpClient *http.Client
 
-	baseUrl    string
-	uploadsUrl string
+	baseUrl        string
+	uploadsBaseUrl string
 }
 
 type MangaDexResponse[T any] struct {
@@ -20,11 +19,7 @@ type MangaDexResponse[T any] struct {
 
 func NewClient() MangaDexClient {
 	return MangaDexClient{
-		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
-		},
-
+		httpClient: &http.Client{},
 		baseUrl:    "https://api.mangadex.org/manga",
-		uploadsUrl: "https://uploads.mangadex.org/data",
 	}
 }

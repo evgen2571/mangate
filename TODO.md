@@ -2,11 +2,11 @@
 Only one provider (*MangaDex*), CLI version with these commands:
 - `search <name>`
 - `chapters <manga-id>`
-- `download <chapter-id>`
+- `download <query>`
 
 Download flags:
 - `--dir` - save location (_default: '.'_)
-- `--format` - format of downloaded chapter (_e.g. plain, .zip, .cbz; default: plain_)
+- `--type` - format of downloaded chapter (_e.g. plain, .zip, .cbz; default: plain_)
 
 ---
 
@@ -14,10 +14,11 @@ Download flags:
 - [x] Create simple API request (DO NOT MOVE TO THE NEXT STEPS BEFORE THIS ONE)
 - [x] Create [MangaDex API](https://api.mangadex.org/docs/) client
 - [ ] Add client method to get manga chapters (_by manga id_)
-- [ ] Create `Downloader` struct (_insdide `internal/downloader/downloader.go`_) that will be like 2nd client
+- [ ] Create `Downloader` struct (_insdide `internal/downloader/downloader.go`_)
 - [ ] Add downloader method to download manga's chapter (_by chapter id_)
-- [x] Create simple CLI interface (_temp solution to complete MVP_)
-- [ ] Create TUI interface (using [bubbltea](https://github.com/charmbracelet/bubbletea) i guess)
+- [ ] Add *middle* app layer to simplify function calls (?)
+- [x] Create simple CLI interface (_using [cobra](https://github.com/spf13/cobra)_)
+- [ ] Create TUI interface (_using [bubbltea](https://github.com/charmbracelet/bubbletea)_)
 
 ## Features
 - [ ] Search for title 
@@ -26,4 +27,4 @@ Download flags:
 - [ ] Choose title
 - [ ] Show it's chapters, move between them
 - [ ] Choose one or more chapters
-- [ ] Download chosen chapters (maybe add possibility to choose download type, e. g. .zip, images)
+- [ ] Download chosen chapters (maybe add possibility to choose download type, e. g. .zip, plain images)

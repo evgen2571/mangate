@@ -7,7 +7,7 @@ import (
 )
 
 type Manga struct {
-	Id         string          `json:"id"`
+	ID         string          `json:"id"`
 	Type       string          `json:"type"`
 	Attributes MangaAttributes `json:"attributes"`
 }
@@ -18,8 +18,8 @@ type MangaAttributes struct {
 	Status      string            `json:"status"`
 }
 
-func (m *Manga) GetId() string {
-	return m.Id
+func (m *Manga) GetID() string {
+	return m.ID
 }
 
 func (c *MangaDexClient) GetManga(title string) (MangaDexResponse[Manga], error) {
