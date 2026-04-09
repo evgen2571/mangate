@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/evgen2571/manga-downloader/internal/api"
+	mangadex "github.com/evgen2571/manga-downloader/internal/providers/MangaDex"
 	"github.com/spf13/cobra"
 )
 
@@ -14,14 +14,9 @@ var searchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title := args[0]
 
-		client := api.NewClient()
+		mangas := mangadex.MangaDexProvider.GetManga(title)
 
-		resp, err := client.GetManga(title)
-		if err != nil {
-			panic(err)
-		}
-
-		for idx, manga := range resp.Data {
+		for idx, manga := range mangas {
 			fmt.Printf("%v. Title: %v\n   ID: %v\n\n", idx+1, manga.MangaAttributes.Title, manga.ID)
 		}
 
