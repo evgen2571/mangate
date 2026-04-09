@@ -14,8 +14,7 @@ Download flags:
 - [x] Create simple API request (DO NOT MOVE TO THE NEXT STEPS BEFORE THIS ONE)
 - [x] Create [MangaDex API](https://api.mangadex.org/docs/) client
 - [x] Add client method to get manga chapters (_by manga id_)
-- [ ] Create `Downloader` struct (_insdide `internal/downloader/downloader.go`_)
-- [ ] Add downloader method to download manga's chapter (_by chapter id_)
+- [x] Add downloader method to download manga's chapter (_by manga id & chapter number_)
 - [x] Create simple CLI interface (_using [cobra](https://github.com/spf13/cobra)_)
 - [ ] Create TUI interface (_using [bubbltea](https://github.com/charmbracelet/bubbletea)_)
 
