@@ -16,12 +16,11 @@ Download flags:
 - [x] Add client method to get manga chapters (_by manga id_)
 - [ ] Create `Downloader` struct (_insdide `internal/downloader/downloader.go`_)
 - [ ] Add downloader method to download manga's chapter (_by chapter id_)
-- [ ] Add *middle* app layer to simplify function calls (?)
 - [x] Create simple CLI interface (_using [cobra](https://github.com/spf13/cobra)_)
 - [ ] Create TUI interface (_using [bubbltea](https://github.com/charmbracelet/bubbletea)_)
 
 ## Features
-- [ ] Search for title 
+- [x] Search for title 
 - [ ] Move between titles shown as result on search request
 - [ ] Show title metadata (e.g. cover, alternative titles; maybe we will need to use [AniList API](https://docs.anilist.co/) for this)
 - [ ] Choose title

@@ -1,34 +1,26 @@
 package mangadex
 
 import (
-	"encoding/json"
-
-	"github.com/evgen2571/manga-downloader/internal/client"
 	"github.com/evgen2571/manga-downloader/internal/sources"
 )
 
-func (md *MangaDex) GetChapters(id string) ([]*sources.Chapter, error) {
-	url := md.BaseURL + "manga/" + id + "/feed"
+type mangaDexChapter struct {
+	ID         string `json:"id"`
+	Attributes struct {
+		Volume  int    `json:"volume"`
+		Chapter int    `json:"chapter"`
+		Title   string `json:"title"`
+	} `json:"chapter"`
+}
 
-	req := client.NewRequest(url, nil)
+func (mdm *mangaDexChapter) getTitle() string {
+	return mdm.Attributes.Title
+}
 
-	resp, err := client.DoRequest(req)
-	if err != nil {
-		return nil, err
+func (mdm *mangaDexChapter) toSource() *sources.Chapter {
+	return &sources.Chapter{
+		ID:    mdm.ID,
+		Title: mdm.getTitle(),
+		Index: mdm.Attributes.Chapter,
 	}
-	defer resp.Body.Close()
-
-	var mangaDexResponse MangaDexResponse[MangaDexManga]
-	err = json.NewDecoder(resp.Body).Decode(&mangaDexResponse)
-	if err != nil {
-		return nil, err
-	}
-
-	var chapters []*sources.Chapter
-	// for _, mangaDexChapter := range mangaDexResponse.Data {
-	// 	chapter := mangaDexChapter.toSource()
-	// 	chapters = append(chapters, chapter)
-	// }
-
-	return chapters, nil
 }

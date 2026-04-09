@@ -2,33 +2,28 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
-	
-	"github.com/evgen2571/manga-downloader/internal/api"
+
+	"github.com/evgen2571/manga-downloader/internal/providers"
+	"github.com/evgen2571/manga-downloader/internal/sources"
 	"github.com/spf13/cobra"
 )
 
 var pagesCmd = &cobra.Command{
-	Use:   "pages <manga-id> <chapter-number>",
-	Short: "Output chapter pages using manga id. Example: pages <manga-id> <chapter-number>",
+	Use:   "pages <manga-title>",
+	Short: "Search for manga by title",
 
 	RunE: func(cmd *cobra.Command, args []string) error {
-		mangaID := args[0]
-        chapterNumber, err := strconv.Atoi(args[1])
-        if err != nil {
-			panic(err)
-        }
-        
-		client := api.NewClient()
+		chapter := &sources.Chapter{
+			ID: args[0],
+		}
+		provider := providers.Providers["mangadex"]
 
-		resp, err := client.GetChapters(mangaID);
-		if err != nil {
-			panic(err)
+		pages, _ := provider.GetPages(chapter)
+
+		for idx, page := range pages {
+			fmt.Printf("%v. URL: %v\n", idx+1, page.GetURL())
 		}
 
-		for idx, page := range resp.Data[chapterNumber-1].ChapterInfo.Pages {
-			fmt.Printf("%v.  URL: %s\n", idx+1, page)
-        }
 		return nil
 	},
 }

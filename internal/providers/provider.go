@@ -5,16 +5,15 @@ import (
 	"github.com/evgen2571/manga-downloader/internal/sources"
 )
 
-type Provider interface {
-	GetProviderObject() Provider
+type provider interface {
 	GetManga(string) ([]*sources.Manga, error)
-	GetChapters(string) ([]*sources.Chapter, error)
+	GetChapters(*sources.Manga) ([]*sources.Chapter, error)
+	GetPages(*sources.Chapter) ([]*sources.Page, error)
 }
 
-type ProviderSource interface {
-	toSource(string) *sources.Source
-}
-
-var Providers = map[string]Provider{
-	"MangaDex": mangadex.GetProviderObject(),
+var Providers = map[string]provider{
+	"mangadex": &mangadex.MangaDex{
+		BaseURL:        "https://api.mangadex.org/",
+		UploadsBaseURL: "https://uploads.mangadex.org/",
+	},
 }
