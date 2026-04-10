@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"os"
+	"strconv"
 	"log"
 	"fmt"
-	"strconv"
-	"path/filepath"
 	
 	"github.com/evgen2571/manga-downloader/internal/providers"
 	"github.com/evgen2571/manga-downloader/internal/sources"
@@ -14,36 +12,49 @@ import (
 )
 
 var downloadCmd = &cobra.Command{
-	Use:   "download <manga-id> <chapter-number>",
-	Short: "Download chosen manga chapter by manga id",
+	Use:   "download <manga-id> [chapter-number]",
+	Short: "Download manga by id. Add <chapter-number> to download a specific chapter",
+	Args: cobra.RangeArgs(1, 2),
 
 	RunE: func(cmd *cobra.Command, args []string) error {
+		provider := providers.Providers["mangadex"]
+		
 			manga := &sources.Manga{
 			ID: args[0],
 		}
 		
-		chapterNumber, _ := strconv.Atoi(args[1])
-		chapterNumber--
-		
-		provider := providers.Providers["mangadex"]
-		
 		chapters, _ := provider.GetChapters(manga)
-		pages, _ := provider.GetPages(chapters[chapterNumber])
-		
-		chapterName := "chapter " + strconv.Itoa(chapters[chapterNumber].Index)
-		
-		err := os.MkdirAll(chapterName, 0755)
-        if err != nil {
-			log.Fatalf("Couldn't create a folder '%s'", chapterName)
-        }
-		
-		for _, page := range pages {
-			filePath := filepath.Join(chapterName, fmt.Sprintf("%d.jpg", page.Index))
-			err := downloader.DownloadPage(page, filePath)
-			if err != nil {
-				log.Fatalf("Couldn't download page '%v'", page.Index)
+		manga.Chapters = chapters
+	
+		if len(args) == 1 {
+			for idx := range manga.Chapters {
+				pages, _ := provider.GetPages(manga.Chapters[idx])
+				manga.Chapters[idx].Pages = pages
 			}
-			fmt.Printf("Page %v downloaded successfully.\n", page.Index)
+			
+			err := downloader.DownloadManga(manga)
+			if err != nil {
+				log.Fatalf("Failed to download manga")
+			}
+			return nil
+		}
+		
+		if len(args) == 2 {
+			chapterNumber, _ := strconv.Atoi(args[1])
+			chapterNumber--
+			
+			if chapterNumber >= len(manga.Chapters) || chapterNumber <= -1 {
+				return fmt.Errorf("Failed to find such chapter.")
+			}
+			
+			pages, _ := provider.GetPages(chapters[chapterNumber])
+			manga.Chapters[chapterNumber].Pages = pages
+			
+			err := downloader.DownloadChapter(manga, chapterNumber+1, "")
+			if err!= nil {
+				log.Fatalf("Failed to download a chapter.")
+			}
+			return nil
 		}
 		
 		return nil

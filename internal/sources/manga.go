@@ -4,7 +4,7 @@ type Manga struct {
 	ID          string
 	Title       string
 	Description map[string]string
-	Chapters    []Chapter
+	Chapters    []*Chapter
 }
 
 func (m *Manga) GetID() string {
