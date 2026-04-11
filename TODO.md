@@ -1,8 +1,8 @@
 # Tasks
 
 ### Refactoring
-- [ ] Refactor config logic (_it's really disgusting_)
-- [ ] Refactor folder managment
+- [x] Refactor config logic (_it's really disgusting_)
+- [x] Refactor folder managment
 - [ ] Refactor unnecessary public functions, variables, methods to private
 - [ ] Change `sources` package to `source` (_@evgen2571 i really don't like this title_)
 
