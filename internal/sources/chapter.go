@@ -4,7 +4,7 @@ type Chapter struct {
 	ID    string
 	Title string
 	Index int
-	Pages []Page
+	Pages []*Page
 	From  *Manga
 }
 

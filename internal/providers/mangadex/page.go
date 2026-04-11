@@ -9,9 +9,9 @@ import (
 func (mdpr *mangaDexPageResponse) toSourcePages(uploadsURL string) []*sources.Page {
 	pages := make([]*sources.Page, 0, len(mdpr.Chapter.Data))
 
-	for i, fileName := range mdpr.Chapter.Data {
+	for idx, fileName := range mdpr.Chapter.Data {
 		page := &sources.Page{
-			Index: i,
+			Index: idx,
 			URL:   fmt.Sprintf("%sdata/%s/%s", uploadsURL, mdpr.Chapter.Hash, fileName),
 		}
 

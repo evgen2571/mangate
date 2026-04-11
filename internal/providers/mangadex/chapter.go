@@ -11,6 +11,7 @@ type mangaDexChapter struct {
 		Chapter int    `json:"chapter"`
 		Title   string `json:"title"`
 	} `json:"chapter"`
+	Index int
 }
 
 func (mdm *mangaDexChapter) getTitle() string {
@@ -21,6 +22,6 @@ func (mdm *mangaDexChapter) toSource() *sources.Chapter {
 	return &sources.Chapter{
 		ID:    mdm.ID,
 		Title: mdm.getTitle(),
-		Index: mdm.Attributes.Chapter,
+		Index: mdm.Index,
 	}
 }
