@@ -9,6 +9,7 @@ import (
 	"github.com/evgen2571/manga-downloader/internal/downloader"
 	"github.com/evgen2571/manga-downloader/internal/providers"
 	"github.com/evgen2571/manga-downloader/internal/sources"
+	"golang.org/x/sync/errgroup"
 )
 
 type screen int
@@ -44,15 +45,7 @@ func (m appModel) Init() tea.Cmd {
 
 func loadChaptersCmd(manga *sources.Manga) tea.Cmd {
 	return func() tea.Msg {
-		provider, ok := providers.Providers["mangadex"]
-		if !ok {
-			return chaptersLoadedMsg{
-				manga: manga,
-				err:   fmt.Errorf("provider not found"),
-			}
-		}
-
-		chapters, err := provider.GetChapters(manga)
+		chapters, err := providers.Provider.GetChapters(manga)
 		return chaptersLoadedMsg{
 			manga:    manga,
 			chapters: chapters,
@@ -63,16 +56,13 @@ func loadChaptersCmd(manga *sources.Manga) tea.Cmd {
 
 func downloadChapterCmd(manga *sources.Manga, chapter *sources.Chapter) tea.Cmd {
 	return func() tea.Msg {
-		provider, ok := providers.Providers["mangadex"]
-		if !ok {
-			return downloadFinishedMsg{err: fmt.Errorf("provider not found")}
-		}
-
-		if err := provider.GetPages(chapter); err != nil {
+		pages, err := providers.Provider.GetPages(chapter)
+		if err != nil {
 			return downloadFinishedMsg{err: err}
 		}
+		chapter.Pages = pages
 
-		if err := downloader.DownloadChapter(chapter, config.DefaultDownloadPath); err != nil {
+		if err := downloader.DownloadChapter(chapter); err != nil {
 			return downloadFinishedMsg{err: err}
 		}
 
@@ -82,24 +72,28 @@ func downloadChapterCmd(manga *sources.Manga, chapter *sources.Chapter) tea.Cmd 
 
 func downloadMangaCmd(manga *sources.Manga) tea.Cmd {
 	return func() tea.Msg {
-		provider, ok := providers.Providers["mangadex"]
-		if !ok {
-			return downloadFinishedMsg{err: fmt.Errorf("provider not found")}
-		}
-
-		chapters, err := provider.GetChapters(manga)
+		chapters, err := providers.Provider.GetChapters(manga)
 		if err != nil {
 			return downloadFinishedMsg{err: err}
 		}
 		manga.Chapters = chapters
 
+		// Set limit for concurrent page fetches
+		var g errgroup.Group
+		g.SetLimit(config.MaxConcurrentPageFetches)
+
 		for _, chapter := range chapters {
-			if err := provider.GetPages(chapter); err != nil {
-				return downloadFinishedMsg{err: fmt.Errorf("failed to get pages: %w", err)}
-			}
+			g.Go(func() error {
+				pages, err := providers.Provider.GetPages(chapter)
+				if err != nil {
+					return fmt.Errorf("failed to get pages for %q: %w", chapter.Title, err)
+				}
+				chapter.Pages = pages
+				return nil
+			})
 		}
 
-		if err := downloader.DownloadManga(manga, config.DefaultDownloadPath); err != nil {
+		if err := downloader.DownloadManga(manga); err != nil {
 			return downloadFinishedMsg{err: err}
 		}
 

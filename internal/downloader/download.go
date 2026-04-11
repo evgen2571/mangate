@@ -8,13 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/evgen2571/manga-downloader/internal/client"
 	"github.com/evgen2571/manga-downloader/internal/config"
 	"github.com/evgen2571/manga-downloader/internal/sources"
+	"golang.org/x/sync/errgroup"
 )
 
-func DownloadChapter(c *sources.Chapter, folderPath string) error {
+func DownloadChapter(c *sources.Chapter) error {
 	chapterDir := filepath.Join(
-		folderPath,
+		config.DownloadPath,
 		sanitizeFileName(c.From.Title),
 		sanitizeFileName(c.Title),
 	)
@@ -24,24 +26,31 @@ func DownloadChapter(c *sources.Chapter, folderPath string) error {
 		return fmt.Errorf("failed to create a folder '%s'", chapterDir)
 	}
 
-	for idx, page := range c.Pages {
-		filePath := filepath.Join(
-			chapterDir,
-			fmt.Sprintf("%d%v", idx+1, config.DefaultDownloadType),
-		)
+	// Set limit for concurrent page downloads
+	var g errgroup.Group
+	g.SetLimit(config.MaxConcurrentPageDownloads)
 
-		err := downloadPage(page, filePath)
-		if err != nil {
-			return err
-		}
+	for idx, page := range c.Pages {
+		g.Go(func() error {
+			filePath := filepath.Join(
+				chapterDir,
+				fmt.Sprintf("%04d.%v", idx+1, config.DownloadType),
+			)
+
+			// Start page downloading
+			if err := downloadPage(page, filePath); err != nil {
+				return err
+			}
+			return nil
+		})
 	}
 
-	return nil
+	return g.Wait()
 }
 
-func DownloadManga(m *sources.Manga, folderPath string) error {
+func DownloadManga(m *sources.Manga) error {
 	mangaDir := filepath.Join(
-		folderPath,
+		config.DownloadPath,
 		sanitizeFileName(m.Title),
 	)
 
@@ -49,19 +58,27 @@ func DownloadManga(m *sources.Manga, folderPath string) error {
 		return fmt.Errorf("failed to create folder %q: %w", mangaDir, err)
 	}
 
+	// Set limit for concurrent chapter downloads
+	var g errgroup.Group
+	g.SetLimit(config.MaxConcurrentChapterDownloads)
+
 	for _, chapter := range m.Chapters {
-		if err := DownloadChapter(chapter, folderPath); err != nil {
-			return err
-		}
+		g.Go(func() error {
+			if err := DownloadChapter(chapter); err != nil {
+				return err
+			}
+
+			return nil
+		})
 	}
 
 	return nil
 }
 
 func downloadPage(p *sources.Page, filePath string) error {
-	resp, err := http.Get(p.URL)
+	resp, err := client.Client.Get(p.URL)
 	if err != nil {
-		return fmt.Errorf("failed to get response from the client")
+		return fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
 	defer resp.Body.Close()
 
@@ -95,4 +112,3 @@ func sanitizeFileName(name string) string {
 	}
 	return name
 }
-

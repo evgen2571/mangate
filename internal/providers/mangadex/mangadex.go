@@ -84,20 +84,20 @@ func (md *MangaDex) GetChapters(manga *sources.Manga) ([]*sources.Chapter, error
 	return chapters, nil
 }
 
-func (md *MangaDex) GetPages(chapter *sources.Chapter) error {
+func (md *MangaDex) GetPages(chapter *sources.Chapter) ([]*sources.Page, error) {
 	url := md.BaseURL + "at-home/server/" + chapter.GetID()
 
 	req := client.NewRequest(url, nil)
 
 	resp, err := client.DoRequest(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	var pageResp mangaDexPageResponse
 	if err = json.NewDecoder(resp.Body).Decode(&pageResp); err != nil {
-		return err
+		return nil, err
 	}
 
 	pages := pageResp.toSourcePages(md.UploadsBaseURL)
@@ -105,6 +105,5 @@ func (md *MangaDex) GetPages(chapter *sources.Chapter) error {
 		page.From = chapter
 	}
 
-	chapter.Pages = pages
-	return nil
+	return pages, nil
 }
