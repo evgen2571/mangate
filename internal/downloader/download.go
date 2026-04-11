@@ -10,11 +10,11 @@ import (
 
 	"github.com/evgen2571/manga-downloader/internal/client"
 	"github.com/evgen2571/manga-downloader/internal/config"
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 	"golang.org/x/sync/errgroup"
 )
 
-func DownloadChapter(c *sources.Chapter) error {
+func DownloadChapter(c *source.Chapter) error {
 	chapterDir := filepath.Join(
 		config.DownloadPath,
 		sanitizeFileName(c.From.Title),
@@ -48,7 +48,7 @@ func DownloadChapter(c *sources.Chapter) error {
 	return g.Wait()
 }
 
-func DownloadManga(m *sources.Manga) error {
+func DownloadManga(m *source.Manga) error {
 	mangaDir := filepath.Join(
 		config.DownloadPath,
 		sanitizeFileName(m.Title),
@@ -75,7 +75,7 @@ func DownloadManga(m *sources.Manga) error {
 	return nil
 }
 
-func downloadPage(p *sources.Page, filePath string) error {
+func downloadPage(p *source.Page, filePath string) error {
 	resp, err := client.Client.Get(p.URL)
 	if err != nil {
 		return fmt.Errorf("failed to GET %q: %w", p.URL, err)
@@ -96,7 +96,7 @@ func downloadPage(p *sources.Page, filePath string) error {
 	return nil
 }
 
-func sanitizeFileName(name string) string {
+func sanitizeFileName(name string) string {                      // <-- eto pizdec bratan  D:
 	name = strings.ReplaceAll(name, " ", "-")
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")

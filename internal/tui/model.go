@@ -8,7 +8,7 @@ import (
 	"github.com/evgen2571/manga-downloader/internal/config"
 	"github.com/evgen2571/manga-downloader/internal/downloader"
 	"github.com/evgen2571/manga-downloader/internal/providers"
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -43,7 +43,7 @@ func (m appModel) Init() tea.Cmd {
 	return m.search.Init()
 }
 
-func loadChaptersCmd(manga *sources.Manga) tea.Cmd {
+func loadChaptersCmd(manga *source.Manga) tea.Cmd {
 	return func() tea.Msg {
 		chapters, err := providers.Provider.GetChapters(manga)
 		return chaptersLoadedMsg{
@@ -54,7 +54,7 @@ func loadChaptersCmd(manga *sources.Manga) tea.Cmd {
 	}
 }
 
-func downloadChapterCmd(manga *sources.Manga, chapter *sources.Chapter) tea.Cmd {
+func downloadChapterCmd(manga *source.Manga, chapter *source.Chapter) tea.Cmd {
 	return func() tea.Msg {
 		pages, err := providers.Provider.GetPages(chapter)
 		if err != nil {
@@ -70,7 +70,7 @@ func downloadChapterCmd(manga *sources.Manga, chapter *sources.Chapter) tea.Cmd 
 	}
 }
 
-func downloadMangaCmd(manga *sources.Manga) tea.Cmd {
+func downloadMangaCmd(manga *source.Manga) tea.Cmd {
 	return func() tea.Msg {
 		chapters, err := providers.Provider.GetChapters(manga)
 		if err != nil {

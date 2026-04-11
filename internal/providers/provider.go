@@ -5,13 +5,13 @@ import (
 
 	"github.com/evgen2571/manga-downloader/internal/config"
 	"github.com/evgen2571/manga-downloader/internal/providers/mangadex"
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
 type provider interface {
-	GetManga(string) ([]*sources.Manga, error)
-	GetChapters(*sources.Manga) ([]*sources.Chapter, error)
-	GetPages(*sources.Chapter) ([]*sources.Page, error)
+	GetManga(string) ([]*source.Manga, error)
+	GetChapters(*source.Manga) ([]*source.Chapter, error)
+	GetPages(*source.Chapter) ([]*source.Page, error)
 }
 
 var providers = map[string]provider{

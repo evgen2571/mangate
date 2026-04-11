@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
 type chaptersListKeyMap struct {
@@ -43,8 +43,8 @@ func newChaptersListKeyMap() chaptersListKeyMap {
 }
 
 type chaptersListModel struct {
-	manga   *sources.Manga
-	items   []*sources.Chapter
+	manga   *source.Manga
+	items   []*source.Chapter
 	cursor  int
 	loading bool
 	err     error

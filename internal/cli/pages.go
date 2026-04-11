@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/evgen2571/manga-downloader/internal/providers"
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +13,7 @@ var pagesCmd = &cobra.Command{
 	Short: "Search for pages url by chapter id",
 
 	RunE: func(cmd *cobra.Command, args []string) error {
-		chapter := &sources.Chapter{
+		chapter := &source.Chapter{
 			ID: args[0],
 		}
 		provider := providers.Providers["mangadex"]

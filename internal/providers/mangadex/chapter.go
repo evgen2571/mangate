@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
 type mangaDexChapter struct {
@@ -31,8 +31,8 @@ func (mdc *mangaDexChapter) getTitle() string {
 	return title
 }
 
-func (mdc *mangaDexChapter) toSource() *sources.Chapter {
-	return &sources.Chapter{
+func (mdc *mangaDexChapter) toSource() *source.Chapter {
+	return &source.Chapter{
 		ID:    mdc.ID,
 		Title: mdc.getTitle(),
 	}

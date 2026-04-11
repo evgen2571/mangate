@@ -1,7 +1,7 @@
 package mangadex
 
 import (
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
 type mangaDexManga struct {
@@ -11,6 +11,7 @@ type mangaDexManga struct {
 		Description map[string]string `json:"description"`
 		Status      string            `json:"status"`
 	} `json:"attributes"`
+	Cover string
 }
 
 func (mdm *mangaDexManga) getTitle() string {
@@ -23,10 +24,11 @@ func (mdm *mangaDexManga) getTitle() string {
 	return title
 }
 
-func (mdm *mangaDexManga) toSource() *sources.Manga {
-	return &sources.Manga{
+func (mdm *mangaDexManga) toSource() *source.Manga {
+	return &source.Manga{
 		ID:          mdm.ID,
 		Title:       mdm.getTitle(),
 		Description: mdm.Attributes.Description,
+		Cover: mdm.Cover,
 	}
 }

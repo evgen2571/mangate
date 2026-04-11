@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
 type mangasListKeyMap struct {
@@ -48,7 +48,7 @@ func newMangasListKeyMap() mangasListKeyMap {
 }
 
 type mangasListModel struct {
-	items  []*sources.Manga
+	items  []*source.Manga
 	cursor int
 	query  string
 	keys   mangasListKeyMap

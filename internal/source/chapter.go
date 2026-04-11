@@ -1,4 +1,4 @@
-package sources
+package source
 
 type Chapter struct {
 	ID    string

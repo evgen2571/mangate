@@ -4,10 +4,10 @@
 - [x] Refactor config logic (_it's really disgusting_)
 - [x] Refactor folder managment
 - [ ] Refactor unnecessary public functions, variables, methods to private
-- [ ] Change `sources` package to `source` (_@evgen2571 i really don't like this title_)
+- [x] Change `sources` package to `source` (_@evgen2571 i really don't like this title_)
 
 ### Source managment
-- [ ] Somehow get a manga cover
+- [x] Somehow get a manga cover
 - [ ] Improve metadata organization
 - [ ] Create converter to download in custom types (_e.g. zip, cbz, plain_)
 

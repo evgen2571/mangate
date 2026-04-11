@@ -3,9 +3,11 @@ package mangadex
 import (
 	"encoding/json"
 	"net/url"
+	"fmt"
+	"net/http"
 
 	"github.com/evgen2571/manga-downloader/internal/client"
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
 type MangaDex struct {
@@ -23,12 +25,20 @@ type mangaDexPageResponse struct {
 	BaseURL string `json:"baseUrl"`
 	Chapter struct {
 		Hash      string   `json:"hash"`
-		Data      []string `json:"data"`
+		Data      []string `json:"data"`	
 		DataSaver []string `json:"dataSaver"`
 	} `json:"chapter"`
 }
 
-func (md *MangaDex) GetManga(title string) ([]*sources.Manga, error) {
+type mangaDexCoverResponse struct {
+	ID string `json:"id"`
+	Attributes struct {
+		Filename string `json:"filename"`
+	} `json:"attributes"`
+	
+}
+
+func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
 	params := url.Values{}
 	params.Set("title", title)
 
@@ -46,8 +56,12 @@ func (md *MangaDex) GetManga(title string) ([]*sources.Manga, error) {
 	if err != nil {
 		return nil, err
 	}
+	
+	for _, mangaDexManga := range mangaDexResponse.Data {
+		mangaDexManga.Cover, _ = mangaDexManga.getCover()
+	}
 
-	var mangas []*sources.Manga
+	var mangas []*source.Manga
 	for _, mangaDexManga := range mangaDexResponse.Data {
 		manga := mangaDexManga.toSource()
 		mangas = append(mangas, manga)
@@ -56,7 +70,7 @@ func (md *MangaDex) GetManga(title string) ([]*sources.Manga, error) {
 	return mangas, nil
 }
 
-func (md *MangaDex) GetChapters(manga *sources.Manga) ([]*sources.Chapter, error) {
+func (md *MangaDex) GetChapters(manga *source.Manga) ([]*source.Chapter, error) {
 	url := md.BaseURL + "manga/" + manga.GetID() + "/feed"
 
 	req := client.NewRequest(url, nil)
@@ -74,7 +88,7 @@ func (md *MangaDex) GetChapters(manga *sources.Manga) ([]*sources.Chapter, error
 
 	sortChaptersByChapter(mangaDexResponse.Data)
 
-	var chapters []*sources.Chapter
+	var chapters []*source.Chapter
 	for _, mangaDexChapter := range mangaDexResponse.Data {
 		chapter := mangaDexChapter.toSource()
 		chapter.From = manga
@@ -84,7 +98,7 @@ func (md *MangaDex) GetChapters(manga *sources.Manga) ([]*sources.Chapter, error
 	return chapters, nil
 }
 
-func (md *MangaDex) GetPages(chapter *sources.Chapter) ([]*sources.Page, error) {
+func (md *MangaDex) GetPages(chapter *source.Chapter) ([]*source.Page, error) {
 	url := md.BaseURL + "at-home/server/" + chapter.GetID()
 
 	req := client.NewRequest(url, nil)
@@ -106,4 +120,30 @@ func (md *MangaDex) GetPages(chapter *sources.Chapter) ([]*sources.Page, error) 
 	}
 
 	return pages, nil
+}
+
+func (mdm *mangaDexManga) getCover() (string, error) {
+	url := "https://api.mangadex.org/cover?manga[]=" + mdm.ID
+	
+	req := client.NewRequest(url, nil)
+
+	resp, err := client.DoRequest(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("unexpected status: %s", resp.Status)
+	}
+	
+	var coverResp mangaDexCoverResponse
+	err = json.NewDecoder(resp.Body).Decode(&coverResp)
+	if err != nil {
+		return "", fmt.Errorf("decode failed: %w", err)
+	}
+	
+	coverUrl := "https://uploads.mangadex.org/covers/" +  mdm.ID + "/" + coverResp.Attributes.Filename
+	
+	return coverUrl, nil
 }

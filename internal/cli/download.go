@@ -6,7 +6,7 @@ import (
 	"errors"
 	
 	"github.com/evgen2571/manga-downloader/internal/providers"
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 	"github.com/evgen2571/manga-downloader/internal/downloader"
 	"github.com/spf13/cobra"
 )
@@ -19,15 +19,15 @@ var downloadCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		provider := providers.Providers["mangadex"]
 		
-			manga := &sources.Manga{
+			manga := &source.Manga{
 			ID: args[0],
 		}
 		
 		chapters, _ := provider.GetChapters(manga)
 		manga.Chapters = chapters
 	
-		switch {
-			case len(args) == 1: for idx := range manga.Chapters {
+		switch len(args) {
+			case 1: for idx := range manga.Chapters {
 				pages, _ := provider.GetPages(manga.Chapters[idx])
 				manga.Chapters[idx].Pages = pages
 			}
@@ -38,7 +38,7 @@ var downloadCmd = &cobra.Command{
 			}
 			return nil
 			
-	      case len(args) == 2:
+	      case 2:
 			chapterNumber, _ := strconv.Atoi(args[1])
 			chapterNumber--
 			
