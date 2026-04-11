@@ -2,11 +2,10 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/evgen2571/manga-downloader/internal/config"
 	"github.com/evgen2571/manga-downloader/internal/downloader"
 	"github.com/evgen2571/manga-downloader/internal/providers"
 	"github.com/evgen2571/manga-downloader/internal/sources"
@@ -83,33 +82,15 @@ func downloadChapterCmd(manga *sources.Manga, chapter *sources.Chapter) tea.Cmd 
 	return func() tea.Msg {
 		provider, ok := providers.Providers["mangadex"]
 		if !ok {
-			return downloadFinishedMsg{
-				err: fmt.Errorf("provider not found"),
-			}
+			return downloadFinishedMsg{err: fmt.Errorf("provider not found")}
 		}
 
-		pages, err := provider.GetPages(chapter)
-		if err != nil {
+		if err := provider.GetPages(chapter); err != nil {
 			return downloadFinishedMsg{err: err}
 		}
 
-		baseDir := filepath.Join(
-			"downloads",
-			sanitizeFileName(manga.Title),
-			sanitizeFileName(chapter.Title),
-		)
-
-		if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		if err := downloader.DownloadChapter(chapter, config.DefaultDownloadPath); err != nil {
 			return downloadFinishedMsg{err: err}
-		}
-
-		for i, page := range pages {
-			filePath := filepath.Join(baseDir, fmt.Sprintf("%03d.jpg", i+1))
-			if err := downloader.DownloadPage(page, filePath); err != nil {
-				return downloadFinishedMsg{
-					err: fmt.Errorf("page %d: %w", i+1, err),
-				}
-			}
 		}
 
 		return downloadFinishedMsg{}
@@ -120,42 +101,23 @@ func downloadMangaCmd(manga *sources.Manga) tea.Cmd {
 	return func() tea.Msg {
 		provider, ok := providers.Providers["mangadex"]
 		if !ok {
-			return downloadFinishedMsg{
-				err: fmt.Errorf("provider not found"),
-			}
+			return downloadFinishedMsg{err: fmt.Errorf("provider not found")}
 		}
 
 		chapters, err := provider.GetChapters(manga)
 		if err != nil {
 			return downloadFinishedMsg{err: err}
 		}
+		manga.Chapters = chapters
 
 		for _, chapter := range chapters {
-			pages, err := provider.GetPages(chapter)
-			if err != nil {
-				return downloadFinishedMsg{
-					err: fmt.Errorf("chapter %q: %w", chapter.Title, err),
-				}
+			if err := provider.GetPages(chapter); err != nil {
+				return downloadFinishedMsg{err: fmt.Errorf("failed to get pages: %w", err)}
 			}
+		}
 
-			baseDir := filepath.Join(
-				"downloads",
-				sanitizeFileName(manga.Title),
-				sanitizeFileName(chapter.Title),
-			)
-
-			if err := os.MkdirAll(baseDir, 0o755); err != nil {
-				return downloadFinishedMsg{err: err}
-			}
-
-			for i, page := range pages {
-				filePath := filepath.Join(baseDir, fmt.Sprintf("%03d.jpg", i+1))
-				if err := downloader.DownloadPage(page, filePath); err != nil {
-					return downloadFinishedMsg{
-						err: fmt.Errorf("chapter %q page %d: %w", chapter.Title, i+1, err),
-					}
-				}
-			}
+		if err := downloader.DownloadManga(manga, config.DefaultDownloadPath); err != nil {
+			return downloadFinishedMsg{err: err}
 		}
 
 		return downloadFinishedMsg{}

@@ -14,29 +14,27 @@ type mangaDexChapter struct {
 		Chapter string `json:"chapter"`
 		Title   string `json:"title"`
 	} `json:"attributes"`
-	Index int
 }
 
-func (mdm *mangaDexChapter) getTitle() string {
+func (mdc *mangaDexChapter) getTitle() string {
 	var title string
 
-	if mdm.Attributes.Chapter != "" {
-		title += mdm.Attributes.Chapter
+	if mdc.Attributes.Chapter != "" {
+		title += mdc.Attributes.Chapter
 	}
 
-	if mdm.Attributes.Title != "" {
+	if mdc.Attributes.Title != "" {
 		title += ": "
-		title += mdm.Attributes.Title
+		title += mdc.Attributes.Title
 	}
 
 	return title
 }
 
-func (mdm *mangaDexChapter) toSource() *sources.Chapter {
+func (mdc *mangaDexChapter) toSource() *sources.Chapter {
 	return &sources.Chapter{
-		ID:    mdm.ID,
-		Title: mdm.getTitle(),
-		Index: mdm.Index,
+		ID:    mdc.ID,
+		Title: mdc.getTitle(),
 	}
 }
 

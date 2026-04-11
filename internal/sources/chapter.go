@@ -3,7 +3,6 @@ package sources
 type Chapter struct {
 	ID    string
 	Title string
-	Index int
 	Pages []*Page
 	From  *Manga
 }
