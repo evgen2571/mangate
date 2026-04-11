@@ -8,7 +8,7 @@ import (
 type provider interface {
 	GetManga(string) ([]*sources.Manga, error)
 	GetChapters(*sources.Manga) ([]*sources.Chapter, error)
-	GetPages(*sources.Chapter) ([]*sources.Page, error)
+	GetPages(*sources.Chapter) error
 }
 
 var Providers = map[string]provider{

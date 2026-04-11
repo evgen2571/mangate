@@ -1,4 +1,5 @@
 package config
 
-const defaultDownloadPath string = "."
-const defaultDownloadType string = ".png"
+const DefaultDownloadPath string = "./downloads/"
+const DefaultDownloadType string = ".png"
+
