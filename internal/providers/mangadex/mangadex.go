@@ -72,9 +72,11 @@ func (md *MangaDex) GetChapters(manga *sources.Manga) ([]*sources.Chapter, error
 		return nil, err
 	}
 
+	sortChaptersByChapter(mangaDexResponse.Data)
+
 	var chapters []*sources.Chapter
 	for idx, mangaDexChapter := range mangaDexResponse.Data {
-		mangaDexChapter.Index = idx+1
+		mangaDexChapter.Index = idx + 1
 		chapter := mangaDexChapter.toSource()
 		chapter.From = manga
 		chapters = append(chapters, chapter)
@@ -101,7 +103,7 @@ func (md *MangaDex) GetPages(chapter *sources.Chapter) ([]*sources.Page, error) 
 
 	pages := pageResp.toSourcePages(md.UploadsBaseURL)
 	for idx, page := range pages {
-		page.Index = idx+1
+		page.Index = idx + 1
 		page.From = chapter
 	}
 

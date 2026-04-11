@@ -20,9 +20,15 @@ Download flags:
 
 ## Features
 - [x] Search for title 
-- [ ] Move between titles shown as result on search request
+- [x] Move between titles shown as result on search request
 - [ ] Show title metadata (e.g. cover, alternative titles; maybe we will need to use [AniList API](https://docs.anilist.co/) for this)
-- [ ] Choose title
-- [ ] Show it's chapters, move between them
+- [x] Choose title
+- [x] Show it's chapters, move between them
 - [ ] Choose one or more chapters
 - [ ] Download chosen chapters (maybe add possibility to choose download type, e. g. .zip, plain images)
+
+---
+
+## Problems to fix
+
+- [ ] Some mangas has multiple languages (*add default language to config*)
