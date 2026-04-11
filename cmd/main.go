@@ -1,11 +1,21 @@
 package main
 
 import (
-	"github.com/evgen2571/manga-downloader/internal/cli"
+	"fmt"
+	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/evgen2571/manga-downloader/internal/tui"
 )
 
 func main() {
-	if err := cli.Execute(); err != nil {
-		panic(err)
+	p := tea.NewProgram(
+		tui.New(),
+		tea.WithAltScreen(),
+	)
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error running app: %v\n", err)
+		os.Exit(1)
 	}
 }
