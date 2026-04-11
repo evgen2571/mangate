@@ -9,8 +9,8 @@ import (
 )
 
 var pagesCmd = &cobra.Command{
-	Use:   "pages <manga-title>",
-	Short: "Search for manga by title",
+	Use:   "pages <chapter-id>",
+	Short: "Search for pages url by chapter id",
 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chapter := &sources.Chapter{

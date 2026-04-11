@@ -3,7 +3,7 @@ package cli
 import (
 	"strconv"
 	"log"
-	"fmt"
+	"errors"
 	
 	"github.com/evgen2571/manga-downloader/internal/providers"
 	"github.com/evgen2571/manga-downloader/internal/sources"
@@ -26,8 +26,8 @@ var downloadCmd = &cobra.Command{
 		chapters, _ := provider.GetChapters(manga)
 		manga.Chapters = chapters
 	
-		if len(args) == 1 {
-			for idx := range manga.Chapters {
+		switch {
+			case len(args) == 1: for idx := range manga.Chapters {
 				pages, _ := provider.GetPages(manga.Chapters[idx])
 				manga.Chapters[idx].Pages = pages
 			}
@@ -37,14 +37,13 @@ var downloadCmd = &cobra.Command{
 				log.Fatalf("Failed to download manga")
 			}
 			return nil
-		}
-		
-		if len(args) == 2 {
+			
+	      case len(args) == 2:
 			chapterNumber, _ := strconv.Atoi(args[1])
 			chapterNumber--
 			
 			if chapterNumber >= len(manga.Chapters) || chapterNumber <= -1 {
-				return fmt.Errorf("Failed to find such chapter.")
+				return errors.New("Failed to find such chapter.")
 			}
 			
 			pages, _ := provider.GetPages(chapters[chapterNumber])

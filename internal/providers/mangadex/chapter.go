@@ -8,7 +8,7 @@ type mangaDexChapter struct {
 	ID         string `json:"id"`
 	Attributes struct {
 		Volume  int    `json:"volume"`
-		Chapter int    `json:"chapter"` // note: this is not an index
+		Chapter int    `json:"chapter"`
 		Title   string `json:"title"`
 	} `json:"chapter"`
 	Index int

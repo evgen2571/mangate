@@ -2,7 +2,6 @@ package downloader
 
 import (
 	"net/http"
-	"log"
 	"os"
 	"io"
 	"strconv"
@@ -16,17 +15,17 @@ import (
 func DownloadPage(p *sources.Page, filePath string) error {
 	resp, err := http.Get(p.URL)
 	if err != nil {
-		log.Fatal("Failed to download.")
+		return fmt.Errorf("Failed to get response from the client")
 	}
 	defer resp.Body.Close()
 	
 	if resp.StatusCode != http.StatusOK {
-	    log.Fatal("Invalid status code: ", resp.StatusCode)
+	    return fmt.Errorf("Unexpected status code: %v", resp.StatusCode)
 	}
 	
 	out, err := os.Create(filePath)
 	if err != nil {
-		log.Fatal("Failed to create a file.")
+		return fmt.Errorf("Failed to create file %q: %w", filePath, err)
 	}
 	defer out.Close()
 	
@@ -42,31 +41,31 @@ func DownloadChapter(m *sources.Manga, chapterNumber int, folderPath string) err
 	
 	err := os.MkdirAll(chapterDir, 0755)
         if err != nil {
-		log.Fatalf("Failed to create a folder '%s'", chapterName)
+		return fmt.Errorf("Failed to create a folder '%s'", chapterName)
         }
-        
+    
 	for _, page := range m.Chapters[chapterNumber].Pages {
 		filePath := filepath.Join(chapterDir, fmt.Sprintf("%d.jpg", page.Index))
 		err := DownloadPage(page, filePath)
 		if err != nil {
-			log.Fatalf("Failed to download page '%v'", page.Index)
+			return err
 		}
-		fmt.Printf("Page %v downloaded successfully.\n", page.Index)
+		fmt.Printf("Page %v: download successful.\n", page.Index)
 	}
 	
 	return nil
 }
 
 func DownloadManga(m *sources.Manga) error {
-	err := os.MkdirAll(m.ID, 0755)   // add: GetTitleById function to create folder with manga name instead of id?
-        if err != nil {
-		log.Fatalf("Failed to create a folder '%s'", m.ID)
-        }
+	err := os.MkdirAll(m.ID, 0755)
+    if err != nil {
+		return fmt.Errorf("Failed to create a folder '%s'", m.ID)
+    }
         
     for idx := range m.Chapters {
       err := DownloadChapter(m, idx+1, m.ID)
-      if err!=nil {
-      log.Fatalf("Failed to download chapter %v", idx+1)
+      if err != nil {
+        return err
       }
     }
 	
