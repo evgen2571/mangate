@@ -22,7 +22,7 @@
 
 - [x] Some mangas has multiple languages (*add default language to config*), and as result we see a lot of same chapters, but in diffrent languages
 - [ ] `DownloadManga` in TUI is really slow
-- [x] CLI broke after I change something (_@amSagitari fixed and added option to launch tui using command 'tui')
+- [x] CLI broke after I change something (_@amSagitari fixed and added option to launch tui using command 'tui'_)
 - [ ] Change `run.go` file location (_it launches tui from cli and i can't figure out the best location for it..._)
 
 ---

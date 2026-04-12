@@ -16,6 +16,7 @@ type provider interface {
 
 var providers = map[string]provider{
 	"mangadex": &mangadex.MangaDex{
+		SiteURL:        "https://mangadex.org/",
 		BaseURL:        "https://api.mangadex.org/",
 		UploadsBaseURL: "https://uploads.mangadex.org/",
 	},

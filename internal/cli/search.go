@@ -18,7 +18,7 @@ var searchCmd = &cobra.Command{
 		mangas, _ := provider.GetManga(title)
 
 		for idx, manga := range mangas {
-			fmt.Printf("%v. Title: %v\n   ID: %v\n\n", idx+1, manga.GetTitle(), manga.GetID())
+			fmt.Printf("%v. Title: %v\n   URL: %v\n\n", idx+1, manga.Title, manga.URL)
 		}
 
 		return nil

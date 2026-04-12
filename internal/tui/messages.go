@@ -31,6 +31,11 @@ type downloadFinishedMsg struct {
 	err error
 }
 
+type chaptersDownloadRequestedMsg struct {
+	manga    *source.Manga
+	chapters []*source.Chapter
+}
+
 type backToSearchMsg struct{}
 type backToMangasMsg struct{}
 type backFromDownloadMsg struct{}
