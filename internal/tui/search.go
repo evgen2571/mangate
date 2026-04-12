@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/evgen2571/manga-downloader/internal/providers"
 )
@@ -40,18 +41,22 @@ type searchModel struct {
 	height  int
 	loading bool
 	err     error
+	styles  uiStyles
+	logo    string
 }
 
 func newSearchModel() searchModel {
 	input := textinput.New()
-	input.Placeholder = "Enter manga title..."
+	input.Placeholder = "Search manga..."
 	input.Focus()
 	input.CharLimit = 120
-	input.Width = 40
+	input.Width = 46
 
 	return searchModel{
-		input: input,
-		keys:  newSearchKeyMap(),
+		input:  input,
+		keys:   newSearchKeyMap(),
+		styles: newUIStyles(),
+		logo:   searchLogo,
 	}
 }
 
@@ -114,22 +119,60 @@ func (m searchModel) Update(msg tea.Msg) (searchModel, tea.Cmd) {
 }
 
 func (m searchModel) View() string {
-	s := "Manga Downloader\n"
-	s += "================\n\n"
-	s += "Search manga by title:\n"
-	s += m.input.View() + "\n\n"
-
-	if m.loading {
-		s += "Searching...\n\n"
-	} else if m.err != nil {
-		s += "Error: " + m.err.Error() + "\n\n"
+	if m.width <= 0 || m.height <= 0 {
+		return ""
 	}
 
-	s += helpLine(
-		m.keys.Submit.Help().Key+": "+m.keys.Submit.Help().Desc,
-		m.keys.Clear.Help().Key+": "+m.keys.Clear.Help().Desc,
-		m.keys.Quit.Help().Key+": "+m.keys.Quit.Help().Desc,
+	maxCardW := min(58, m.width-4)
+	if maxCardW < 24 {
+		maxCardW = 24
+	}
+
+	cardFrameW, _ := m.styles.Card.GetFrameSize()
+	inputFrameW, _ := m.styles.InputBox.GetFrameSize()
+
+	inputW := max(10, maxCardW-cardFrameW-inputFrameW-2)
+	m.input.Width = inputW
+
+	logo := m.styles.Logo.Render(m.logo)
+	title := m.styles.Title.Render("Find your next manga")
+	subtitle := m.styles.Subtitle.Render("Search by title and press Enter")
+
+	input := m.styles.InputBox.Width(inputW).Render(m.input.View())
+
+	var state string
+	switch {
+	case m.loading:
+		state = m.styles.Status.Render("Searching...")
+	case m.err != nil:
+		state = m.styles.Error.Render("Error: " + m.err.Error())
+	default:
+		state = m.styles.Status.Render(" ")
+	}
+
+	cardContent := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		subtitle,
+		m.styles.InputWrap.Render(input),
+		state,
 	)
 
-	return s
+	card := m.styles.Card.Width(max(1, maxCardW-cardFrameW)).Render(cardContent)
+	footer := m.styles.Hint.Render("Enter search • Esc clear • q quit")
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		logo,
+		card,
+		footer,
+	)
+
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		m.styles.App.Render(content),
+	)
 }

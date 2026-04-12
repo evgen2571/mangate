@@ -26,17 +26,16 @@ type mangaDexPageResponse struct {
 	BaseURL string `json:"baseUrl"`
 	Chapter struct {
 		Hash      string   `json:"hash"`
-		Data      []string `json:"data"`	
+		Data      []string `json:"data"`
 		DataSaver []string `json:"dataSaver"`
 	} `json:"chapter"`
 }
 
 type mangaDexCoverResponse struct {
-	ID string `json:"id"`
+	ID         string `json:"id"`
 	Attributes struct {
 		Filename string `json:"filename"`
 	} `json:"attributes"`
-	
 }
 
 func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
@@ -56,10 +55,6 @@ func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
 	err = json.NewDecoder(resp.Body).Decode(&mangaDexResponse)
 	if err != nil {
 		return nil, err
-	}
-	
-	for _, mangaDexManga := range mangaDexResponse.Data {
-		mangaDexManga.Cover, _ = mangaDexManga.getCover()
 	}
 
 	var mangas []*source.Manga
@@ -123,9 +118,9 @@ func (md *MangaDex) GetPages(chapter *source.Chapter) ([]*source.Page, error) {
 	return pages, nil
 }
 
-func (mdm *mangaDexManga) getCover() (string, error) {
-	url := "https://api.mangadex.org/cover?manga[]=" + mdm.ID
-	
+func (md *MangaDex) GetCover(manga *source.Manga) (string, error) {
+	url := "https://api.mangadex.org/cover?manga[]=" + manga.ID
+
 	req := client.NewRequest(url, nil)
 
 	resp, err := client.DoRequest(req)
@@ -133,18 +128,19 @@ func (mdm *mangaDexManga) getCover() (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("unexpected status: %s", resp.Status)
+		return "", fmt.Errorf("unexpected status: %s", resp.Status)
 	}
-	
+
 	var coverResp mangaDexCoverResponse
 	err = json.NewDecoder(resp.Body).Decode(&coverResp)
 	if err != nil {
 		return "", fmt.Errorf("decode failed: %w", err)
 	}
-	
-	coverUrl := "https://uploads.mangadex.org/covers/" +  mdm.ID + "/" + coverResp.Attributes.Filename
-	
+
+	coverUrl := md.UploadsBaseURL + manga.ID + "/" + coverResp.Attributes.Filename
+
 	return coverUrl, nil
 }
+

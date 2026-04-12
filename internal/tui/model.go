@@ -23,6 +23,8 @@ const (
 
 type appModel struct {
 	current      screen
+	width        int
+	height       int
 	search       searchModel
 	mangasList   mangasListModel
 	chaptersList chaptersListModel
@@ -103,19 +105,36 @@ func downloadMangaCmd(manga *source.Manga) tea.Cmd {
 
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		m.search.width = msg.Width
+		m.search.height = msg.Height
+		m.mangasList.width = msg.Width
+		m.mangasList.height = msg.Height
+		// m.chaptersList.width = msg.Width
+		// m.chaptersList.height = msg.Height
+		// m.download.width = msg.Width
+		// m.download.height = msg.Height
+
 	case mangasLoadedMsg:
+		m.search.loading = false
+
 		if msg.err != nil {
-			m.search.loading = false
 			m.search.err = msg.err
 			m.current = screenSearch
 			return m, nil
 		}
 
-		m.search.loading = false
 		m.search.err = nil
+
 		m.mangasList = newMangasListModel()
 		m.mangasList.query = msg.query
 		m.mangasList.items = msg.items
+		m.mangasList.width = m.width
+		m.mangasList.height = m.height
+
 		m.current = screenMangasList
 		return m, nil
 

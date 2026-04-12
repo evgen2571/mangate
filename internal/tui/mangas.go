@@ -2,9 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/evgen2571/manga-downloader/internal/source"
 )
@@ -33,8 +35,8 @@ func newMangasListKeyMap() mangasListKeyMap {
 			key.WithHelp("enter", "chapters"),
 		),
 		Download: key.NewBinding(
-			key.WithKeys("D"),
-			key.WithHelp("D", "download manga"),
+			key.WithKeys("d"),
+			key.WithHelp("d", "download manga"),
 		),
 		Back: key.NewBinding(
 			key.WithKeys("esc"),
@@ -52,12 +54,17 @@ type mangasListModel struct {
 	cursor int
 	query  string
 	keys   mangasListKeyMap
+	styles uiStyles
 	err    error
+
+	width  int
+	height int
 }
 
 func newMangasListModel() mangasListModel {
 	return mangasListModel{
-		keys: newMangasListKeyMap(),
+		keys:   newMangasListKeyMap(),
+		styles: newUIStyles(),
 	}
 }
 
@@ -112,36 +119,217 @@ func (m mangasListModel) Update(msg tea.Msg) (mangasListModel, tea.Cmd) {
 	return m, nil
 }
 
-func (m mangasListModel) View() string {
-	s := "Manga Downloader\n"
-	s += "================\n\n"
-	s += fmt.Sprintf("Results for: %q\n\n", m.query)
+func (m mangasListModel) selectedManga() *source.Manga {
+	if len(m.items) == 0 || m.cursor < 0 || m.cursor >= len(m.items) {
+		return nil
+	}
+	return m.items[m.cursor]
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	if n <= 1 {
+		return "…"
+	}
+	return string(r[:n-1]) + "…"
+}
+
+func (m mangasListModel) renderListPane(totalW, totalH int) string {
+	frameW, frameH := m.styles.Pane.GetFrameSize()
+	innerW := max(1, totalW-frameW)
+	innerH := max(1, totalH-frameH)
+
+	titleBlock := m.styles.PaneTitle.Render("Results")
+	queryBlock := m.styles.Muted.Render(`Query: "` + m.query + `"`)
 
 	if len(m.items) == 0 {
-		s += "No manga found.\n\n"
-	} else {
-		for i, manga := range m.items {
-			cursor := " "
-			if i == m.cursor {
-				cursor = ">"
-			}
-			s += fmt.Sprintf("%s %s\n", cursor, manga.Title)
+		middleH := max(1, innerH-lipgloss.Height(titleBlock)-lipgloss.Height(queryBlock))
+		middle := lipgloss.Place(
+			innerW,
+			middleH,
+			lipgloss.Left,
+			lipgloss.Center,
+			m.styles.Muted.Render("No manga found."),
+		)
+
+		content := lipgloss.JoinVertical(
+			lipgloss.Left,
+			titleBlock,
+			middle,
+			queryBlock,
+		)
+
+		return m.styles.Pane.Width(innerW).Height(innerH).Render(content)
+	}
+
+	var listRows []string
+	selected := m.cursor
+
+	for i, manga := range m.items {
+		cardStyle := m.styles.ListCard
+		titleStyle := m.styles.ListTitle
+		marker := " "
+		if i == selected {
+			cardStyle = m.styles.ListCardActive
+			titleStyle = m.styles.ListTitleActive
+			marker = "▌"
 		}
-		s += "\n"
+
+		cardFrameW, _ := cardStyle.GetFrameSize()
+		rowInnerW := max(1, innerW-cardFrameW)
+
+		index := m.styles.Index.Render(
+			lipgloss.NewStyle().
+				Width(3).
+				Align(lipgloss.Right).
+				Render(fmt.Sprintf("%02d", i+1)),
+		)
+
+		prefix := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			index,
+			" ",
+			marker,
+			" ",
+		)
+
+		prefixW := lipgloss.Width(prefix)
+
+		plainTitle := strings.ReplaceAll(manga.Title, "\n", " ")
+		titleW := max(1, rowInnerW-prefixW-3)
+		plainTitle = truncateRunes(plainTitle, titleW)
+
+		row := prefix + titleStyle.Render(plainTitle)
+
+		listRows = append(listRows, cardStyle.Width(rowInnerW).Render(row))
 	}
 
-	if m.err != nil {
-		s += "Info: " + m.err.Error() + "\n\n"
-	}
+	listContent := lipgloss.JoinVertical(lipgloss.Left, listRows...)
 
-	s += helpLine(
-		m.keys.Up.Help().Key+": "+m.keys.Up.Help().Desc,
-		m.keys.Down.Help().Key+": "+m.keys.Down.Help().Desc,
-		m.keys.Select.Help().Key+": "+m.keys.Select.Help().Desc,
-		m.keys.Download.Help().Key+": "+m.keys.Download.Help().Desc,
-		m.keys.Back.Help().Key+": "+m.keys.Back.Help().Desc,
-		m.keys.Quit.Help().Key+": "+m.keys.Quit.Help().Desc,
+	middleH := max(1, innerH-lipgloss.Height(titleBlock)-lipgloss.Height(queryBlock))
+	middle := lipgloss.Place(
+		innerW,
+		middleH,
+		lipgloss.Left,
+		lipgloss.Center,
+		listContent,
 	)
 
-	return s
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		titleBlock,
+		middle,
+		queryBlock,
+	)
+
+	return m.styles.Pane.Width(innerW).Height(innerH).Render(content)
+}
+
+func (m mangasListModel) renderCoverPane(totalW, totalH int) string {
+	frameW, frameH := m.styles.CoverBox.GetFrameSize()
+	innerW := max(1, totalW-frameW)
+	innerH := max(1, totalH-frameH)
+
+	title := m.styles.PaneTitle.Render("Cover")
+
+	body := m.styles.Muted.Render("No cover available")
+	if m.selectedManga() != nil {
+		body = lipgloss.Place(
+			innerW,
+			max(1, innerH-lipgloss.Height(title)-1),
+			lipgloss.Center,
+			lipgloss.Center,
+			m.styles.Muted.Render("[ cover preview ]"),
+		)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return m.styles.CoverBox.Width(innerW).Height(innerH).Render(content)
+}
+
+func (m mangasListModel) renderMetaPane(totalW, totalH int) string {
+	frameW, frameH := m.styles.MetaBox.GetFrameSize()
+	innerW := max(1, totalW-frameW)
+	innerH := max(1, totalH-frameH)
+
+	selected := m.selectedManga()
+	title := m.styles.SectionTitle.Render("Details")
+
+	if selected == nil {
+		content := lipgloss.JoinVertical(
+			lipgloss.Left,
+			title,
+			m.styles.Muted.Render("No manga selected."),
+		)
+		return m.styles.MetaBox.Width(innerW).Height(innerH).Render(content)
+	}
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"",
+		m.styles.Label.Render("Title"),
+		selected.Title,
+	)
+
+	return m.styles.MetaBox.Width(innerW).Height(innerH).Render(content)
+}
+
+func (m mangasListModel) View() string {
+	if m.width <= 0 || m.height <= 0 {
+		return ""
+	}
+
+	footer := m.styles.Footer.Width(m.width).Render(
+		"↑/↓ move • Enter chapters • d download • Esc back • q quit",
+	)
+	footerH := lipgloss.Height(footer)
+
+	outerX := 1
+	outerY := 1
+	gap := 1
+
+	availableW := m.width - outerX*2
+	availableH := m.height - outerY*2 - footerH - 1
+	if availableW < 40 || availableH < 12 {
+		return ""
+	}
+
+	leftW := availableW / 2
+	rightW := availableW - leftW - gap
+
+	coverH := (availableH * 2) / 3
+	metaH := availableH - coverH - gap
+
+	leftPane := m.renderListPane(leftW, availableH)
+	coverPane := m.renderCoverPane(rightW, coverH)
+	metaPane := m.renderMetaPane(rightW, metaH)
+
+	rightPane := lipgloss.JoinVertical(
+		lipgloss.Left,
+		coverPane,
+		lipgloss.NewStyle().Height(gap).Render(""),
+		metaPane,
+	)
+
+	layout := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		leftPane,
+		lipgloss.NewStyle().Width(gap).Render(""),
+		rightPane,
+	)
+
+	return lipgloss.NewStyle().
+		Margin(outerY, outerX, 0, outerX).
+		Render(
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				layout,
+				"",
+				footer,
+			),
+		)
 }

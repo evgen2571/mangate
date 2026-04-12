@@ -16,7 +16,7 @@ import (
 
 func DownloadChapter(c *source.Chapter) error {
 	chapterDir := filepath.Join(
-		config.DownloadPath,
+		config.DownloadDir,
 		sanitizeFileName(c.From.Title),
 		sanitizeFileName(c.Title),
 	)
@@ -50,7 +50,7 @@ func DownloadChapter(c *source.Chapter) error {
 
 func DownloadManga(m *source.Manga) error {
 	mangaDir := filepath.Join(
-		config.DownloadPath,
+		config.DownloadDir,
 		sanitizeFileName(m.Title),
 	)
 
@@ -72,12 +72,12 @@ func DownloadManga(m *source.Manga) error {
 		})
 	}
 
-	return g.Wait()	
+	return g.Wait()
 }
 
 func downloadPage(p *source.Page, filePath string) error {
 	resp, err := client.Client.Get(p.URL)
-	if err != nil {	
+	if err != nil {
 		return fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
 	defer resp.Body.Close()
@@ -96,7 +96,7 @@ func downloadPage(p *source.Page, filePath string) error {
 	return nil
 }
 
-func sanitizeFileName(name string) string {                      // <-- eto pizdec bratan  D:
+func sanitizeFileName(name string) string { // <-- eto pizdec bratan  D:
 	name = strings.ReplaceAll(name, " ", "-")
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
