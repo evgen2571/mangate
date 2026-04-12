@@ -124,9 +124,7 @@ func (m searchModel) View() string {
 	}
 
 	maxCardW := min(58, m.width-4)
-	if maxCardW < 24 {
-		maxCardW = 24
-	}
+	maxCardW = max(24, maxCardW)
 
 	cardFrameW, _ := m.styles.Card.GetFrameSize()
 	inputFrameW, _ := m.styles.InputBox.GetFrameSize()

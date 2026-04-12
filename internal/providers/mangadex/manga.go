@@ -29,6 +29,6 @@ func (mdm *mangaDexManga) toSource() *source.Manga {
 		ID:          mdm.ID,
 		Title:       mdm.getTitle(),
 		Description: mdm.Attributes.Description,
-		Cover: mdm.Cover,
+		Cover:       mdm.Cover,
 	}
 }

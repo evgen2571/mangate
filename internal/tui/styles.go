@@ -31,6 +31,10 @@ type uiStyles struct {
 	ListTitle       lipgloss.Style
 	ListTitleActive lipgloss.Style
 	Index           lipgloss.Style
+
+	ListCardSelected       lipgloss.Style
+	ListCardSelectedActive lipgloss.Style
+	ListTitleSelected      lipgloss.Style
 }
 
 var searchLogo string = `
@@ -145,5 +149,22 @@ func newUIStyles() uiStyles {
 
 		Index: lipgloss.NewStyle().
 			Faint(true),
+
+		ListCardSelected: lipgloss.NewStyle().
+			Padding(0, 1).
+			MarginBottom(1).
+			Bold(true).
+			BorderLeft(true),
+
+		ListCardSelectedActive: lipgloss.NewStyle().
+			Padding(0, 1).
+			MarginBottom(1).
+			Bold(true).
+			Underline(false).
+			BorderLeft(false),
+
+		ListTitleSelected: lipgloss.NewStyle().
+			Bold(true).
+			Underline(false),
 	}
 }

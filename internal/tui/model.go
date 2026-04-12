@@ -72,6 +72,23 @@ func downloadChapterCmd(chapter *source.Chapter) tea.Cmd {
 	}
 }
 
+func downloadChaptersCmd(chapters []*source.Chapter) tea.Cmd {
+	return func() tea.Msg {
+		for _, chapter := range chapters {
+			pages, err := providers.Provider.GetPages(chapter)
+			if err != nil {
+				return downloadFinishedMsg{err: err}
+			}
+			chapter.Pages = pages
+
+			if err := downloader.DownloadChapter(chapter); err != nil {
+				return downloadFinishedMsg{err: err}
+			}
+		}
+		return downloadFinishedMsg{}
+	}
+}
+
 func downloadMangaCmd(manga *source.Manga) tea.Cmd {
 	return func() tea.Msg {
 		chapters, err := providers.Provider.GetChapters(manga)
@@ -113,10 +130,8 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search.height = msg.Height
 		m.mangasList.width = msg.Width
 		m.mangasList.height = msg.Height
-		// m.chaptersList.width = msg.Width
-		// m.chaptersList.height = msg.Height
-		// m.download.width = msg.Width
-		// m.download.height = msg.Height
+		m.chaptersList.width = msg.Width
+		m.chaptersList.height = msg.Height
 
 	case mangasLoadedMsg:
 		m.search.loading = false
@@ -142,6 +157,8 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chaptersList = newChaptersListModel()
 		m.chaptersList.manga = msg.manga
 		m.chaptersList.loading = true
+		m.chaptersList.width = m.width
+		m.chaptersList.height = m.height
 		m.current = screenChaptersList
 		return m, loadChaptersCmd(msg.manga)
 
@@ -171,6 +188,20 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.download.loading = true
 		m.current = screenDownload
 		return m, downloadChapterCmd(msg.chapter)
+
+	case chaptersDownloadRequestedMsg:
+		m.download = newDownloadModel()
+		m.download.kind = "chapter"
+		if len(msg.chapters) == 1 {
+			m.download.title = msg.chapters[0].Title
+		} else {
+			m.download.title = fmt.Sprintf("%d chapters", len(msg.chapters))
+		}
+		m.download.mangaTitle = msg.manga.Title
+		m.download.origin = screenChaptersList
+		m.download.loading = true
+		m.current = screenDownload
+		return m, downloadChaptersCmd(msg.chapters)
 
 	case downloadFinishedMsg:
 		m.download.loading = false

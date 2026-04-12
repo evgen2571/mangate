@@ -9,6 +9,7 @@ import (
 
 type mangaDexChapter struct {
 	ID         string `json:"id"`
+	URL        string
 	Attributes struct {
 		Volume  string `json:"volume"`
 		Chapter string `json:"chapter"`
@@ -17,23 +18,30 @@ type mangaDexChapter struct {
 }
 
 func (mdc *mangaDexChapter) getTitle() string {
-	var title string
-
-	if mdc.Attributes.Chapter != "" {
-		title += mdc.Attributes.Chapter
-	}
+	var title string = "Chapter " + mdc.getIndex()
 
 	if mdc.Attributes.Title != "" {
-		title += ": "
-		title += mdc.Attributes.Title
+		title = mdc.Attributes.Title
 	}
 
 	return title
 }
 
+func (mdc *mangaDexChapter) getIndex() string {
+	var index string = "0"
+
+	if mdc.Attributes.Chapter != "" {
+		index = mdc.Attributes.Chapter
+	}
+
+	return index
+}
+
 func (mdc *mangaDexChapter) toSource() *source.Chapter {
 	return &source.Chapter{
 		ID:    mdc.ID,
+		URL:   mdc.URL,
+		Index: mdc.getIndex(),
 		Title: mdc.getTitle(),
 	}
 }

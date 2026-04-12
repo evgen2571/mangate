@@ -18,7 +18,7 @@ func DownloadChapter(c *source.Chapter) error {
 	chapterDir := filepath.Join(
 		config.DownloadDir,
 		sanitizeFileName(c.From.Title),
-		sanitizeFileName(c.Title),
+		sanitizeFileName(c.Index+"-"+c.Title),
 	)
 
 	err := os.MkdirAll(chapterDir, 0755)

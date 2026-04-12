@@ -12,6 +12,7 @@ import (
 )
 
 type MangaDex struct {
+	SiteURL        string
 	BaseURL        string
 	UploadsBaseURL string
 }
@@ -41,6 +42,7 @@ type mangaDexCoverResponse struct {
 func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
 	params := url.Values{}
 	params.Set("title", title)
+	params.Set("limit", "100") // set maximum possible limit
 
 	url := md.BaseURL + "manga/?" + params.Encode()
 	req := client.NewRequest(url, nil)
@@ -67,6 +69,9 @@ func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
 }
 
 func (md *MangaDex) GetChapters(manga *source.Manga) ([]*source.Chapter, error) {
+	params := url.Values{}
+	params.Set("limit", "500") // set maximum possible limit
+
 	url := md.BaseURL + "manga/" + manga.GetID() + "/feed?translatedLanguage[]=" + config.DefaultLanguage
 
 	req := client.NewRequest(url, nil)
@@ -86,6 +91,7 @@ func (md *MangaDex) GetChapters(manga *source.Manga) ([]*source.Chapter, error) 
 
 	var chapters []*source.Chapter
 	for _, mangaDexChapter := range mangaDexResponse.Data {
+		mangaDexChapter.URL = md.SiteURL + "chapter/" + mangaDexChapter.ID
 		chapter := mangaDexChapter.toSource()
 		chapter.From = manga
 		chapters = append(chapters, chapter)
