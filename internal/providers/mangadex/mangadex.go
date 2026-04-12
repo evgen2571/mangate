@@ -126,7 +126,7 @@ func (md *MangaDex) GetPages(chapter *source.Chapter) ([]*source.Page, error) {
 }
 
 func (md *MangaDex) GetCover(manga *source.Manga) (string, error) {
-	url := "https://api.mangadex.org/cover?manga[]=" + manga.ID
+	url := md.BaseURL + "cover?manga[]=" + manga.ID
 
 	req := client.NewRequest(url, nil)
 
@@ -140,13 +140,13 @@ func (md *MangaDex) GetCover(manga *source.Manga) (string, error) {
 		return "", fmt.Errorf("unexpected status: %s", resp.Status)
 	}
 
-	var coverResp mangaDexCoverResponse
-	err = json.NewDecoder(resp.Body).Decode(&coverResp)
+	var coverResp mangaDexResponse[mangaDexCoverResponse]
+	err = json.NewDecoder(resp.Body).Decode(&coverResp.Data[0])
 	if err != nil {
 		return "", fmt.Errorf("decode failed: %w", err)
 	}
 
-	coverUrl := md.UploadsBaseURL + manga.ID + "/" + coverResp.Attributes.Filename
+	coverUrl := md.UploadsBaseURL + manga.ID + "/" + coverResp.Data[0].Attributes.Filename
 
 	return coverUrl, nil
 }
