@@ -6,6 +6,7 @@ import (
 
 type mangaDexManga struct {
 	ID         string `json:"id"`
+	URL        string
 	Attributes struct {
 		TitleMap    map[string]string `json:"title"`
 		Description map[string]string `json:"description"`
@@ -27,6 +28,7 @@ func (mdm *mangaDexManga) getTitle() string {
 func (mdm *mangaDexManga) toSource() *source.Manga {
 	return &source.Manga{
 		ID:          mdm.ID,
+		URL:         mdm.URL,
 		Title:       mdm.getTitle(),
 		Description: mdm.Attributes.Description,
 		Cover:       mdm.Cover,

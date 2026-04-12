@@ -21,7 +21,7 @@ var pagesCmd = &cobra.Command{
 		pages, _ := provider.GetPages(chapter)
 
 		for idx, page := range pages {
-			fmt.Printf("%v. URL: %v\n", idx+1, page.GetURL())
+			fmt.Printf("%v. URL: %v\n", idx+1, page.URL)
 		}
 
 		return nil

@@ -61,6 +61,7 @@ func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
 
 	var mangas []*source.Manga
 	for _, mangaDexManga := range mangaDexResponse.Data {
+		mangaDexManga.URL = md.SiteURL + "title/" + mangaDexManga.ID
 		manga := mangaDexManga.toSource()
 		mangas = append(mangas, manga)
 	}
@@ -72,7 +73,7 @@ func (md *MangaDex) GetChapters(manga *source.Manga) ([]*source.Chapter, error) 
 	params := url.Values{}
 	params.Set("limit", "500") // set maximum possible limit
 
-	url := md.BaseURL + "manga/" + manga.GetID() + "/feed?translatedLanguage[]=" + config.DefaultLanguage
+	url := md.BaseURL + "manga/" + manga.ID + "/feed?translatedLanguage[]=" + config.DefaultLanguage
 
 	req := client.NewRequest(url, nil)
 
@@ -101,7 +102,7 @@ func (md *MangaDex) GetChapters(manga *source.Manga) ([]*source.Chapter, error) 
 }
 
 func (md *MangaDex) GetPages(chapter *source.Chapter) ([]*source.Page, error) {
-	url := md.BaseURL + "at-home/server/" + chapter.GetID()
+	url := md.BaseURL + "at-home/server/" + chapter.ID
 
 	req := client.NewRequest(url, nil)
 

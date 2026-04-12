@@ -8,11 +8,3 @@ type Chapter struct {
 	Pages []*Page
 	From  *Manga
 }
-
-func (c *Chapter) GetID() string {
-	return c.ID
-}
-
-func (c *Chapter) GetTitle() string {
-	return c.Title
-}

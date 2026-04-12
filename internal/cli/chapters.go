@@ -21,7 +21,7 @@ var chaptersCmd = &cobra.Command{
 		chapters, _ := provider.GetChapters(manga)
 
 		for idx, chapter := range chapters {
-			fmt.Printf("%v.  ID: %v\n", idx+1, chapter.GetID())
+			fmt.Printf("%v.  ID: %v\n", idx+1, chapter.ID)
 		}
 		return nil
 	},
