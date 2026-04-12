@@ -1,10 +1,11 @@
-package sources
+package source
 
 type Manga struct {
 	ID          string
 	Title       string
 	Description map[string]string
 	Chapters    []*Chapter
+	Cover string
 }
 
 func (m *Manga) GetID() string {

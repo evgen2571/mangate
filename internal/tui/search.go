@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -62,17 +61,9 @@ func (m searchModel) Init() tea.Cmd {
 
 func searchMangaCmd(query string) tea.Cmd {
 	return func() tea.Msg {
-		provider, ok := providers.Providers["mangadex"]
-		if !ok {
-			return mangasLoadedMsg{
-				err:   fmt.Errorf("provider not found"),
-				query: query,
-			}
-		}
-
-		items, err := provider.GetManga(query)
+		mangas, err := providers.Provider.GetManga(query)
 		return mangasLoadedMsg{
-			items: items,
+			items: mangas,
 			err:   err,
 			query: query,
 		}

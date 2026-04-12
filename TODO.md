@@ -1,18 +1,18 @@
 # Tasks
 
 ### Refactoring
-- [ ] Refactor config logic (_it's really disgusting_)
-- [ ] Refactor folder managment
-- [ ] Refactor unnecessary public functions, variables, methods to private
-- [ ] Change `sources` package to `source` (_@evgen2571 i really don't like this title_)
+- [x] Refactor config logic (_it's really disgusting_)
+- [x] Refactor folder managment
+- [x] Refactor unnecessary public functions, variables, methods to private
+- [x] Change `sources` package to `source` (_@evgen2571 i really don't like this title_)
 
 ### Source managment
-- [ ] Somehow get a manga cover
+- [x] Somehow get a manga cover
 - [ ] Improve metadata organization
 - [ ] Create converter to download in custom types (_e.g. zip, cbz, plain_)
 
 ### CLI
-- [ ] Possibility to switch between TUI and CLI (_maybe create `tui` endpoint to use it_)
+- [x] Possibility to switch between TUI and CLI (_maybe create `tui` endpoint to use it_)
 - [ ] Add some flags (_e.g. --path, --type_)
 - [ ] Add flags to update config
 
@@ -20,9 +20,10 @@
 
 ## Problems to fix
 
-- [ ] Some mangas has multiple languages (*add default language to config*), and as result we see a lot of same chapters, but in diffrent languages
+- [x] Some mangas has multiple languages (*add default language to config*), and as result we see a lot of same chapters, but in diffrent languages
 - [ ] `DownloadManga` in TUI is really slow
-- [ ] CLI broke after I change something
+- [x] CLI broke after I change something (_@amSagitari fixed and added option to launch tui using command 'tui')
+- [ ] Change `run.go` file location (_it launches tui from cli and i can't figure out the best location for it..._)
 
 ---
 

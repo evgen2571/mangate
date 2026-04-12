@@ -1,29 +1,29 @@
 package tui
 
-import "github.com/evgen2571/manga-downloader/internal/sources"
+import "github.com/evgen2571/manga-downloader/internal/source"
 
 type mangasLoadedMsg struct {
-	items []*sources.Manga
+	items []*source.Manga
 	err   error
 	query string
 }
 
 type mangaSelectedMsg struct {
-	manga *sources.Manga
+	manga *source.Manga
 }
 
 type mangaDownloadRequestedMsg struct {
-	manga *sources.Manga
+	manga *source.Manga
 }
 
 type chapterDownloadRequestedMsg struct {
-	manga   *sources.Manga
-	chapter *sources.Chapter
+	manga   *source.Manga
+	chapter *source.Chapter
 }
 
 type chaptersLoadedMsg struct {
-	manga    *sources.Manga
-	chapters []*sources.Chapter
+	manga    *source.Manga
+	chapters []*source.Chapter
 	err      error
 }
 

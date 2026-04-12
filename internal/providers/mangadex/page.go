@@ -3,14 +3,14 @@ package mangadex
 import (
 	"fmt"
 
-	"github.com/evgen2571/manga-downloader/internal/sources"
+	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
-func (mdpr *mangaDexPageResponse) toSourcePages(uploadsURL string) []*sources.Page {
-	pages := make([]*sources.Page, 0, len(mdpr.Chapter.Data))
+func (mdpr *mangaDexPageResponse) toSourcePages(uploadsURL string) []*source.Page {
+	pages := make([]*source.Page, 0, len(mdpr.Chapter.Data))
 
 	for _, fileName := range mdpr.Chapter.Data {
-		page := &sources.Page{
+		page := &source.Page{
 			URL: fmt.Sprintf("%sdata/%s/%s", uploadsURL, mdpr.Chapter.Hash, fileName),
 		}
 

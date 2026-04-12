@@ -1,4 +1,4 @@
-package sources
+package source
 
 type Source interface {
 	GetID()

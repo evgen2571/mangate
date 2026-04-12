@@ -13,7 +13,7 @@ var searchCmd = &cobra.Command{
 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title := args[0]
-		provider := providers.Providers["mangadex"]
+		provider := providers.Provider
 
 		mangas, _ := provider.GetManga(title)
 
