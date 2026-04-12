@@ -16,7 +16,7 @@ var pagesCmd = &cobra.Command{
 		chapter := &source.Chapter{
 			ID: args[0],
 		}
-		provider := providers.Providers["mangadex"]
+		provider := providers.Provider
 
 		pages, _ := provider.GetPages(chapter)
 

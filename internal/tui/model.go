@@ -54,7 +54,7 @@ func loadChaptersCmd(manga *source.Manga) tea.Cmd {
 	}
 }
 
-func downloadChapterCmd(manga *source.Manga, chapter *source.Chapter) tea.Cmd {
+func downloadChapterCmd(chapter *source.Chapter) tea.Cmd {
 	return func() tea.Msg {
 		pages, err := providers.Provider.GetPages(chapter)
 		if err != nil {
@@ -151,7 +151,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.download.origin = screenChaptersList
 		m.download.loading = true
 		m.current = screenDownload
-		return m, downloadChapterCmd(msg.manga, msg.chapter)
+		return m, downloadChapterCmd(msg.chapter)
 
 	case downloadFinishedMsg:
 		m.download.loading = false

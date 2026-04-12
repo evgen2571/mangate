@@ -5,9 +5,10 @@ var (
 	DownloadType = "png"
 
 	Provider = "mangadex"
+	DefaultLanguage = "en"
 
 	MaxConcurrentPageFetches = 4
 
-	MaxConcurrentPageDownloads    = 8
+	MaxConcurrentPageDownloads  = 8
 	MaxConcurrentChapterDownloads = 1
 )

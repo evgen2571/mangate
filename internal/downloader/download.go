@@ -72,12 +72,12 @@ func DownloadManga(m *source.Manga) error {
 		})
 	}
 
-	return nil
+	return g.Wait()	
 }
 
 func downloadPage(p *source.Page, filePath string) error {
 	resp, err := client.Client.Get(p.URL)
-	if err != nil {
+	if err != nil {	
 		return fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
 	defer resp.Body.Close()

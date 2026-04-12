@@ -16,7 +16,7 @@ var chaptersCmd = &cobra.Command{
 		manga := &source.Manga{
 			ID: args[0],
 		}
-		provider := providers.providers[config.Provider]
+		provider := providers.Provider
 
 		chapters, _ := provider.GetChapters(manga)
 

@@ -2,11 +2,12 @@ package mangadex
 
 import (
 	"encoding/json"
-	"net/url"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/evgen2571/manga-downloader/internal/client"
+	"github.com/evgen2571/manga-downloader/internal/config"
 	"github.com/evgen2571/manga-downloader/internal/source"
 )
 
@@ -71,7 +72,7 @@ func (md *MangaDex) GetManga(title string) ([]*source.Manga, error) {
 }
 
 func (md *MangaDex) GetChapters(manga *source.Manga) ([]*source.Chapter, error) {
-	url := md.BaseURL + "manga/" + manga.GetID() + "/feed"
+	url := md.BaseURL + "manga/" + manga.GetID() + "/feed?translatedLanguage[]=" + config.DefaultLanguage
 
 	req := client.NewRequest(url, nil)
 
