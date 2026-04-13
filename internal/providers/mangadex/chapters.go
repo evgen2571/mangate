@@ -1,6 +1,10 @@
 package mangadex
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 
@@ -15,6 +19,41 @@ type mangaDexChapter struct {
 		Chapter string `json:"chapter"`
 		Title   string `json:"title"`
 	} `json:"attributes"`
+}
+
+func (pr *Provider) Chapters(manga *source.Manga) ([]*source.Chapter, error) {
+	params := url.Values{}
+	params.Set("limit", "500") // set maximum possible limit
+
+	url := pr.baseURL + "manga/" + manga.ID + "/feed?translatedLanguage[]=" + pr.language
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create `chapters` request in `%s`: %v", pr.Name(), err)
+	}
+
+	resp, err := pr.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get response from `%s`: %v", pr.Name(), err)
+	}
+	defer resp.Body.Close()
+
+	var mangaDexResponse mangaDexResponse[mangaDexChapter]
+	if err = json.NewDecoder(resp.Body).Decode(&mangaDexResponse); err != nil {
+		return nil, err
+	}
+
+	sortChaptersByChapter(mangaDexResponse.Data)
+
+	var chapters []*source.Chapter
+	for _, mangaDexChapter := range mangaDexResponse.Data {
+		mangaDexChapter.URL = pr.siteURL + "chapter/" + mangaDexChapter.ID
+		chapter := mangaDexChapter.toSource()
+		chapter.From = manga
+		chapters = append(chapters, chapter)
+	}
+
+	return chapters, nil
 }
 
 func (mdc *mangaDexChapter) getTitle() string {

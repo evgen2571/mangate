@@ -1,0 +1,23 @@
+package mangadex
+
+type mangaDexResponse[T any] struct {
+	Result   string `json:"result"`
+	Response string `json:"response"`
+	Data     []T    `json:"data"`
+}
+
+type mangaDexPageResponse struct {
+	BaseURL string `json:"baseUrl"`
+	Chapter struct {
+		Hash      string   `json:"hash"`
+		Data      []string `json:"data"`
+		DataSaver []string `json:"dataSaver"`
+	} `json:"chapter"`
+}
+
+type mangaDexCoverResponse struct {
+	ID         string `json:"id"`
+	Attributes struct {
+		Filename string `json:"filename"`
+	} `json:"attributes"`
+}
