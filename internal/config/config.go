@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/evgen2571/manga-downloader/internal/constant"
+	"github.com/evgen2571/mangate/internal/constant"
 )
 
 type Config struct {
@@ -25,8 +25,9 @@ type Config struct {
 	}
 
 	Download struct {
-		Dir  string
-		Type string
+		Dir       string
+		Type      string
+		ImageType string
 	}
 
 	Concurrency struct {
@@ -42,58 +43,29 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{
-		Provider: "mangadex",
-		Language: "en",
+	var cfg Config
 
-		Providers: struct {
-			MangaDex struct {
-				SiteURL    string
-				BaseURL    string
-				UploadsURL string
-			}
-		}{
-			MangaDex: struct {
-				SiteURL    string
-				BaseURL    string
-				UploadsURL string
-			}{
-				SiteURL:    "https://mangadex.org/",
-				BaseURL:    "https://api.mangadex.org/",
-				UploadsURL: "https://uploads.mangadex.org/",
-			},
-		},
+	cfg.Provider = "mangadex"
+	cfg.Language = "en"
 
-		HTTP: struct{ Timeout time.Duration }{
-			Timeout: 5 * time.Second,
-		},
+	cfg.Providers.MangaDex.SiteURL = "https://mangadex.org"
+	cfg.Providers.MangaDex.BaseURL = "https://api.mangadex.org"
+	cfg.Providers.MangaDex.UploadsURL = "https://uploads.mangadex.org"
 
-		Download: struct {
-			Dir  string
-			Type string
-		}{
-			Dir:  "downloads",
-			Type: "plain",
-		},
+	cfg.HTTP.Timeout = 30 * time.Second
 
-		Concurrency: struct {
-			PageFetches      int
-			PageDownloads    int
-			ChapterDownloads int
-		}{
-			PageFetches:      4,
-			PageDownloads:    8,
-			ChapterDownloads: 1,
-		},
+	cfg.Download.Dir = "./downloads"
+	cfg.Download.Type = "plain"
+	cfg.Download.ImageType = "jpg"
 
-		Dirs: struct {
-			Cache string
-			Temp  string
-		}{
-			Cache: defaultCacheDir(),
-			Temp:  defaultTempDir(),
-		},
-	}
+	cfg.Concurrency.PageFetches = 8
+	cfg.Concurrency.PageDownloads = 8
+	cfg.Concurrency.ChapterDownloads = 2
+
+	cfg.Dirs.Cache = defaultCacheDir()
+	cfg.Dirs.Temp = defaultTempDir()
+
+	return cfg
 }
 
 func defaultCacheDir() string {

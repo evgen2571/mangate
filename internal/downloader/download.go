@@ -6,19 +6,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/evgen2571/manga-downloader/internal/client"
-	"github.com/evgen2571/manga-downloader/internal/config"
-	"github.com/evgen2571/manga-downloader/internal/source"
+	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/util"
 	"golang.org/x/sync/errgroup"
 )
 
-func DownloadChapter(c *source.Chapter) error {
+func (d *Downloader) DownloadChapter(c *source.Chapter) error {
 	chapterDir := filepath.Join(
-		config.DownloadDir,
-		sanitizeFileName(c.From.Title),
-		sanitizeFileName(c.Index+"-"+c.Title),
+		d.basePath(),
+		util.SanitizeString(c.From.Title),
+		util.SanitizeString(c.Index+"-"+c.Title),
 	)
 
 	err := os.MkdirAll(chapterDir, 0755)
@@ -28,17 +26,17 @@ func DownloadChapter(c *source.Chapter) error {
 
 	// Set limit for concurrent page downloads
 	var g errgroup.Group
-	g.SetLimit(config.MaxConcurrentPageDownloads)
+	g.SetLimit(d.cfg.Concurrency.PageDownloads)
 
 	for idx, page := range c.Pages {
 		g.Go(func() error {
 			filePath := filepath.Join(
 				chapterDir,
-				fmt.Sprintf("%04d.%v", idx+1, config.DownloadType),
+				fmt.Sprintf("%04d.%v", idx+1, d.cfg.Download.ImageType),
 			)
 
 			// Start page downloading
-			if err := downloadPage(page, filePath); err != nil {
+			if err := d.downloadPage(page, filePath); err != nil {
 				return err
 			}
 			return nil
@@ -48,10 +46,10 @@ func DownloadChapter(c *source.Chapter) error {
 	return g.Wait()
 }
 
-func DownloadManga(m *source.Manga) error {
+func (d *Downloader) DownloadManga(m *source.Manga) error {
 	mangaDir := filepath.Join(
-		config.DownloadDir,
-		sanitizeFileName(m.Title),
+		d.basePath(),
+		util.SanitizeString(m.Title),
 	)
 
 	if err := os.MkdirAll(mangaDir, 0755); err != nil {
@@ -60,11 +58,11 @@ func DownloadManga(m *source.Manga) error {
 
 	// Set limit for concurrent chapter downloads
 	var g errgroup.Group
-	g.SetLimit(config.MaxConcurrentChapterDownloads)
+	g.SetLimit(d.cfg.Concurrency.ChapterDownloads)
 
 	for _, chapter := range m.Chapters {
 		g.Go(func() error {
-			if err := DownloadChapter(chapter); err != nil {
+			if err := d.DownloadChapter(chapter); err != nil {
 				return err
 			}
 
@@ -75,8 +73,8 @@ func DownloadManga(m *source.Manga) error {
 	return g.Wait()
 }
 
-func downloadPage(p *source.Page, filePath string) error {
-	resp, err := client.Client.Get(p.URL)
+func (d *Downloader) downloadPage(p *source.Page, filePath string) error {
+	resp, err := d.client.Get(p.URL)
 	if err != nil {
 		return fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
@@ -96,19 +94,15 @@ func downloadPage(p *source.Page, filePath string) error {
 	return nil
 }
 
-func sanitizeFileName(name string) string { // <-- eto pizdec bratan  D:
-	name = strings.ReplaceAll(name, " ", "-")
-	name = strings.ReplaceAll(name, "/", "_")
-	name = strings.ReplaceAll(name, "\\", "_")
-	name = strings.ReplaceAll(name, ":", "_")
-	name = strings.ReplaceAll(name, "*", "_")
-	name = strings.ReplaceAll(name, "?", "_")
-	name = strings.ReplaceAll(name, "\"", "_")
-	name = strings.ReplaceAll(name, "<", "_")
-	name = strings.ReplaceAll(name, ">", "_")
-	name = strings.ReplaceAll(name, "|", "_")
-	if name == "" {
-		return "unknown"
+func (d *Downloader) basePath() string {
+	if d.cfg.Download.Type == "plain" {
+		return d.cfg.Download.Dir
 	}
-	return name
+
+	workDir, err := os.MkdirTemp(d.cfg.Dirs.Temp, "mangate-*")
+	if err != nil {
+		fmt.Errorf("failed to create temp direcotry")
+	}
+
+	return workDir
 }

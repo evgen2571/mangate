@@ -1,13 +1,10 @@
 package mangadex
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/url"
+	"strings"
 
-	"github.com/evgen2571/manga-downloader/internal/config"
-	"github.com/evgen2571/manga-downloader/internal/source"
+	"github.com/evgen2571/mangate/internal/config"
 )
 
 type Provider struct {
@@ -32,52 +29,14 @@ func (pr *Provider) Name() string {
 	return "mangadex"
 }
 
-func (md *MangaDex) GetPages(chapter *source.Chapter) ([]*source.Page, error) {
-	url := md.BaseURL + "at-home/server/" + chapter.ID
-
-	req := client.NewRequest(url, nil)
-
-	resp, err := client.DoRequest(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var pageResp mangaDexPageResponse
-	if err = json.NewDecoder(resp.Body).Decode(&pageResp); err != nil {
-		return nil, err
-	}
-
-	pages := pageResp.toSourcePages(md.UploadsBaseURL)
-	for _, page := range pages {
-		page.From = chapter
-	}
-
-	return pages, nil
+func (pr *Provider) api(path string) string {
+	return strings.TrimRight(pr.baseURL, "/") + "/" + strings.TrimLeft(path, "/")
 }
 
-func (md *MangaDex) GetCover(manga *source.Manga) (string, error) {
-	url := "https://api.mangadex.org/cover?manga[]=" + manga.ID
+func (pr *Provider) site(path string) string {
+	return strings.TrimRight(pr.siteURL, "/") + "/" + strings.TrimLeft(path, "/")
+}
 
-	req := client.NewRequest(url, nil)
-
-	resp, err := client.DoRequest(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status: %s", resp.Status)
-	}
-
-	var coverResp mangaDexCoverResponse
-	err = json.NewDecoder(resp.Body).Decode(&coverResp)
-	if err != nil {
-		return "", fmt.Errorf("decode failed: %w", err)
-	}
-
-	coverUrl := md.UploadsBaseURL + manga.ID + "/" + coverResp.Attributes.Filename
-
-	return coverUrl, nil
+func (pr *Provider) uploads(path string) string {
+	return strings.TrimRight(pr.uploadsURL, "/") + "/" + strings.TrimLeft(path, "/")
 }

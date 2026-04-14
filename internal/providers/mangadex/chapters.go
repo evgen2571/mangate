@@ -1,6 +1,7 @@
 package mangadex
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,7 +9,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/evgen2571/manga-downloader/internal/source"
+	"github.com/evgen2571/mangate/internal/source"
 )
 
 type mangaDexChapter struct {
@@ -21,13 +22,13 @@ type mangaDexChapter struct {
 	} `json:"attributes"`
 }
 
-func (pr *Provider) Chapters(manga *source.Manga) ([]*source.Chapter, error) {
+func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*source.Chapter, error) {
 	params := url.Values{}
 	params.Set("limit", "500") // set maximum possible limit
 
-	url := pr.baseURL + "manga/" + manga.ID + "/feed?translatedLanguage[]=" + pr.language
+	url := pr.api("manga/" + manga.ID + "/feed?translatedLanguage[]=" + pr.language)
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create `chapters` request in `%s`: %v", pr.Name(), err)
 	}
@@ -47,7 +48,7 @@ func (pr *Provider) Chapters(manga *source.Manga) ([]*source.Chapter, error) {
 
 	var chapters []*source.Chapter
 	for _, mangaDexChapter := range mangaDexResponse.Data {
-		mangaDexChapter.URL = pr.siteURL + "chapter/" + mangaDexChapter.ID
+		mangaDexChapter.URL = pr.site("chapter/" + mangaDexChapter.ID)
 		chapter := mangaDexChapter.toSource()
 		chapter.From = manga
 		chapters = append(chapters, chapter)

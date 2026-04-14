@@ -1,4 +1,4 @@
-module github.com/evgen2571/manga-downloader
+module github.com/evgen2571/mangate
 
 go 1.25.7
 
