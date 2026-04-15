@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/manga-downloader/internal/constant"
+	"github.com/evgen2571/mangate/internal/constant"
 )
 
 type uiStyles struct {

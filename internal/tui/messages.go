@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/evgen2571/manga-downloader/internal/source"
+import "github.com/evgen2571/mangate/internal/source"
 
 type mangasLoadedMsg struct {
 	items []*source.Manga

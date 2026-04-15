@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/evgen2571/manga-downloader/internal/providers"
+	"github.com/evgen2571/mangate/internal/providers"
 )
 
 type searchKeyMap struct {

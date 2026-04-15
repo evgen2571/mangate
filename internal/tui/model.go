@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/evgen2571/manga-downloader/internal/config"
-	"github.com/evgen2571/manga-downloader/internal/downloader"
-	"github.com/evgen2571/manga-downloader/internal/providers"
-	"github.com/evgen2571/manga-downloader/internal/source"
+	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/downloader"
+	"github.com/evgen2571/mangate/internal/providers"
+	"github.com/evgen2571/mangate/internal/source"
 	"golang.org/x/sync/errgroup"
 )
 

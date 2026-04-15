@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/evgen2571/manga-downloader/internal/config"
-	"github.com/evgen2571/manga-downloader/internal/providers/mangadex"
+	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/providers/mangadex"
 )
 
 type Registry struct {

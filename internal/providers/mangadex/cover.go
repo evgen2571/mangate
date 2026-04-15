@@ -1,17 +1,18 @@
 package mangadex
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"github.com/evgen2571/manga-downloader/internal/source"
+	"github.com/evgen2571/mangate/internal/source"
 )
 
-func (pr *Provider) Cover(manga *source.Manga) (string, error) {
-	url := "https://api.mangadex.org/cover?manga[]=" + manga.ID
+func (pr *Provider) Cover(ctx context.Context, manga *source.Manga) (string, error) {
+	url := pr.baseURL + "cover?manga[]=" + manga.ID
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create `cover` request in `%s`: %v", pr.Name(), err)
 	}

@@ -1,32 +1,32 @@
 package mangadex
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 
-	"github.com/evgen2571/manga-downloader/internal/source"
+	"github.com/evgen2571/mangate/internal/source"
 )
 
 type mangaDexManga struct {
 	ID         string `json:"id"`
 	URL        string
 	Attributes struct {
-		TitleMap    map[string]string `json:"title"`
-		Description map[string]string `json:"description"`
-		Status      string            `json:"status"`
+		TitleMap       map[string]string `json:"title"`
+		DescriptionMap map[string]string `json:"description"`
+		Status         string            `json:"status"`
 	} `json:"attributes"`
-	Cover string
 }
 
-func (pr *Provider) Search(title string) ([]*source.Manga, error) {
+func (pr *Provider) Search(ctx context.Context, title string) ([]*source.Manga, error) {
 	params := url.Values{}
 	params.Set("title", title)
 	params.Set("limit", "100") // set maximum possible limit
 
-	url := pr.baseURL + "manga/?" + params.Encode()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	url := pr.api("manga/?" + params.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create `search` request in `%s`: %v", pr.Name(), err)
 	}
@@ -45,7 +45,7 @@ func (pr *Provider) Search(title string) ([]*source.Manga, error) {
 
 	var mangas []*source.Manga
 	for _, mangaDexManga := range mangaDexResponse.Data {
-		mangaDexManga.URL = pr.siteURL + "title/" + mangaDexManga.ID
+		mangaDexManga.URL = pr.site("title/" + mangaDexManga.ID)
 		manga := mangaDexManga.toSource()
 		mangas = append(mangas, manga)
 	}
@@ -65,10 +65,13 @@ func (mdm *mangaDexManga) getTitle() string {
 
 func (mdm *mangaDexManga) toSource() *source.Manga {
 	return &source.Manga{
-		ID:          mdm.ID,
-		URL:         mdm.URL,
-		Title:       mdm.getTitle(),
-		Description: mdm.Attributes.Description,
-		Cover:       mdm.Cover,
+		ID:    mdm.ID,
+		URL:   mdm.URL,
+		Title: mdm.getTitle(),
+		Metadata: struct {
+			Description map[string]string
+		}{
+			Description: mdm.Attributes.DescriptionMap,
+		},
 	}
 }
