@@ -54,7 +54,7 @@ func DefaultConfig() Config {
 
 	cfg.HTTP.Timeout = 30 * time.Second
 
-	cfg.Download.Dir = "./downloads"
+	cfg.Download.Dir = defaultDownloadDir()
 	cfg.Download.Type = "plain"
 	cfg.Download.ImageType = "jpg"
 
@@ -66,6 +66,15 @@ func DefaultConfig() Config {
 	cfg.Dirs.Temp = defaultTempDir()
 
 	return cfg
+}
+
+func defaultDownloadDir() string {
+	root, err := os.UserHomeDir()
+	if err != nil {
+		return "./downloads"
+	}
+
+	return filepath.Join(root, "downloads", constant.ProjectName)
 }
 
 func defaultCacheDir() string {

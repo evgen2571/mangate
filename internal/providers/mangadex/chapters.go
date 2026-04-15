@@ -16,9 +16,10 @@ type mangaDexChapter struct {
 	ID         string `json:"id"`
 	URL        string
 	Attributes struct {
-		Volume  string `json:"volume"`
-		Chapter string `json:"chapter"`
-		Title   string `json:"title"`
+		Volume   string `json:"volume"`
+		Chapter  string `json:"chapter"`
+		Title    string `json:"title"`
+		Language string `json:"translatedLanguage"`
 	} `json:"attributes"`
 }
 
@@ -26,7 +27,7 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 	params := url.Values{}
 	params.Set("limit", "500") // set maximum possible limit
 
-	url := pr.api("manga/" + manga.ID + "/feed?translatedLanguage[]=" + pr.language)
+	url := pr.api("manga/" + manga.ID + "/feed")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -47,9 +48,13 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 	sortChaptersByChapter(mangaDexResponse.Data)
 
 	var chapters []*source.Chapter
-	for _, mangaDexChapter := range mangaDexResponse.Data {
-		mangaDexChapter.URL = pr.site("chapter/" + mangaDexChapter.ID)
-		chapter := mangaDexChapter.toSource()
+	for _, mdc := range mangaDexResponse.Data {
+		if mdc.Attributes.Language != pr.language {
+			continue
+		}
+
+		mdc.URL = pr.site("chapter/" + mdc.ID)
+		chapter := mdc.toSource()
 		chapter.From = manga
 		chapters = append(chapters, chapter)
 	}
