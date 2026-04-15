@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/tui"
 )
 
 func NewRootCmd(a *app.App) *cobra.Command {
@@ -26,7 +28,9 @@ func NewRootCmd(a *app.App) *cobra.Command {
 				return cmd.Help()
 			}
 
-			return a.Run()
+			p := tea.NewProgram(tui.New(a))
+			_, err := p.Run()
+			return err
 		},
 	}
 

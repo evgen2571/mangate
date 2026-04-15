@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,8 +48,14 @@ func (m searchModel) Update(msg tea.Msg) (searchModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Submit):
-			// TODO: Process search
-			return m, nil
+			query := strings.TrimSpace(m.input.Value())
+			if query == "" {
+				return m, nil
+			}
+
+			return m, func() tea.Msg {
+				return searchSubmittedMsg{Query: query}
+			}
 
 		case key.Matches(msg, m.keys.Clear):
 			m.input.SetValue("")

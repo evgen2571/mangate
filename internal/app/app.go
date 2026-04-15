@@ -5,11 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/providers"
-	"github.com/evgen2571/mangate/internal/tui"
 )
 
 type App struct {
@@ -29,12 +27,6 @@ func New(cfg config.Config) (*App, error) {
 		Registry:   registry,
 		Downloader: downloader.New(cfg, client),
 	}, nil
-}
-
-func (a *App) Run() error {
-	p := tea.NewProgram(tui.New())
-	_, err := p.Run()
-	return err
 }
 
 func (a *App) InitDirs() error {
