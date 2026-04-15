@@ -19,12 +19,14 @@ func NewRootCmd(a *app.App) *cobra.Command {
 			if err := validateConfig(a); err != nil {
 				return err
 			}
-
-			if err := a.InitDirs(); err != nil {
-				return err
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return cmd.Help()
 			}
 
-			return nil
+			return a.Run()
 		},
 	}
 

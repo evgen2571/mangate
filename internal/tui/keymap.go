@@ -1,23 +1,12 @@
 package tui
 
-import "github.com/charmbracelet/bubbles/key"
+import (
+	"github.com/charmbracelet/bubbles/key"
+)
 
 type keyMap struct {
-	Quit  key.Binding
-	Reset key.Binding
-	Enter key.Binding
-	Help  key.Binding
-}
-
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Enter, k.Reset, k.Quit}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Enter},
-		{k.Quit, k.Reset},
-	}
+	Quit key.Binding
+	Help key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -30,5 +19,44 @@ func newKeyMap() keyMap {
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
 		),
+	}
+}
+
+type searchKeyMap struct {
+	Submit key.Binding
+	Clear  key.Binding
+}
+
+func newSearchKeyMap() searchKeyMap {
+	return searchKeyMap{
+		Submit: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "search"),
+		),
+		Clear: key.NewBinding(
+			key.WithKeys("ctrl+u"),
+			key.WithHelp("ctrl+u", "clear"),
+		),
+	}
+}
+
+type searchHelpKeyMap struct {
+	global keyMap
+	local  searchKeyMap
+}
+
+func (k searchHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		k.local.Submit,
+		k.local.Clear,
+		k.global.Help,
+		k.global.Quit,
+	}
+}
+
+func (k searchHelpKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.local.Submit, k.local.Clear},
+		{k.global.Help, k.global.Quit},
 	}
 }
