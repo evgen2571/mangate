@@ -1,9 +1,10 @@
 module github.com/evgen2571/mangate
 
-go 1.25.8
+go 1.26
 
 require (
 	charm.land/glamour/v2 v2.0.0
+	github.com/blacktop/go-termimg v0.1.26
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/spf13/cobra v1.10.2
@@ -16,15 +17,22 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
+	github.com/charmbracelet/x/mosaic v0.0.0-20260216111343-536eb63c1f4c // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
+	github.com/makeworld-the-better-one/dither/v2 v2.4.0 // indirect
+	github.com/mattn/go-sixel v0.0.8 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
+	github.com/soniakeys/quant v1.0.0 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
+	golang.org/x/image v0.36.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
 )
 
 require (
@@ -50,5 +58,5 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 )

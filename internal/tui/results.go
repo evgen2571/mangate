@@ -19,6 +19,13 @@ type resultItem struct {
 	value *source.Manga
 }
 
+type coverState struct {
+	Loading bool
+	Path    string
+	Render  string
+	Err     error
+}
+
 func (i resultItem) FilterValue() string {
 	if i.value == nil {
 		return ""
@@ -49,6 +56,7 @@ type resultsModel struct {
 	keys     resultsKeyMap
 	list     list.Model
 	metadata viewport.Model
+	covers   map[string]coverState
 	results  []*source.Manga
 }
 
@@ -75,6 +83,7 @@ func newResultsModel(query string, results []*source.Manga) resultsModel {
 		keys:        newResultsKeyMap(),
 		list:        l,
 		metadata:    vp,
+		covers:      make(map[string]coverState),
 		results:     results,
 		initialized: true,
 	}
@@ -141,6 +150,13 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 
 	if m.list.Index() != prevIndex {
 		m.syncMetadataViewport()
+
+		selected := m.selectedManga()
+		if selected != nil {
+			return m, func() tea.Msg {
+				return coverLoadRequestedMsg{MangaID: selected.ID}
+			}
+		}
 	}
 
 	return m, cmd
@@ -242,15 +258,29 @@ func (m resultsModel) coverView() string {
 		Foreground(constant.LogoColor).
 		Render("Cover")
 
-	body := lipgloss.NewStyle().
-		Foreground(constant.MutedColor).
-		Render("[ cover here ]")
+	bodyWidth, bodyHeight := m.coverBodySize()
+	selected := m.selectedManga()
+
+	var body string
+
+	switch {
+	case selected == nil:
+		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "No cover")
+	case m.covers[selected.ID].Loading:
+		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "Loading cover...")
+	case m.covers[selected.ID].Err != nil:
+		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "Cover unavailable")
+	case strings.TrimSpace(m.covers[selected.ID].Render) == "":
+		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "No cover")
+	default:
+		body = m.covers[selected.ID].Render
+	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
 		"",
-		lipgloss.PlaceHorizontal(max(0, m.rightPanelInnerWidth()), lipgloss.Center, body),
+		body,
 	)
 }
 
@@ -337,4 +367,56 @@ func (m resultsModel) renderMarkdown(input string) string {
 	}
 
 	return out
+}
+
+func (m resultsModel) selectedManga() *source.Manga {
+	item := m.selectedItem()
+	if item == nil {
+		return nil
+	}
+	return item.value
+}
+
+func (m resultsModel) coverBodySize() (int, int) {
+	if m.width == 0 || m.height == 0 {
+		return 1, 1
+	}
+
+	availableHeight := max(8, m.height-2)
+	gap := 1
+	availableWidth := max(40, m.width-gap)
+
+	leftOuterWidth := availableWidth / 2
+	rightOuterWidth := availableWidth - leftOuterWidth
+	rightContentWidth := max(1, rightOuterWidth-2)
+
+	rightTopOuterHeight := availableHeight / 2
+	topContentHeight := max(1, rightTopOuterHeight-2)
+
+	bodyHeight := max(1, topContentHeight-2)
+
+	return rightContentWidth, bodyHeight
+}
+
+func (m *resultsModel) setCoverLoading(mangaID string) {
+	prev := m.covers[mangaID]
+	prev.Loading = true
+	prev.Err = nil
+	m.covers[mangaID] = prev
+}
+
+func (m *resultsModel) setCoverLoaded(mangaID, path, render string) {
+	m.covers[mangaID] = coverState{
+		Loading: false,
+		Path:    path,
+		Render:  render,
+		Err:     nil,
+	}
+}
+
+func (m *resultsModel) setCoverFailed(mangaID string, err error) {
+	prev := m.covers[mangaID]
+	prev.Loading = false
+	prev.Err = err
+	m.covers[mangaID] = prev
 }

@@ -9,8 +9,15 @@ import (
 	"github.com/evgen2571/mangate/internal/source"
 )
 
+type mangaDexCover struct {
+	ID         string `json:"id"`
+	Attributes struct {
+		Filename string `json:"filename"`
+	} `json:"attributes"`
+}
+
 func (pr *Provider) Cover(ctx context.Context, manga *source.Manga) (string, error) {
-	url := pr.baseURL + "cover?manga[]=" + manga.ID
+	url := pr.api("cover?manga[]=" + manga.ID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -27,13 +34,13 @@ func (pr *Provider) Cover(ctx context.Context, manga *source.Manga) (string, err
 		return "", fmt.Errorf("unexpected status: %s", resp.Status)
 	}
 
-	var coverResp mangaDexCoverResponse
-	err = json.NewDecoder(resp.Body).Decode(&coverResp)
+	var mangaDexResponse mangaDexResponse[mangaDexCover]
+	err = json.NewDecoder(resp.Body).Decode(&mangaDexResponse)
 	if err != nil {
 		return "", fmt.Errorf("decode failed: %w", err)
 	}
 
-	coverUrl := pr.uploadsURL + manga.ID + "/" + coverResp.Attributes.Filename
+	coverUrl := pr.uploads("covers/" + manga.ID + "/" + mangaDexResponse.Data[0].Attributes.Filename)
 
 	return coverUrl, nil
 }

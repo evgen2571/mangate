@@ -15,4 +15,19 @@ type searchFailedMsg struct {
 	Err error
 }
 
+type coverLoadRequestedMsg struct {
+	MangaID string
+}
+
+type coverLoadedMsg struct {
+	MangaID string
+	Path    string
+	Render  string
+}
+
+type coverFailedMsg struct {
+	MangaID string
+	Err     error
+}
+
 type goBackMsg struct{}

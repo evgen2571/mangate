@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/evgen2571/mangate/internal/cache"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/providers"
@@ -15,6 +16,7 @@ type App struct {
 	Client     *http.Client
 	Registry   *providers.Registry
 	Downloader *downloader.Downloader
+	Cache      *cache.Cache
 }
 
 func New(cfg config.Config) (*App, error) {
@@ -26,6 +28,7 @@ func New(cfg config.Config) (*App, error) {
 		Client:     client,
 		Registry:   registry,
 		Downloader: downloader.New(cfg, client),
+		Cache:      cache.New(cfg, client),
 	}, nil
 }
 

@@ -66,16 +66,47 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.results = newResultsModel(msg.Query, msg.Results)
 		m.state = stateResults
 		m.resizeActiveModel()
+
+		selected := m.results.selectedManga()
+		if selected == nil {
+			return m, nil
+		}
+
+		w, h := m.results.coverBodySize()
+		m.results.setCoverLoading(selected.ID)
+		return m, m.loadCoverCmd(selected, w, h)
+
+	case coverLoadRequestedMsg:
+		selected := m.results.selectedManga()
+		if selected == nil || selected.ID != msg.MangaID {
+			return m, nil
+		}
+
+		w, h := m.results.coverBodySize()
+		m.results.setCoverLoading(msg.MangaID)
+		return m, m.loadCoverCmd(selected, w, h)
+
+	case coverLoadedMsg:
+		m.results.setCoverLoaded(msg.MangaID, msg.Path, msg.Render)
 		return m, nil
 
-	case searchFailedMsg:
-		m.state = stateSearch
-		m.resizeActiveModel()
+	case coverFailedMsg:
+		m.results.setCoverFailed(msg.MangaID, msg.Err)
 		return m, nil
 
 	case goBackMsg:
 		m.state = stateSearch
 		m.resizeActiveModel()
+		return m, nil
+
+	case tea.ResumeMsg:
+		if m.state == stateResults {
+			selected := m.results.selectedManga()
+			if selected != nil {
+				m.results.setCoverLoading(selected.ID)
+				return m, m.loadCoverCmd(selected, 100, 100)
+			}
+		}
 		return m, nil
 
 	case tea.KeyMsg:
