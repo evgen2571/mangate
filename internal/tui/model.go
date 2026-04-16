@@ -54,6 +54,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resizeActiveModel()
+
+		if m.state == stateResults {
+			return m, m.reloadSelectedCoverCmd()
+		}
 		return m, nil
 
 	case searchSubmittedMsg:
@@ -74,7 +78,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		w, h := m.results.coverBodySize()
 		m.results.setCoverLoading(selected.ID)
-		return m, m.loadCoverCmd(selected, w, h)
+		return m, tea.Batch(
+			m.results.coverSpinner.Tick,
+			m.loadCoverCmd(selected, w, h),
+		)
 
 	case coverLoadRequestedMsg:
 		selected := m.results.selectedManga()
@@ -83,9 +90,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		w, h := m.results.coverBodySize()
-		m.results.setCoverLoading(msg.MangaID)
-		return m, m.loadCoverCmd(selected, w, h)
-
+		m.results.setCoverLoading(selected.ID)
+		return m, tea.Batch(
+			m.results.coverSpinner.Tick,
+			m.loadCoverCmd(selected, w, h),
+		)
 	case coverLoadedMsg:
 		m.results.setCoverLoaded(msg.MangaID, msg.Path, msg.Render)
 		return m, nil
@@ -101,11 +110,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.ResumeMsg:
 		if m.state == stateResults {
-			selected := m.results.selectedManga()
-			if selected != nil {
-				m.results.setCoverLoading(selected.ID)
-				return m, m.loadCoverCmd(selected, 100, 100)
-			}
+			return m, m.reloadSelectedCoverCmd()
 		}
 		return m, nil
 
@@ -113,9 +118,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
+		case key.Matches(msg, m.keys.Suspend):
+			return m, tea.Suspend
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 			m.resizeActiveModel()
+			if m.state == stateResults {
+				return m, m.reloadSelectedCoverCmd()
+			}
 			return m, nil
 		}
 	}
@@ -196,4 +206,23 @@ func (m *model) resizeActiveModel() {
 	case stateResults:
 		m.results.SetSize(m.width, bodyHeight)
 	}
+}
+
+func (m model) reloadSelectedCoverCmd() tea.Cmd {
+	if m.state != stateResults {
+		return nil
+	}
+
+	selected := m.results.selectedManga()
+	if selected == nil {
+		return nil
+	}
+
+	w, h := m.results.coverBodySize()
+	m.results.setCoverLoading(selected.ID)
+
+	return tea.Batch(
+		m.results.coverSpinner.Tick,
+		m.loadCoverCmd(selected, w, h),
+	)
 }

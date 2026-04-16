@@ -1,15 +1,16 @@
 package tui
 
 import (
+	"bytes"
 	"fmt"
+	"os/exec"
 	"strings"
 
-	termimg "github.com/blacktop/go-termimg"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/constant"
 )
 
-func renderCover(path string, width, height int) (string, error) {
+func renderCoverText(path string, width, height int) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", fmt.Errorf("cover path is empty")
@@ -18,41 +19,50 @@ func renderCover(path string, width, height int) (string, error) {
 	width = max(1, width)
 	height = max(1, height)
 
-	widget, err := termimg.NewImageWidgetFromFile(path)
+	chafaPath, err := exec.LookPath("chafa")
 	if err != nil {
-		return "", fmt.Errorf("open cover %q: %w", path, err)
-	}
-	if widget == nil {
-		return "", fmt.Errorf("open cover %q: image widget is nil", path)
+		return "", fmt.Errorf("chafa not found in PATH")
 	}
 
-	proto, err := graphicsProtocol()
-	if err != nil {
-		return "", err
+	// Chafa flags
+	args := []string{
+		"--format", "symbols",
+		"--symbols", "block+border+space+half+quad+sextant",
+		"--fill", "all",
+		"--colors", "full",
+		"--color-extractor", "median",
+		"--color-space", "din99d",
+		"--font-ratio", "1/2",
+		"--work", "9",
+		"--animate", "off",
+		"--relative", "off",
+		"--optimize", "0",
+		"--polite", "off",
+		"--size", fmt.Sprintf("%dx%d", width, height),
+		path,
 	}
 
-	widget.SetProtocol(proto)
-	widget.SetSizeWithCorrection(width, height)
+	cmd := exec.Command(chafaPath, args...)
 
-	out, err := widget.Render()
-	if err != nil {
-		return "", fmt.Errorf("render cover %q: %w", path, err)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return "", fmt.Errorf("chafa render failed: %s", msg)
+	}
+
+	out := strings.TrimRight(stdout.String(), "\n")
+	if strings.TrimSpace(out) == "" {
+		return "", fmt.Errorf("chafa returned empty output")
 	}
 
 	return out, nil
-}
-
-func graphicsProtocol() (termimg.Protocol, error) {
-	proto := termimg.DetectProtocol()
-
-	switch proto {
-	case termimg.Kitty, termimg.Sixel, termimg.ITerm2:
-		return proto, nil
-	default:
-		return termimg.Auto, fmt.Errorf(
-			"terminal does not support inline images (need Kitty, Sixel, or iTerm2 protocol)",
-		)
-	}
 }
 
 func renderCoverPlaceholder(width, height int, text string) string {
@@ -65,19 +75,4 @@ func renderCoverPlaceholder(width, height int, text string) string {
 		Align(lipgloss.Center, lipgloss.Center).
 		Foreground(constant.MutedColor).
 		Render(text)
-}
-
-func clearTerminalImages(path string) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return
-	}
-
-	img, err := termimg.Open(path)
-	if err != nil || img == nil {
-		return
-	}
-
-	_ = img.Protocol(termimg.DetectProtocol()).
-		Clear(termimg.ClearOptions{All: true})
 }

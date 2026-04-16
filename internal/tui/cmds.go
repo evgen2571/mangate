@@ -48,7 +48,7 @@ func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
 			return coverFailedMsg{MangaID: manga.ID, Err: err}
 		}
 
-		render, err := renderCover(path, width, height)
+		render, err := renderCoverText(path, width, height)
 		if err != nil {
 			return coverFailedMsg{MangaID: manga.ID, Err: err}
 		}

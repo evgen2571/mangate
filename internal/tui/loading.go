@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -83,19 +82,6 @@ func (m loadingModel) View() string {
 
 type loadingHelpKeyMap struct {
 	global keyMap
-}
-
-func (k loadingHelpKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{
-		k.global.Help,
-		k.global.Quit,
-	}
-}
-
-func (k loadingHelpKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.global.Help, k.global.Quit},
-	}
 }
 
 func (m loadingModel) HelpKeys(global keyMap) help.KeyMap {

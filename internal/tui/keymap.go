@@ -6,19 +6,24 @@ import (
 )
 
 type keyMap struct {
-	Quit key.Binding
-	Help key.Binding
+	Quit    key.Binding
+	Help    key.Binding
+	Suspend key.Binding
 }
 
 func newKeyMap() keyMap {
 	return keyMap{
 		Quit: key.NewBinding(
-			key.WithKeys("ctrl+c", "esc"),
-			key.WithHelp("esc", "quit"),
+			key.WithKeys("ctrl+c", "q"),
+			key.WithHelp("q", "quit"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
+		),
+		Suspend: key.NewBinding(
+			key.WithKeys("ctrl+z"),
+			key.WithHelp("ctrl+z", "suspend"),
 		),
 	}
 }
@@ -44,22 +49,6 @@ func newSearchKeyMap() searchKeyMap {
 type searchHelpKeyMap struct {
 	global keyMap
 	local  searchKeyMap
-}
-
-func (k searchHelpKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{
-		k.local.Submit,
-		k.local.Clear,
-		k.global.Help,
-		k.global.Quit,
-	}
-}
-
-func (k searchHelpKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.local.Submit, k.local.Clear},
-		{k.global.Help, k.global.Quit},
-	}
 }
 
 type resultsKeyMap struct {
@@ -100,6 +89,37 @@ type resultsHelpKeyMap struct {
 	local  resultsKeyMap
 }
 
+func (k searchHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		k.local.Submit,
+		k.local.Clear,
+		k.global.Help,
+		k.global.Suspend,
+		k.global.Quit,
+	}
+}
+
+func (k searchHelpKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.local.Submit, k.local.Clear},
+		{k.global.Help, k.global.Suspend, k.global.Quit},
+	}
+}
+
+func (k loadingHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		k.global.Help,
+		k.global.Suspend,
+		k.global.Quit,
+	}
+}
+
+func (k loadingHelpKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.global.Help, k.global.Suspend, k.global.Quit},
+	}
+}
+
 func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.local.Up,
@@ -107,6 +127,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.MetaDown,
 		k.local.Back,
 		k.global.Help,
+		k.global.Suspend,
 		k.global.Quit,
 	}
 }
@@ -115,7 +136,7 @@ func (k resultsHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.local.Up, k.local.Down, k.local.Back},
 		{k.local.MetaUp, k.local.MetaDown},
-		{k.global.Help, k.global.Quit},
+		{k.global.Help, k.global.Suspend, k.global.Quit},
 	}
 }
 

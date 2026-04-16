@@ -7,6 +7,7 @@ import (
 	"charm.land/glamour/v2"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -52,12 +53,21 @@ type resultsModel struct {
 	height      int
 	initialized bool
 
-	query    string
-	keys     resultsKeyMap
-	list     list.Model
-	metadata viewport.Model
-	covers   map[string]coverState
-	results  []*source.Manga
+	query        string
+	keys         resultsKeyMap
+	list         list.Model
+	metadata     viewport.Model
+	coverSpinner spinner.Model
+	covers       map[string]coverState
+	results      []*source.Manga
+}
+
+type resultsLayout struct {
+	leftContentWidth    int
+	rightContentWidth   int
+	leftContentHeight   int
+	topContentHeight    int
+	bottomContentHeight int
 }
 
 func newResultsModel(query string, results []*source.Manga) resultsModel {
@@ -78,14 +88,48 @@ func newResultsModel(query string, results []*source.Manga) resultsModel {
 
 	vp := viewport.New(0, 0)
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(constant.LogoColor)
+
 	return resultsModel{
-		query:       query,
-		keys:        newResultsKeyMap(),
-		list:        l,
-		metadata:    vp,
-		covers:      make(map[string]coverState),
-		results:     results,
-		initialized: true,
+		query:        query,
+		keys:         newResultsKeyMap(),
+		list:         l,
+		metadata:     vp,
+		coverSpinner: s,
+		covers:       make(map[string]coverState),
+		results:      results,
+		initialized:  true,
+	}
+}
+
+func (m resultsModel) layout() resultsLayout {
+	availableHeight := max(8, m.height-2)
+	gap := 1
+	availableWidth := max(40, m.width-gap)
+
+	// Give more space to the cover than to the list.
+	leftOuterWidth := max(24, availableWidth*38/100)
+	rightOuterWidth := availableWidth - leftOuterWidth
+
+	leftContentWidth := max(1, leftOuterWidth-2)
+	rightContentWidth := max(1, rightOuterWidth-2)
+
+	leftOuterHeight := availableHeight
+	rightTopOuterHeight := max(8, availableHeight*72/100)
+	rightBottomOuterHeight := availableHeight - rightTopOuterHeight
+
+	leftContentHeight := max(1, leftOuterHeight-2)
+	topContentHeight := max(1, rightTopOuterHeight-2)
+	bottomContentHeight := max(1, rightBottomOuterHeight-2)
+
+	return resultsLayout{
+		leftContentWidth:    leftContentWidth,
+		rightContentWidth:   rightContentWidth,
+		leftContentHeight:   leftContentHeight,
+		topContentHeight:    topContentHeight,
+		bottomContentHeight: bottomContentHeight,
 	}
 }
 
@@ -97,69 +141,66 @@ func (m *resultsModel) SetSize(width, height int) {
 		return
 	}
 
-	availableHeight := max(8, height-2)
-	gap := 1
-	availableWidth := max(40, width-gap)
-
-	leftOuterWidth := availableWidth / 2
-	rightOuterWidth := availableWidth - leftOuterWidth
-
-	leftContentWidth := max(1, leftOuterWidth-2)
-	rightContentWidth := max(1, rightOuterWidth-2)
-
-	leftOuterHeight := availableHeight
-	rightTopOuterHeight := availableHeight / 2
-	rightBottomOuterHeight := availableHeight - rightTopOuterHeight
-
-	leftContentHeight := max(1, leftOuterHeight-2)
-	bottomContentHeight := max(1, rightBottomOuterHeight-2)
+	l := m.layout()
 
 	footerHeight := 1
-	listHeight := max(1, leftContentHeight-footerHeight)
-	m.list.SetSize(leftContentWidth, listHeight)
+	listHeight := max(1, l.leftContentHeight-footerHeight)
+	m.list.SetSize(l.leftContentWidth, listHeight)
 
-	// metadata panel content height includes title + spacer + viewport body
-	metadataBodyHeight := max(1, bottomContentHeight-2)
-	m.metadata.Width = rightContentWidth
+	metadataBodyHeight := max(1, l.bottomContentHeight-2)
+	m.metadata.Width = l.rightContentWidth
 	m.metadata.Height = metadataBodyHeight
 
 	m.syncMetadataViewport()
 }
 
 func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	if m.isCoverLoading() {
+		var spinCmd tea.Cmd
+		m.coverSpinner, spinCmd = m.coverSpinner.Update(msg)
+		if spinCmd != nil {
+			cmds = append(cmds, spinCmd)
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Back):
-			return m, func() tea.Msg { return goBackMsg{} }
+			return m, tea.Batch(append(cmds, func() tea.Msg { return goBackMsg{} })...)
 
 		case key.Matches(msg, m.keys.MetaUp):
 			m.metadata.LineUp(5)
-			return m, nil
+			return m, tea.Batch(cmds...)
 
 		case key.Matches(msg, m.keys.MetaDown):
 			m.metadata.LineDown(5)
-			return m, nil
+			return m, tea.Batch(cmds...)
 		}
 	}
 
 	prevIndex := m.list.Index()
 
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	var listCmd tea.Cmd
+	m.list, listCmd = m.list.Update(msg)
+	if listCmd != nil {
+		cmds = append(cmds, listCmd)
+	}
 
 	if m.list.Index() != prevIndex {
 		m.syncMetadataViewport()
 
 		selected := m.selectedManga()
 		if selected != nil {
-			return m, func() tea.Msg {
+			cmds = append(cmds, func() tea.Msg {
 				return coverLoadRequestedMsg{MangaID: selected.ID}
-			}
+			})
 		}
 	}
 
-	return m, cmd
+	return m, tea.Batch(cmds...)
 }
 
 func (m resultsModel) View() string {
@@ -167,64 +208,45 @@ func (m resultsModel) View() string {
 		return "Loading results UI..."
 	}
 
-	availableHeight := max(8, m.height-2)
-
-	gap := 1
-
-	// Split total OUTER width between left and right columns.
-	availableWidth := max(40, m.width-gap)
-	leftOuterWidth := availableWidth / 2
-	rightOuterWidth := availableWidth - leftOuterWidth
-
-	leftContentWidth := max(1, leftOuterWidth-2)
-	rightContentWidth := max(1, rightOuterWidth-2)
-
-	// Split total OUTER height so left panel and right column have identical total height.
-	leftOuterHeight := availableHeight
-	rightTopOuterHeight := availableHeight / 2
-	rightBottomOuterHeight := availableHeight - rightTopOuterHeight
-
-	leftContentHeight := max(1, leftOuterHeight-2)
-	topContentHeight := max(1, rightTopOuterHeight-2)
-	bottomContentHeight := max(1, rightBottomOuterHeight-2)
+	l := m.layout()
 
 	footer := lipgloss.NewStyle().
-		Width(leftContentWidth).
+		Width(l.leftContentWidth).
 		Padding(0, 1).
 		Foreground(constant.MutedColor).
 		Render(fmt.Sprintf("Results for %q", m.query))
 
 	footerHeight := lipgloss.Height(footer)
-	listHeight := max(1, leftContentHeight-footerHeight)
+	listHeight := max(1, l.leftContentHeight-footerHeight)
 
-	m.list.SetSize(leftContentWidth, listHeight)
+	m.list.SetSize(l.leftContentWidth, listHeight)
 
 	leftInner := lipgloss.JoinVertical(
 		lipgloss.Left,
 		lipgloss.NewStyle().
-			Width(leftContentWidth).
+			Width(l.leftContentWidth).
 			Height(listHeight).
 			Render(m.list.View()),
 		footer,
 	)
 
 	leftPanel := lipgloss.NewStyle().
-		Width(leftContentWidth).
-		Height(leftContentHeight).
+		Width(l.leftContentWidth).
+		Height(l.leftContentHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(constant.OuterBorderColor).
 		Render(leftInner)
 
 	coverPanel := lipgloss.NewStyle().
-		Width(rightContentWidth).
-		Height(topContentHeight).
+		Width(l.rightContentWidth).
+		Height(l.topContentHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(constant.InputBorderColor).
 		Render(m.coverView())
 
 	metadataPanel := lipgloss.NewStyle().
-		Width(rightContentWidth).
-		Height(bottomContentHeight).
+		Width(l.rightContentWidth).
+		Height(l.bottomContentHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(constant.InputBorderColor).
 		Render(m.metadataView())
@@ -238,7 +260,7 @@ func (m resultsModel) View() string {
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		leftPanel,
-		lipgloss.NewStyle().Width(gap).Render(""),
+		lipgloss.NewStyle().Width(1).Render(""),
 		rightColumn,
 	)
 }
@@ -266,14 +288,24 @@ func (m resultsModel) coverView() string {
 	switch {
 	case selected == nil:
 		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "No cover")
+
 	case m.covers[selected.ID].Loading:
-		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "Loading cover...")
+		body = m.coverLoadingView(bodyWidth, bodyHeight)
+
 	case m.covers[selected.ID].Err != nil:
 		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "Cover unavailable")
+
 	case strings.TrimSpace(m.covers[selected.ID].Render) == "":
 		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "No cover")
+
 	default:
-		body = m.covers[selected.ID].Render
+		body = lipgloss.Place(
+			bodyWidth,
+			bodyHeight,
+			lipgloss.Center,
+			lipgloss.Center,
+			m.covers[selected.ID].Render,
+		)
 	}
 
 	return lipgloss.JoinVertical(
@@ -341,12 +373,7 @@ func (m resultsModel) metadataContent() string {
 }
 
 func (m resultsModel) rightPanelInnerWidth() int {
-	gap := 1
-	availableWidth := max(40, m.width-gap)
-	leftOuterWidth := availableWidth / 2
-	rightOuterWidth := availableWidth - leftOuterWidth
-
-	return max(1, rightOuterWidth-2)
+	return m.layout().rightContentWidth
 }
 
 func (m resultsModel) renderMarkdown(input string) string {
@@ -378,24 +405,12 @@ func (m resultsModel) selectedManga() *source.Manga {
 }
 
 func (m resultsModel) coverBodySize() (int, int) {
-	if m.width == 0 || m.height == 0 {
-		return 1, 1
-	}
+	l := m.layout()
 
-	availableHeight := max(8, m.height-2)
-	gap := 1
-	availableWidth := max(40, m.width-gap)
+	// title + blank line
+	bodyHeight := max(1, l.topContentHeight-2)
 
-	leftOuterWidth := availableWidth / 2
-	rightOuterWidth := availableWidth - leftOuterWidth
-	rightContentWidth := max(1, rightOuterWidth-2)
-
-	rightTopOuterHeight := availableHeight / 2
-	topContentHeight := max(1, rightTopOuterHeight-2)
-
-	bodyHeight := max(1, topContentHeight-2)
-
-	return rightContentWidth, bodyHeight
+	return l.rightContentWidth, bodyHeight
 }
 
 func (m *resultsModel) setCoverLoading(mangaID string) {
@@ -403,6 +418,10 @@ func (m *resultsModel) setCoverLoading(mangaID string) {
 	prev.Loading = true
 	prev.Err = nil
 	m.covers[mangaID] = prev
+
+	m.coverSpinner = spinner.New()
+	m.coverSpinner.Spinner = spinner.Dot
+	m.coverSpinner.Style = lipgloss.NewStyle().Foreground(constant.LogoColor)
 }
 
 func (m *resultsModel) setCoverLoaded(mangaID, path, render string) {
@@ -419,4 +438,25 @@ func (m *resultsModel) setCoverFailed(mangaID string, err error) {
 	prev.Loading = false
 	prev.Err = err
 	m.covers[mangaID] = prev
+}
+
+func (m resultsModel) isCoverLoading() bool {
+	selected := m.selectedManga()
+	if selected == nil {
+		return false
+	}
+
+	state, ok := m.covers[selected.ID]
+	return ok && state.Loading
+}
+
+func (m resultsModel) coverLoadingView(width, height int) string {
+	body := fmt.Sprintf("%s Loading cover...", m.coverSpinner.View())
+
+	return lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Align(lipgloss.Center, lipgloss.Center).
+		Foreground(constant.TextColor).
+		Render(body)
 }
