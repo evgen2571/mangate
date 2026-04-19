@@ -25,29 +25,33 @@ type mangaDexChapter struct {
 
 func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*source.Chapter, error) {
 	params := url.Values{}
-	params.Set("limit", "500") // set maximum possible limit
+	params.Set("limit", "500")
 
-	url := pr.api("manga/" + manga.ID + "/feed")
+	url := pr.api("manga/" + manga.ID + "/feed?" + params.Encode())
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create `chapters` request in `%s`: %v", pr.Name(), err)
+		return nil, fmt.Errorf("create chapters request in %q: %w", pr.Name(), err)
 	}
 
 	resp, err := pr.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get response from `%s`: %v", pr.Name(), err)
+		return nil, fmt.Errorf("execute chapters request in %q: %w", pr.Name(), err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("chapters request in %q returned unexpected status: %s", pr.Name(), resp.Status)
+	}
+
 	var mangaDexResponse mangaDexResponse[mangaDexChapter]
-	if err = json.NewDecoder(resp.Body).Decode(&mangaDexResponse); err != nil {
-		return nil, err
+	if err := json.NewDecoder(resp.Body).Decode(&mangaDexResponse); err != nil {
+		return nil, fmt.Errorf("decode chapters response in %q: %w", pr.Name(), err)
 	}
 
 	sortChaptersByChapter(mangaDexResponse.Data)
 
-	var chapters []*source.Chapter
+	chapters := make([]*source.Chapter, 0, len(mangaDexResponse.Data))
 	for _, mdc := range mangaDexResponse.Data {
 		if mdc.Attributes.Language != pr.language {
 			continue

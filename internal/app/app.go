@@ -1,9 +1,8 @@
 package app
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
-	"os"
 
 	"github.com/evgen2571/mangate/internal/cache"
 	"github.com/evgen2571/mangate/internal/config"
@@ -32,22 +31,12 @@ func New(cfg config.Config) (*App, error) {
 	}, nil
 }
 
-func (a *App) InitDirs() error {
-	dirs := []string{
-		a.Cfg.Download.Dir,
-		a.Cfg.Dirs.Cache,
-		a.Cfg.Dirs.Temp,
+func (a *App) Close() error {
+	var closeErr error
+
+	if a.Downloader != nil {
+		closeErr = errors.Join(closeErr, a.Downloader.Close())
 	}
 
-	for _, dir := range dirs {
-		if dir == "" {
-			return fmt.Errorf("directory path cannot be empty")
-		}
-
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("create directory %q: %w", dir, err)
-		}
-	}
-
-	return nil
+	return closeErr
 }
