@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/tui"
 )
 
 func NewRootCmd(a *app.App) *cobra.Command {
@@ -19,12 +21,16 @@ func NewRootCmd(a *app.App) *cobra.Command {
 			if err := validateConfig(a); err != nil {
 				return err
 			}
-
-			if err := a.InitDirs(); err != nil {
-				return err
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return cmd.Help()
 			}
 
-			return nil
+			p := tea.NewProgram(tui.New(a))
+			_, err := p.Run()
+			return err
 		},
 	}
 

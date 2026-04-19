@@ -2,412 +2,172 @@ package tui
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
+	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
-type chaptersListKeyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Toggle   key.Binding
-	Download key.Binding
-	Back     key.Binding
-	Quit     key.Binding
+type chapterItem struct {
+	idx   int
+	value *source.Chapter
 }
 
-func newChaptersListKeyMap() chaptersListKeyMap {
-	return chaptersListKeyMap{
-		Up: key.NewBinding(
-			key.WithKeys("up", "k"),
-			key.WithHelp("↑/k", "up"),
-		),
-		Down: key.NewBinding(
-			key.WithKeys("down", "j"),
-			key.WithHelp("↓/j", "down"),
-		),
-		Toggle: key.NewBinding(
-			key.WithKeys(" ", "x"),
-			key.WithHelp("space/x", "select"),
-		),
-		Download: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "download selected"),
-		),
-		Back: key.NewBinding(
-			key.WithKeys("esc"),
-			key.WithHelp("esc", "back"),
-		),
-		Quit: key.NewBinding(
-			key.WithKeys("q", "ctrl+c"),
-			key.WithHelp("q", "quit"),
-		),
+func (i chapterItem) FilterValue() string {
+	if i.value == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(i.value.Title)
+}
+
+func (i chapterItem) Title() string {
+	if i.value == nil {
+		return fmt.Sprintf("Unknown chapter #%d", i.idx+1)
+	}
+
+	index := strings.TrimSpace(i.value.Index)
+	title := strings.TrimSpace(i.value.Title)
+
+	switch {
+	case index != "" && title != "":
+		return fmt.Sprintf("Chapter %s - %s", index, title)
+	case title != "":
+		return title
+	case index != "":
+		return fmt.Sprintf("Chapter %s", index)
+	default:
+		return fmt.Sprintf("Unknown chapter #%d", i.idx+1)
 	}
 }
 
-type chaptersListModel struct {
-	manga    *source.Manga
-	items    []*source.Chapter
-	cursor   int
-	selected map[int]bool
-	loading  bool
-	err      error
-	keys     chaptersListKeyMap
-	styles   uiStyles
-	width    int
-	height   int
+func (i chapterItem) Description() string {
+	if i.value == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(i.value.URL)
 }
 
-func newChaptersListModel() chaptersListModel {
-	return chaptersListModel{
-		keys:     newChaptersListKeyMap(),
-		styles:   newUIStyles(),
-		selected: make(map[int]bool),
-		cursor:   0,
+type chaptersModel struct {
+	width  int
+	height int
+
+	manga *source.Manga
+	keys  chaptersKeyMap
+	list  list.Model
+}
+
+func newChaptersModel(manga *source.Manga, chapters []*source.Chapter) chaptersModel {
+	items := make([]list.Item, 0, len(chapters))
+	for i, chapter := range chapters {
+		items = append(items, chapterItem{
+			idx:   i,
+			value: chapter,
+		})
+	}
+
+	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
+	l.SetShowPagination(true)
+
+	return chaptersModel{
+		manga: manga,
+		keys:  newChaptersKeyMap(),
+		list:  l,
 	}
 }
 
-func (m chaptersListModel) Init() tea.Cmd {
-	return nil
+func (m *chaptersModel) SetSize(width, height int) {
+	m.width = width
+	m.height = height
+	m.list.SetSize(m.panelContentWidth(), m.listHeight())
 }
 
-func (m chaptersListModel) Update(msg tea.Msg) (chaptersListModel, tea.Cmd) {
+func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		return m, nil
-
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, m.keys.Quit):
-			return m, tea.Quit
-
 		case key.Matches(msg, m.keys.Back):
-			if m.loading {
-				return m, nil
-			}
-			return m, func() tea.Msg { return backToMangasMsg{} }
-
-		case key.Matches(msg, m.keys.Up):
-			if !m.loading && m.cursor > 0 {
-				m.cursor--
-			}
-			return m, nil
-
-		case key.Matches(msg, m.keys.Down):
-			if !m.loading && m.cursor < len(m.items)-1 {
-				m.cursor++
-			}
-			return m, nil
-
-		case key.Matches(msg, m.keys.Toggle):
-			if m.loading || len(m.items) == 0 {
-				return m, nil
-			}
-			m.selected[m.cursor] = !m.selected[m.cursor]
-			if !m.selected[m.cursor] {
-				delete(m.selected, m.cursor)
-			}
-			return m, nil
-
-		case key.Matches(msg, m.keys.Download):
-			if m.loading || len(m.items) == 0 {
-				return m, nil
-			}
-
-			selected := m.selectedChapters()
-			if len(selected) == 0 {
-				selected = []*source.Chapter{m.items[m.cursor]}
-			}
-
-			return m, func() tea.Msg {
-				return chaptersDownloadRequestedMsg{
-					manga:    m.manga,
-					chapters: selected,
-				}
-			}
+			return m, func() tea.Msg { return goBackMsg{} }
 		}
 	}
 
-	return m, nil
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
 }
 
-func (m chaptersListModel) renderPane(totalW, totalH int) string {
-	frameW, frameH := m.styles.Pane.GetFrameSize()
-	innerW := max(1, totalW-frameW)
-	innerH := max(1, totalH-frameH)
+func (m chaptersModel) View() string {
+	contentWidth := m.panelContentWidth()
+	contentHeight := m.panelContentHeight()
 
-	title := m.styles.PaneTitle.Render("Chapters")
+	footer := lipgloss.NewStyle().
+		Width(contentWidth).
+		Padding(0, 1).
+		Foreground(constant.MutedColor).
+		Render(m.footerText())
 
-	var bottom string
-	if m.manga != nil {
-		bottom = m.styles.Muted.Render(
-			fmt.Sprintf("%s • selected: %d • total: %d",
-				sanitizeChapterText(m.manga.Title),
-				m.selectedCount(),
-				len(m.items),
-			),
-		)
-	} else {
-		bottom = m.styles.Muted.Render(
-			fmt.Sprintf("Selected: %d • total: %d", m.selectedCount(), len(m.items)),
-		)
-	}
+	footerHeight := lipgloss.Height(footer)
+	listHeight := max(1, contentHeight-footerHeight)
+	m.list.SetSize(contentWidth, listHeight)
 
-	headerH := lipgloss.Height(title)
-	footerH := lipgloss.Height(bottom)
-	middleH := max(1, innerH-headerH-footerH)
-
-	var middle string
-	switch {
-	case m.loading:
-		middle = lipgloss.Place(
-			innerW,
-			middleH,
-			lipgloss.Center,
-			lipgloss.Top,
-			m.styles.Muted.Render("Loading chapters..."),
-		)
-	case m.err != nil:
-		middle = lipgloss.Place(
-			innerW,
-			middleH,
-			lipgloss.Center,
-			lipgloss.Top,
-			m.styles.Error.Render("Error: "+m.err.Error()),
-		)
-	case len(m.items) == 0:
-		middle = lipgloss.Place(
-			innerW,
-			middleH,
-			lipgloss.Center,
-			lipgloss.Top,
-			m.styles.Muted.Render("No chapters found."),
-		)
-	default:
-		middle = m.renderVisibleRows(innerW, middleH)
-	}
-
-	content := lipgloss.JoinVertical(
+	inner := lipgloss.JoinVertical(
 		lipgloss.Left,
-		title,
-		middle,
-		bottom,
+		lipgloss.NewStyle().
+			Width(contentWidth).
+			Height(listHeight).
+			Render(m.list.View()),
+		footer,
 	)
-
-	return m.styles.Pane.
-		Width(totalW).
-		Height(totalH).
-		Render(content)
-}
-
-func (m chaptersListModel) renderVisibleRows(innerW, middleH int) string {
-	if len(m.items) == 0 || middleH <= 0 {
-		return ""
-	}
-
-	rowHeight := 2
-	visibleCount := max(1, middleH/rowHeight)
-	start, end := visibleWindow(len(m.items), m.cursor, visibleCount)
-
-	rowBoxW := min(innerW, 96)
-	rows := make([]string, 0, end-start)
-
-	for i := start; i < end; i++ {
-		chapter := m.items[i]
-
-		cardStyle := m.styles.ListCard
-		titleStyle := m.styles.ListTitle
-
-		isSelected := m.selected[i]
-		isCursor := i == m.cursor
-
-		switch {
-		case isSelected && isCursor:
-			cardStyle = m.styles.ListCardSelectedActive
-			titleStyle = m.styles.ListTitleSelected
-		case isSelected:
-			cardStyle = m.styles.ListCardSelected
-			titleStyle = m.styles.ListTitleSelected
-		case isCursor:
-			cardStyle = m.styles.ListCardActive
-			titleStyle = m.styles.ListTitleActive
-		}
-
-		cardFrameW, _ := cardStyle.GetFrameSize()
-		rowInnerW := max(1, rowBoxW-cardFrameW)
-
-		cursorMark := " "
-		if isCursor {
-			cursorMark = "›"
-		}
-
-		indexText := formatChapterIndex(chapter)
-		indexBlock := m.styles.Index.Render(
-			lipgloss.NewStyle().
-				Width(8).
-				Align(lipgloss.Right).
-				Render(indexText),
-		)
-
-		checkboxText := "[ ]"
-		if isSelected {
-			checkboxText = "[x]"
-		}
-		checkboxBlock := m.styles.Index.Render(
-			lipgloss.NewStyle().
-				Width(3).
-				Align(lipgloss.Left).
-				Render(checkboxText),
-		)
-
-		leftBlock := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			cursorMark,
-			" ",
-			indexBlock,
-		)
-		leftW := lipgloss.Width(leftBlock)
-		rightW := lipgloss.Width(checkboxBlock)
-
-		titleColW := max(1, rowInnerW-leftW-rightW-4)
-		titleText := truncateWidth(sanitizeChapterText(chapter.Title), titleColW)
-		titleBlock := titleStyle.
-			Width(titleColW).
-			Align(lipgloss.Center).
-			Render(titleText)
-
-		row := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			leftBlock,
-			" ",
-			titleBlock,
-			" ",
-			checkboxBlock,
-		)
-
-		rows = append(rows, cardStyle.Width(rowInnerW).Render(row))
-	}
-
-	listBlock := lipgloss.JoinVertical(lipgloss.Left, rows...)
-
-	return lipgloss.Place(
-		innerW,
-		middleH,
-		lipgloss.Center,
-		lipgloss.Top,
-		listBlock,
-	)
-}
-
-func visibleWindow(total, cursor, size int) (int, int) {
-	if total <= 0 || size <= 0 {
-		return 0, 0
-	}
-	if size >= total {
-		return 0, total
-	}
-
-	start := cursor - size/2
-	if start < 0 {
-		start = 0
-	}
-
-	end := start + size
-	if end > total {
-		end = total
-		start = end - size
-		if start < 0 {
-			start = 0
-		}
-	}
-
-	return start, end
-}
-
-func formatChapterIndex(chapter *source.Chapter) string {
-	if chapter == nil {
-		return "-"
-	}
-
-	index := strings.TrimSpace(sanitizeChapterText(fmt.Sprint(chapter.Index)))
-	if index == "" {
-		return "-"
-	}
-
-	return index
-}
-
-func sanitizeChapterText(s string) string {
-	replacer := strings.NewReplacer(
-		"\x1b", "",
-		"\u001b", "",
-		"\n", " ",
-		"\r", " ",
-		"\t", " ",
-	)
-
-	s = replacer.Replace(s)
-
-	ansiCSI := regexp.MustCompile(`\[[0-9;]*[A-Za-z]`)
-	s = ansiCSI.ReplaceAllString(s, "")
-
-	brokenANSI := regexp.MustCompile(`\[[0-9;]*m`)
-	s = brokenANSI.ReplaceAllString(s, "")
-
-	s = strings.Join(strings.Fields(s), " ")
-	return strings.TrimSpace(s)
-}
-
-func (m chaptersListModel) View() string {
-	if m.width <= 0 || m.height <= 0 {
-		return ""
-	}
-
-	footer := m.styles.Footer.Width(m.width).Render(
-		"↑/↓ move • space select • Enter download • Esc back • q quit",
-	)
-	footerH := lipgloss.Height(footer)
-
-	outerX := 1
-	outerY := 1
-
-	availableW := m.width - outerX*2
-	availableH := m.height - outerY*2 - footerH - 1
-	if availableW < 40 || availableH < 12 {
-		return ""
-	}
-
-	pane := m.renderPane(availableW, availableH)
 
 	return lipgloss.NewStyle().
-		Margin(outerY, outerX, 0, outerX).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				pane,
-				"",
-				footer,
-			),
-		)
+		Width(contentWidth).
+		Height(contentHeight).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(constant.OuterBorderColor).
+		Render(inner)
 }
 
-func (m chaptersListModel) selectedCount() int {
-	return len(m.selected)
+func (m chaptersModel) panelWidth() int {
+	return max(1, m.width)
 }
 
-func (m chaptersListModel) selectedChapters() []*source.Chapter {
-	out := make([]*source.Chapter, 0, len(m.selected))
-	for i, ch := range m.items {
-		if m.selected[i] {
-			out = append(out, ch)
-		}
+func (m chaptersModel) panelHeight() int {
+	return max(1, m.height)
+}
+
+func (m chaptersModel) panelContentWidth() int {
+	return max(1, m.panelWidth()-2)
+}
+
+func (m chaptersModel) panelContentHeight() int {
+	return max(1, m.panelHeight()-2)
+}
+
+func (m chaptersModel) listHeight() int {
+	return max(1, m.panelContentHeight()-1)
+}
+
+func (m chaptersModel) footerText() string {
+	if m.manga == nil || strings.TrimSpace(m.manga.Title) == "" {
+		return "Chapters"
 	}
-	return out
+
+	return fmt.Sprintf("Chapters for %q", strings.TrimSpace(m.manga.Title))
+}
+
+func (m chaptersModel) HelpKeys(global keyMap) help.KeyMap {
+	return chaptersHelpKeyMap{
+		global: global,
+		local:  m.keys,
+	}
 }

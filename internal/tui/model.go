@@ -1,267 +1,266 @@
 package tui
 
 import (
-	"fmt"
-	"strings"
-
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/downloader"
-	"github.com/evgen2571/mangate/internal/providers"
-	"github.com/evgen2571/mangate/internal/source"
-	"golang.org/x/sync/errgroup"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/evgen2571/mangate/internal/app"
 )
 
-type screen int
+type state int
 
 const (
-	screenSearch screen = iota
-	screenMangasList
-	screenChaptersList
-	screenDownload
+	stateSearch state = iota
+	stateLoading
+	stateResults
+	stateChapters
 )
 
-type appModel struct {
-	current      screen
-	width        int
-	height       int
-	search       searchModel
-	mangasList   mangasListModel
-	chaptersList chaptersListModel
-	download     downloadModel
+type model struct {
+	app *app.App
+
+	state  state
+	width  int
+	height int
+
+	keys keyMap
+	help help.Model
+
+	search   searchModel
+	loading  loadingModel
+	results  resultsModel
+	chapters chaptersModel
 }
 
-func New() tea.Model {
-	return appModel{
-		current:      screenSearch,
-		search:       newSearchModel(),
-		mangasList:   newMangasListModel(),
-		chaptersList: newChaptersListModel(),
-		download:     newDownloadModel(),
+func New(a *app.App) tea.Model {
+	h := help.New()
+	h.ShowAll = false
+
+	return &model{
+		app:    a,
+		state:  stateSearch,
+		keys:   newKeyMap(),
+		help:   h,
+		search: newSearchModel(),
 	}
 }
 
-func (m appModel) Init() tea.Cmd {
+func (m model) Init() tea.Cmd {
 	return m.search.Init()
 }
 
-func loadChaptersCmd(manga *source.Manga) tea.Cmd {
-	return func() tea.Msg {
-		chapters, err := providers.Provider.GetChapters(manga)
-		return chaptersLoadedMsg{
-			manga:    manga,
-			chapters: chapters,
-			err:      err,
-		}
-	}
-}
-
-func downloadChapterCmd(chapter *source.Chapter) tea.Cmd {
-	return func() tea.Msg {
-		pages, err := providers.Provider.GetPages(chapter)
-		if err != nil {
-			return downloadFinishedMsg{err: err}
-		}
-		chapter.Pages = pages
-
-		if err := downloader.DownloadChapter(chapter); err != nil {
-			return downloadFinishedMsg{err: err}
-		}
-
-		return downloadFinishedMsg{}
-	}
-}
-
-func downloadChaptersCmd(chapters []*source.Chapter) tea.Cmd {
-	return func() tea.Msg {
-		for _, chapter := range chapters {
-			pages, err := providers.Provider.GetPages(chapter)
-			if err != nil {
-				return downloadFinishedMsg{err: err}
-			}
-			chapter.Pages = pages
-
-			if err := downloader.DownloadChapter(chapter); err != nil {
-				return downloadFinishedMsg{err: err}
-			}
-		}
-		return downloadFinishedMsg{}
-	}
-}
-
-func downloadMangaCmd(manga *source.Manga) tea.Cmd {
-	return func() tea.Msg {
-		chapters, err := providers.Provider.GetChapters(manga)
-		if err != nil {
-			return downloadFinishedMsg{err: err}
-		}
-		manga.Chapters = chapters
-
-		// Set limit for concurrent page fetches
-		var g errgroup.Group
-		g.SetLimit(config.MaxConcurrentPageFetches)
-
-		for _, chapter := range chapters {
-			g.Go(func() error {
-				pages, err := providers.Provider.GetPages(chapter)
-				if err != nil {
-					return fmt.Errorf("failed to get pages for %q: %w", chapter.Title, err)
-				}
-				chapter.Pages = pages
-				return nil
-			})
-		}
-
-		if err := downloader.DownloadManga(manga); err != nil {
-			return downloadFinishedMsg{err: err}
-		}
-
-		return downloadFinishedMsg{}
-	}
-}
-
-func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.resizeActiveModel()
 
-		m.search.width = msg.Width
-		m.search.height = msg.Height
-		m.mangasList.width = msg.Width
-		m.mangasList.height = msg.Height
-		m.chaptersList.width = msg.Width
-		m.chaptersList.height = msg.Height
+		if m.state == stateResults {
+			return m, m.reloadSelectedCoverCmd()
+		}
+		return m, nil
 
-	case mangasLoadedMsg:
-		m.search.loading = false
+	case searchSubmittedMsg:
+		m.loading = newLoadingModel("Searching manga", msg.Query)
+		m.state = stateLoading
+		m.resizeActiveModel()
+		return m, m.searchMangaCmd(msg.Query)
 
-		if msg.err != nil {
-			m.search.err = msg.err
-			m.current = screenSearch
+	case searchSucceededMsg:
+		m.results = newResultsModel(msg.Query, msg.Results)
+		m.state = stateResults
+		m.resizeActiveModel()
+
+		selected := m.results.selectedManga()
+		if selected == nil {
 			return m, nil
 		}
 
-		m.search.err = nil
+		w, h := m.results.coverBodySize()
+		m.results.setCoverLoading(selected.ID)
+		return m, tea.Batch(
+			m.results.coverSpinner.Tick,
+			m.loadCoverCmd(selected, w, h),
+		)
 
-		m.mangasList = newMangasListModel()
-		m.mangasList.query = msg.query
-		m.mangasList.items = msg.items
-		m.mangasList.width = m.width
-		m.mangasList.height = m.height
+	case coverLoadRequestedMsg:
+		selected := m.results.selectedManga()
+		if selected == nil || selected.ID != msg.MangaID {
+			return m, nil
+		}
 
-		m.current = screenMangasList
+		w, h := m.results.coverBodySize()
+		m.results.setCoverLoading(selected.ID)
+		return m, tea.Batch(
+			m.results.coverSpinner.Tick,
+			m.loadCoverCmd(selected, w, h),
+		)
+	case coverLoadedMsg:
+		m.results.setCoverLoaded(msg.MangaID, msg.Path, msg.Render)
 		return m, nil
 
-	case mangaSelectedMsg:
-		m.chaptersList = newChaptersListModel()
-		m.chaptersList.manga = msg.manga
-		m.chaptersList.loading = true
-		m.chaptersList.width = m.width
-		m.chaptersList.height = m.height
-		m.current = screenChaptersList
-		return m, loadChaptersCmd(msg.manga)
+	case coverFailedMsg:
+		m.results.setCoverFailed(msg.MangaID, msg.Err)
+		return m, nil
+
+	case goBackMsg:
+		if m.state == stateChapters {
+			m.state = stateResults
+		} else {
+			m.state = stateSearch
+		}
+		m.resizeActiveModel()
+		return m, nil
+
+	case chaptersOpenRequestedMsg:
+		if msg.Manga == nil {
+			return m, nil
+		}
+
+		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.state = stateLoading
+		m.resizeActiveModel()
+		return m, m.loadChaptersCmd(msg.Manga)
 
 	case chaptersLoadedMsg:
-		m.chaptersList.loading = false
-		m.chaptersList.err = msg.err
-		m.chaptersList.manga = msg.manga
-		m.chaptersList.items = msg.chapters
-		m.current = screenChaptersList
+		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
+		m.state = stateChapters
+		m.resizeActiveModel()
 		return m, nil
 
-	case mangaDownloadRequestedMsg:
-		m.download = newDownloadModel()
-		m.download.kind = "manga"
-		m.download.title = msg.manga.Title
-		m.download.origin = screenMangasList
-		m.download.loading = true
-		m.current = screenDownload
-		return m, downloadMangaCmd(msg.manga)
+	case chaptersFailedMsg:
+		m.state = stateResults
+		m.resizeActiveModel()
+		return m, nil
 
-	case chapterDownloadRequestedMsg:
-		m.download = newDownloadModel()
-		m.download.kind = "chapter"
-		m.download.title = msg.chapter.Title
-		m.download.mangaTitle = msg.manga.Title
-		m.download.origin = screenChaptersList
-		m.download.loading = true
-		m.current = screenDownload
-		return m, downloadChapterCmd(msg.chapter)
-
-	case chaptersDownloadRequestedMsg:
-		m.download = newDownloadModel()
-		m.download.kind = "chapter"
-		if len(msg.chapters) == 1 {
-			m.download.title = msg.chapters[0].Title
-		} else {
-			m.download.title = fmt.Sprintf("%d chapters", len(msg.chapters))
+	case tea.ResumeMsg:
+		if m.state == stateResults {
+			return m, m.reloadSelectedCoverCmd()
 		}
-		m.download.mangaTitle = msg.manga.Title
-		m.download.origin = screenChaptersList
-		m.download.loading = true
-		m.current = screenDownload
-		return m, downloadChaptersCmd(msg.chapters)
-
-	case downloadFinishedMsg:
-		m.download.loading = false
-		m.download.done = msg.err == nil
-		m.download.err = msg.err
 		return m, nil
 
-	case backToSearchMsg:
-		m.current = screenSearch
-		return m, nil
-
-	case backToMangasMsg:
-		m.current = screenMangasList
-		return m, nil
-
-	case backFromDownloadMsg:
-		m.current = m.download.origin
-		return m, nil
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, m.keys.Quit):
+			return m, tea.Quit
+		case key.Matches(msg, m.keys.Suspend):
+			return m, tea.Suspend
+		case key.Matches(msg, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			m.resizeActiveModel()
+			if m.state == stateResults {
+				return m, m.reloadSelectedCoverCmd()
+			}
+			return m, nil
+		}
 	}
 
-	switch m.current {
-	case screenSearch:
-		updated, cmd := m.search.Update(msg)
-		m.search = updated
+	switch m.state {
+	case stateSearch:
+		var cmd tea.Cmd
+		m.search, cmd = m.search.Update(msg)
 		return m, cmd
 
-	case screenMangasList:
-		updated, cmd := m.mangasList.Update(msg)
-		m.mangasList = updated
+	case stateLoading:
+		var cmd tea.Cmd
+		m.loading, cmd = m.loading.Update(msg)
 		return m, cmd
 
-	case screenChaptersList:
-		updated, cmd := m.chaptersList.Update(msg)
-		m.chaptersList = updated
+	case stateResults:
+		var cmd tea.Cmd
+		m.results, cmd = m.results.Update(msg)
 		return m, cmd
 
-	case screenDownload:
-		updated, cmd := m.download.Update(msg)
-		m.download = updated
+	case stateChapters:
+		var cmd tea.Cmd
+		m.chapters, cmd = m.chapters.Update(msg)
 		return m, cmd
 	}
 
 	return m, nil
 }
 
-func (m appModel) View() string {
-	switch m.current {
-	case screenSearch:
-		return m.search.View()
-	case screenMangasList:
-		return m.mangasList.View()
-	case screenChaptersList:
-		return m.chaptersList.View()
-	case screenDownload:
-		return m.download.View()
+func (m model) View() string {
+	var body string
+
+	switch m.state {
+	case stateSearch:
+		body = m.search.View()
+	case stateLoading:
+		body = m.loading.View()
+	case stateResults:
+		body = m.results.View()
+	case stateChapters:
+		body = m.chapters.View()
 	default:
-		return ""
+		body = ""
+	}
+
+	helpView := m.help.View(m.currentHelp())
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		body,
+		"",
+		helpView,
+	)
+}
+
+func (m model) currentHelp() help.KeyMap {
+	switch m.state {
+	case stateSearch:
+		return m.search.HelpKeys(m.keys)
+	case stateLoading:
+		return m.loading.HelpKeys(m.keys)
+	case stateResults:
+		return m.results.HelpKeys(m.keys)
+	case stateChapters:
+		return m.chapters.HelpKeys(m.keys)
+	default:
+		return m.search.HelpKeys(m.keys)
 	}
 }
 
-func helpLine(parts ...string) string {
-	return strings.Join(parts, " • ")
+func (m *model) resizeActiveModel() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+
+	helpView := m.help.View(m.currentHelp())
+	helpHeight := lipgloss.Height(helpView)
+
+	// one blank line between body and help
+	bodyHeight := max(1, m.height-helpHeight-1)
+
+	switch m.state {
+	case stateSearch:
+		m.search.SetSize(m.width, bodyHeight)
+	case stateLoading:
+		m.loading.SetSize(m.width, bodyHeight)
+	case stateResults:
+		m.results.SetSize(m.width, bodyHeight)
+	case stateChapters:
+		m.chapters.SetSize(m.width, bodyHeight)
+	}
+}
+
+func (m model) reloadSelectedCoverCmd() tea.Cmd {
+	if m.state != stateResults {
+		return nil
+	}
+
+	selected := m.results.selectedManga()
+	if selected == nil {
+		return nil
+	}
+
+	w, h := m.results.coverBodySize()
+	m.results.setCoverLoading(selected.ID)
+
+	return tea.Batch(
+		m.results.coverSpinner.Tick,
+		m.loadCoverCmd(selected, w, h),
+	)
 }

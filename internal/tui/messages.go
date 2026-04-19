@@ -2,40 +2,46 @@ package tui
 
 import "github.com/evgen2571/mangate/internal/source"
 
-type mangasLoadedMsg struct {
-	items []*source.Manga
-	err   error
-	query string
+type searchSubmittedMsg struct {
+	Query string
 }
 
-type mangaSelectedMsg struct {
-	manga *source.Manga
+type searchSucceededMsg struct {
+	Query   string
+	Results []*source.Manga
 }
 
-type mangaDownloadRequestedMsg struct {
-	manga *source.Manga
+type searchFailedMsg struct {
+	Err error
 }
 
-type chapterDownloadRequestedMsg struct {
-	manga   *source.Manga
-	chapter *source.Chapter
+type chaptersOpenRequestedMsg struct {
+	Manga *source.Manga
 }
 
 type chaptersLoadedMsg struct {
-	manga    *source.Manga
-	chapters []*source.Chapter
-	err      error
+	Manga    *source.Manga
+	Chapters []*source.Chapter
 }
 
-type downloadFinishedMsg struct {
-	err error
+type chaptersFailedMsg struct {
+	Manga *source.Manga
+	Err   error
 }
 
-type chaptersDownloadRequestedMsg struct {
-	manga    *source.Manga
-	chapters []*source.Chapter
+type coverLoadRequestedMsg struct {
+	MangaID string
 }
 
-type backToSearchMsg struct{}
-type backToMangasMsg struct{}
-type backFromDownloadMsg struct{}
+type coverLoadedMsg struct {
+	MangaID string
+	Path    string
+	Render  string
+}
+
+type coverFailedMsg struct {
+	MangaID string
+	Err     error
+}
+
+type goBackMsg struct{}

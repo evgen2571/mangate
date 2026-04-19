@@ -5,8 +5,13 @@ type Manga struct {
 	URL      string
 	Title    string
 	Chapters []*Chapter
-	Cover    string
+	Cover    Cover
 	Metadata struct {
 		Description map[string]string
 	}
+}
+
+type Cover struct {
+	URL      string
+	FileName string
 }
