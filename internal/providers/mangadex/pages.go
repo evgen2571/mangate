@@ -17,7 +17,7 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 		return nil, fmt.Errorf("create pages request in %q: %w", pr.Name(), err)
 	}
 
-	resp, err := pr.client.Do(req)
+	resp, err := pr.doWithRateLimitRetry(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute pages request in %q: %w", pr.Name(), err)
 	}

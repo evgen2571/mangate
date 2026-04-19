@@ -159,9 +159,11 @@ type chaptersHelpKeyMap struct {
 }
 
 type chaptersKeyMap struct {
-	Up   key.Binding
-	Down key.Binding
-	Back key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Toggle   key.Binding
+	Download key.Binding
+	Back     key.Binding
 }
 
 func newChaptersKeyMap() chaptersKeyMap {
@@ -174,6 +176,14 @@ func newChaptersKeyMap() chaptersKeyMap {
 			key.WithKeys("down", "j"),
 			key.WithHelp("↓/j", "move down"),
 		),
+		Toggle: key.NewBinding(
+			key.WithKeys(" "),
+			key.WithHelp("space", "toggle chapter"),
+		),
+		Download: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "download current/selected"),
+		),
 		Back: key.NewBinding(
 			key.WithKeys("esc", "backspace"),
 			key.WithHelp("esc", "back"),
@@ -185,6 +195,8 @@ func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.local.Up,
 		k.local.Down,
+		k.local.Toggle,
+		k.local.Download,
 		k.local.Back,
 		k.global.Help,
 		k.global.Suspend,
@@ -194,7 +206,7 @@ func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k chaptersHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Back},
+		{k.local.Up, k.local.Down, k.local.Toggle, k.local.Download, k.local.Back},
 		{k.global.Help, k.global.Suspend, k.global.Quit},
 	}
 }

@@ -14,6 +14,10 @@ import (
 )
 
 func (d *Downloader) DownloadChapter(c *source.Chapter) error {
+	return d.downloadChapter(c, nil)
+}
+
+func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReporter) error {
 	if c == nil {
 		return fmt.Errorf("download chapter: nil chapter")
 	}
@@ -39,6 +43,10 @@ func (d *Downloader) DownloadChapter(c *source.Chapter) error {
 	var g errgroup.Group
 	g.SetLimit(d.cfg.Concurrency.PageDownloads)
 
+	if reporter != nil {
+		reporter.chapterStarted(c)
+	}
+
 	for idx, page := range c.Pages {
 		idx := idx
 		page := page
@@ -52,14 +60,33 @@ func (d *Downloader) DownloadChapter(c *source.Chapter) error {
 			if err := d.downloadPage(page, filePath); err != nil {
 				return err
 			}
+			if reporter != nil {
+				reporter.pageCompleted(c)
+			}
 			return nil
 		})
 	}
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	if reporter != nil {
+		reporter.chapterCompleted(c)
+	}
+
+	return nil
 }
 
 func (d *Downloader) DownloadManga(m *source.Manga) error {
+	return d.downloadManga(m, nil)
+}
+
+func (d *Downloader) DownloadMangaWithProgress(m *source.Manga, notify func(DownloadProgress)) error {
+	return d.downloadManga(m, newProgressReporter(m, notify))
+}
+
+func (d *Downloader) downloadManga(m *source.Manga, reporter *progressReporter) error {
 	if m == nil {
 		return fmt.Errorf("download manga: nil manga")
 	}
@@ -85,7 +112,7 @@ func (d *Downloader) DownloadManga(m *source.Manga) error {
 		chapter := chapter
 
 		g.Go(func() error {
-			if err := d.DownloadChapter(chapter); err != nil {
+			if err := d.downloadChapter(chapter, reporter); err != nil {
 				return err
 			}
 
