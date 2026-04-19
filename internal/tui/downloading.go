@@ -183,26 +183,38 @@ func (m downloadingModel) chapterProgressList(width, height int) string {
 	}
 
 	visible := m.visibleChapters(height)
-	nameWidth := max(8, width-14)
 	lines := make([]string, 0, len(visible)+1)
 
 	for _, chapter := range visible {
-		marker := lipgloss.NewStyle().Foreground(constant.MutedColor).Render("○")
+		markerStyle := lipgloss.NewStyle().Foreground(constant.MutedColor)
 		nameStyle := lipgloss.NewStyle().Foreground(constant.TextColor)
 
+		markerSymbol := "○"
 		switch {
 		case chapter.Completed:
-			marker = lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true).Render("✓")
+			markerSymbol = "✓"
+			markerStyle = lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true)
 			nameStyle = lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true)
 		case chapter.Active:
-			marker = lipgloss.NewStyle().Foreground(constant.InputBorderColor).Bold(true).Render("●")
+			markerSymbol = "●"
+			markerStyle = lipgloss.NewStyle().Foreground(constant.InputBorderColor).Bold(true)
 			nameStyle = lipgloss.NewStyle().Foreground(constant.InputBorderColor).Bold(true)
 		}
 
-		name := truncateText(chapter.Name, nameWidth)
 		progressText := fmt.Sprintf("(%d/%d)", chapter.CompletedPages, chapter.TotalPages)
-		line := fmt.Sprintf("%s %s %s", marker, nameStyle.Render(name), progressText)
-		lines = append(lines, truncateText(line, width))
+		overhead := lipgloss.Width(markerSymbol) + lipgloss.Width(progressText) + 2
+		nameWidth := max(1, width-overhead)
+		name := truncateText(chapter.Name, nameWidth)
+
+		line := lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			markerStyle.Render(markerSymbol),
+			" ",
+			nameStyle.Render(name),
+			" ",
+			lipgloss.NewStyle().Foreground(constant.MutedColor).Render(progressText),
+		)
+		lines = append(lines, line)
 	}
 
 	hidden := len(m.chapters) - len(visible)
@@ -246,16 +258,16 @@ func (m downloadingModel) visibleChapters(height int) []chapterProgressView {
 
 func (m downloadingModel) panelWidth() int {
 	if m.width == 0 {
-		return 72
+		return 76
 	}
-	return max(44, min(84, m.width-6))
+	return max(48, min(92, m.width-4))
 }
 
 func (m downloadingModel) panelHeight() int {
 	if m.height == 0 {
-		return 16
+		return 18
 	}
-	return max(14, min(20, m.height-2))
+	return max(16, min(22, m.height-1))
 }
 
 func (m downloadingModel) panelContentWidth() int {
@@ -285,7 +297,7 @@ func (m downloadingModel) waitForMsgCmd() tea.Cmd {
 }
 
 func truncateText(s string, width int) string {
-	s = strings.TrimSpace(s)
+	s = strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 	if width <= 0 {
 		return ""
 	}
@@ -296,10 +308,25 @@ func truncateText(s string, width int) string {
 		return strings.Repeat(".", width)
 	}
 
-	runes := []rune(s)
-	if len(runes) <= width {
-		return s
+	const ellipsis = "..."
+	maxTextWidth := width - lipgloss.Width(ellipsis)
+	if maxTextWidth <= 0 {
+		return ellipsis[:width]
 	}
 
-	return string(runes[:width-3]) + "..."
+	var b strings.Builder
+	for _, r := range s {
+		candidate := b.String() + string(r)
+		if lipgloss.Width(candidate) > maxTextWidth {
+			break
+		}
+		b.WriteRune(r)
+	}
+
+	trimmed := strings.TrimRight(b.String(), " ")
+	if trimmed == "" {
+		return ellipsis
+	}
+
+	return trimmed + ellipsis
 }
