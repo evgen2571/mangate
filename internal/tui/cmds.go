@@ -29,6 +29,32 @@ func (m model) searchMangaCmd(query string) tea.Cmd {
 	}
 }
 
+func (m model) loadChaptersCmd(manga *source.Manga) tea.Cmd {
+	return func() tea.Msg {
+		if manga == nil {
+			return nil
+		}
+
+		provider, err := m.app.Registry.New(m.app.Cfg.Provider, m.app.Cfg, m.app.Client)
+		if err != nil {
+			return chaptersFailedMsg{Manga: manga, Err: err}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
+		defer cancel()
+
+		chapters, err := provider.Chapters(ctx, manga)
+		if err != nil {
+			return chaptersFailedMsg{Manga: manga, Err: err}
+		}
+
+		return chaptersLoadedMsg{
+			Manga:    manga,
+			Chapters: chapters,
+		}
+	}
+}
+
 func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
 	return func() tea.Msg {
 		if manga == nil {

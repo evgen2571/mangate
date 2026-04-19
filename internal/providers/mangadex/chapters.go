@@ -63,13 +63,7 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 }
 
 func (mdc *mangaDexChapter) getTitle() string {
-	var title string = "Chapter " + mdc.getIndex()
-
-	if mdc.Attributes.Title != "" {
-		title = mdc.Attributes.Title
-	}
-
-	return title
+	return mdc.Attributes.Title
 }
 
 func (mdc *mangaDexChapter) getIndex() string {

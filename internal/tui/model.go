@@ -14,6 +14,7 @@ const (
 	stateSearch state = iota
 	stateLoading
 	stateResults
+	stateChapters
 )
 
 type model struct {
@@ -26,9 +27,10 @@ type model struct {
 	keys keyMap
 	help help.Model
 
-	search  searchModel
-	loading loadingModel
-	results resultsModel
+	search   searchModel
+	loading  loadingModel
+	results  resultsModel
+	chapters chaptersModel
 }
 
 func New(a *app.App) tea.Model {
@@ -61,7 +63,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case searchSubmittedMsg:
-		m.loading = newLoadingModel(msg.Query)
+		m.loading = newLoadingModel("Searching manga", msg.Query)
 		m.state = stateLoading
 		m.resizeActiveModel()
 		return m, m.searchMangaCmd(msg.Query)
@@ -104,7 +106,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case goBackMsg:
-		m.state = stateSearch
+		if m.state == stateChapters {
+			m.state = stateResults
+		} else {
+			m.state = stateSearch
+		}
+		m.resizeActiveModel()
+		return m, nil
+
+	case chaptersOpenRequestedMsg:
+		if msg.Manga == nil {
+			return m, nil
+		}
+
+		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.state = stateLoading
+		m.resizeActiveModel()
+		return m, m.loadChaptersCmd(msg.Manga)
+
+	case chaptersLoadedMsg:
+		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
+		m.state = stateChapters
+		m.resizeActiveModel()
+		return m, nil
+
+	case chaptersFailedMsg:
+		m.state = stateResults
 		m.resizeActiveModel()
 		return m, nil
 
@@ -145,6 +172,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.results, cmd = m.results.Update(msg)
 		return m, cmd
+
+	case stateChapters:
+		var cmd tea.Cmd
+		m.chapters, cmd = m.chapters.Update(msg)
+		return m, cmd
 	}
 
 	return m, nil
@@ -160,6 +192,8 @@ func (m model) View() string {
 		body = m.loading.View()
 	case stateResults:
 		body = m.results.View()
+	case stateChapters:
+		body = m.chapters.View()
 	default:
 		body = ""
 	}
@@ -182,6 +216,8 @@ func (m model) currentHelp() help.KeyMap {
 		return m.loading.HelpKeys(m.keys)
 	case stateResults:
 		return m.results.HelpKeys(m.keys)
+	case stateChapters:
+		return m.chapters.HelpKeys(m.keys)
 	default:
 		return m.search.HelpKeys(m.keys)
 	}
@@ -205,6 +241,8 @@ func (m *model) resizeActiveModel() {
 		m.loading.SetSize(m.width, bodyHeight)
 	case stateResults:
 		m.results.SetSize(m.width, bodyHeight)
+	case stateChapters:
+		m.chapters.SetSize(m.width, bodyHeight)
 	}
 }
 

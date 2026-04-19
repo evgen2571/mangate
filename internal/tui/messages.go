@@ -15,6 +15,20 @@ type searchFailedMsg struct {
 	Err error
 }
 
+type chaptersOpenRequestedMsg struct {
+	Manga *source.Manga
+}
+
+type chaptersLoadedMsg struct {
+	Manga    *source.Manga
+	Chapters []*source.Chapter
+}
+
+type chaptersFailedMsg struct {
+	Manga *source.Manga
+	Err   error
+}
+
 type coverLoadRequestedMsg struct {
 	MangaID string
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
@@ -16,7 +17,7 @@ func (d *Downloader) DownloadChapter(c *source.Chapter) error {
 	chapterDir := filepath.Join(
 		d.basePath(),
 		util.SanitizeString(c.From.Title),
-		util.SanitizeString(c.Index+"-"+c.Title),
+		util.SanitizeString(chapterDirName(c)),
 	)
 
 	err := os.MkdirAll(chapterDir, 0755)
@@ -71,6 +72,26 @@ func (d *Downloader) DownloadManga(m *source.Manga) error {
 	}
 
 	return g.Wait()
+}
+
+func chapterDirName(c *source.Chapter) string {
+	if c == nil {
+		return "unknown-chapter"
+	}
+
+	index := strings.TrimSpace(c.Index)
+	title := strings.TrimSpace(c.Title)
+
+	switch {
+	case index != "" && title != "":
+		return index + "-" + title
+	case index != "":
+		return "Chapter-" + index
+	case title != "":
+		return title
+	default:
+		return "unknown-chapter"
+	}
 }
 
 func (d *Downloader) downloadPage(p *source.Page, filePath string) error {

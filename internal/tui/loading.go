@@ -14,17 +14,19 @@ type loadingModel struct {
 	width  int
 	height int
 
-	query   string
+	title   string
+	detail  string
 	spinner spinner.Model
 }
 
-func newLoadingModel(query string) loadingModel {
+func newLoadingModel(title, detail string) loadingModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(constant.LogoColor)
 
 	return loadingModel{
-		query:   query,
+		title:   title,
+		detail:  detail,
 		spinner: s,
 	}
 }
@@ -48,11 +50,11 @@ func (m loadingModel) View() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(constant.LogoColor).
-		Render("Searching manga")
+		Render(m.title)
 
 	body := lipgloss.NewStyle().
 		Foreground(constant.TextColor).
-		Render(fmt.Sprintf("%s %q", m.spinner.View(), m.query))
+		Render(fmt.Sprintf("%s %q", m.spinner.View(), m.detail))
 
 	panel := lipgloss.NewStyle().
 		Padding(1, 3).

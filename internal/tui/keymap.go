@@ -54,6 +54,7 @@ type searchHelpKeyMap struct {
 type resultsKeyMap struct {
 	Up       key.Binding
 	Down     key.Binding
+	Select   key.Binding
 	MetaUp   key.Binding
 	MetaDown key.Binding
 	Back     key.Binding
@@ -68,6 +69,10 @@ func newResultsKeyMap() resultsKeyMap {
 		Down: key.NewBinding(
 			key.WithKeys("down", "j"),
 			key.WithHelp("↓/j", "move down"),
+		),
+		Select: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "open chapters"),
 		),
 		MetaUp: key.NewBinding(
 			key.WithKeys("i"),
@@ -124,6 +129,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.local.Up,
 		k.local.Down,
+		k.local.Select,
 		k.local.MetaDown,
 		k.local.Back,
 		k.global.Help,
@@ -134,7 +140,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k resultsHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Back},
+		{k.local.Up, k.local.Down, k.local.Select, k.local.Back},
 		{k.local.MetaUp, k.local.MetaDown},
 		{k.global.Help, k.global.Suspend, k.global.Quit},
 	}
@@ -144,5 +150,51 @@ func (m resultsModel) HelpKeys(global keyMap) help.KeyMap {
 	return resultsHelpKeyMap{
 		global: global,
 		local:  m.keys,
+	}
+}
+
+type chaptersHelpKeyMap struct {
+	global keyMap
+	local  chaptersKeyMap
+}
+
+type chaptersKeyMap struct {
+	Up   key.Binding
+	Down key.Binding
+	Back key.Binding
+}
+
+func newChaptersKeyMap() chaptersKeyMap {
+	return chaptersKeyMap{
+		Up: key.NewBinding(
+			key.WithKeys("up", "k"),
+			key.WithHelp("↑/k", "move up"),
+		),
+		Down: key.NewBinding(
+			key.WithKeys("down", "j"),
+			key.WithHelp("↓/j", "move down"),
+		),
+		Back: key.NewBinding(
+			key.WithKeys("esc", "backspace"),
+			key.WithHelp("esc", "back"),
+		),
+	}
+}
+
+func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		k.local.Up,
+		k.local.Down,
+		k.local.Back,
+		k.global.Help,
+		k.global.Suspend,
+		k.global.Quit,
+	}
+}
+
+func (k chaptersHelpKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.local.Up, k.local.Down, k.local.Back},
+		{k.global.Help, k.global.Suspend, k.global.Quit},
 	}
 }
