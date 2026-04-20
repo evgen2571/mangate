@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/evgen2571/mangate/internal/app"
@@ -12,12 +11,18 @@ import (
 )
 
 func main() {
-	cfg := config.DefaultConfig()
+	cfg, configPath, err := config.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	a, err := app.New(cfg)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
+	a.ConfigPath = configPath
 
 	rootCmd := cli.NewRootCmd(a)
 	execErr := rootCmd.Execute()

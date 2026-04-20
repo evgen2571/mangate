@@ -29,6 +29,31 @@ type chaptersFailedMsg struct {
 	Err   error
 }
 
+type downloadRequestedMsg struct {
+	Manga    *source.Manga
+	Chapters []*source.Chapter
+}
+
+type downloadProgressMsg struct {
+	Title     string
+	Detail    string
+	Status    string
+	Completed int
+	Total     int
+	Chapters  []chapterProgressView
+}
+
+type downloadSucceededMsg struct {
+	Manga    *source.Manga
+	Chapters []*source.Chapter
+}
+
+type downloadFailedMsg struct {
+	Manga    *source.Manga
+	Chapters []*source.Chapter
+	Err      error
+}
+
 type coverLoadRequestedMsg struct {
 	MangaID string
 }

@@ -15,6 +15,7 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := a.Cfg
 
+			fmt.Fprintf(cmd.OutOrStdout(), "ConfigPath: %s\n", a.ConfigPath)
 			fmt.Fprintf(cmd.OutOrStdout(), "Provider: %s\n", cfg.Provider)
 			fmt.Fprintf(cmd.OutOrStdout(), "Language: %s\n", cfg.Language)
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")
@@ -23,6 +24,10 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "  SiteURL:    %s\n", cfg.Providers.MangaDex.SiteURL)
 			fmt.Fprintf(cmd.OutOrStdout(), "  BaseURL:    %s\n", cfg.Providers.MangaDex.BaseURL)
 			fmt.Fprintf(cmd.OutOrStdout(), "  UploadsURL: %s\n", cfg.Providers.MangaDex.UploadsURL)
+			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+
+			fmt.Fprintf(cmd.OutOrStdout(), "HTTP:\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Timeout: %s\n", cfg.HTTP.Timeout)
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Download:\n")
