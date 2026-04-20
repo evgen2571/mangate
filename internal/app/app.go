@@ -12,6 +12,7 @@ import (
 
 type App struct {
 	Cfg        config.Config
+	ConfigPath string
 	Client     *http.Client
 	Registry   *providers.Registry
 	Downloader *downloader.Downloader
@@ -19,16 +20,38 @@ type App struct {
 }
 
 func New(cfg config.Config) (*App, error) {
-	client := &http.Client{Timeout: cfg.HTTP.Timeout}
-	registry := providers.NewDefaultRegistry()
+	a := &App{
+		Registry: providers.NewDefaultRegistry(),
+	}
+	if err := a.ApplyConfig(cfg); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
 
-	return &App{
-		Cfg:        cfg,
-		Client:     client,
-		Registry:   registry,
-		Downloader: downloader.New(cfg, client),
-		Cache:      cache.New(cfg, client),
-	}, nil
+func (a *App) ApplyConfig(cfg config.Config) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if a.Client != nil && a.Downloader != nil && a.Cache != nil && a.Cfg == cfg {
+		return nil
+	}
+
+	var applyErr error
+	if a.Downloader != nil {
+		applyErr = errors.Join(applyErr, a.Downloader.Close())
+	}
+	if a.Registry == nil {
+		a.Registry = providers.NewDefaultRegistry()
+	}
+
+	client := &http.Client{Timeout: cfg.HTTP.Timeout}
+	a.Cfg = cfg
+	a.Client = client
+	a.Downloader = downloader.New(cfg, client)
+	a.Cache = cache.New(cfg, client)
+
+	return applyErr
 }
 
 func (a *App) Close() error {
