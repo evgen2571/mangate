@@ -43,7 +43,7 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 		t.Fatalf("DownloadChapter() error = %v", err)
 	}
 
-	pagePath := filepath.Join(cfg.Download.Dir, "My-Manga", "1-Intro", "0001.png")
+	pagePath := filepath.Join(cfg.Download.Dir, "My-Manga", "Chapter-1-Intro", "0001.png")
 	f, err := os.Open(pagePath)
 	if err != nil {
 		t.Fatalf("Open(%q) error = %v", pagePath, err)
@@ -59,6 +59,27 @@ func TestDetectPageExtensionUsesAnyImageContentType(t *testing.T) {
 	ext := detectPageExtension("image/tiff", "https://example.com/page")
 	if ext != ".tiff" && ext != ".tif" {
 		t.Fatalf("detectPageExtension() = %q, want .tiff or .tif", ext)
+	}
+}
+
+func TestChapterDirNameUsesConsistentPrefix(t *testing.T) {
+	chapter := &source.Chapter{Index: "1", Title: "Intro"}
+	if got := chapterDirName(chapter); got != "Chapter-1-Intro" {
+		t.Fatalf("chapterDirName() = %q, want %q", got, "Chapter-1-Intro")
+	}
+}
+
+func TestChapterDirNamePrefixesTitleOnlyChapter(t *testing.T) {
+	chapter := &source.Chapter{Title: "Special"}
+	if got := chapterDirName(chapter); got != "Title-Special" {
+		t.Fatalf("chapterDirName() = %q, want %q", got, "Title-Special")
+	}
+}
+
+func TestChapterDirNameAvoidsIndexedChapterCollisionForTitleOnlyChapter(t *testing.T) {
+	chapter := &source.Chapter{Title: "1"}
+	if got := chapterDirName(chapter); got != "Title-1" {
+		t.Fatalf("chapterDirName() = %q, want %q", got, "Title-1")
 	}
 }
 

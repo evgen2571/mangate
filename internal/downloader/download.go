@@ -146,11 +146,11 @@ func chapterDirName(c *source.Chapter) string {
 
 	switch {
 	case index != "" && title != "":
-		return index + "-" + title
+		return "Chapter-" + index + "-" + title
 	case index != "":
 		return "Chapter-" + index
 	case title != "":
-		return title
+		return "Title-" + title
 	default:
 		return "unknown-chapter"
 	}
