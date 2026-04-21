@@ -52,8 +52,7 @@ else
   },
   "download": {
     "dir": "$download_dir",
-    "type": "plain",
-    "imageType": "jpg"
+    "type": "plain"
   },
   "concurrency": {
     "pageFetches": 8,

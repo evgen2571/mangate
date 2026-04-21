@@ -43,9 +43,8 @@ type HTTPConfig struct {
 }
 
 type DownloadConfig struct {
-	Dir       string
-	Type      string
-	ImageType string
+	Dir  string
+	Type string
 }
 
 type ConcurrencyConfig struct {
@@ -84,9 +83,8 @@ type fileHTTPConfig struct {
 }
 
 type fileDownloadConfig struct {
-	Dir       *string `json:"dir,omitempty"`
-	Type      *string `json:"type,omitempty"`
-	ImageType *string `json:"imageType,omitempty"`
+	Dir  *string `json:"dir,omitempty"`
+	Type *string `json:"type,omitempty"`
 }
 
 type fileConcurrencyConfig struct {
@@ -115,9 +113,8 @@ func DefaultConfig() Config {
 			Timeout: 30 * time.Second,
 		},
 		Download: DownloadConfig{
-			Dir:       defaultDownloadDir(),
-			Type:      "plain",
-			ImageType: "jpg",
+			Dir:  defaultDownloadDir(),
+			Type: "plain",
 		},
 		Concurrency: ConcurrencyConfig{
 			PageFetches:      8,
@@ -147,8 +144,6 @@ func (c Config) Validate() error {
 		return fmt.Errorf("download dir cannot be empty")
 	case strings.TrimSpace(c.Download.Type) == "":
 		return fmt.Errorf("download type cannot be empty")
-	case strings.TrimSpace(c.Download.ImageType) == "":
-		return fmt.Errorf("image format cannot be empty")
 	case c.Concurrency.PageFetches <= 0:
 		return fmt.Errorf("page-fetches must be > 0")
 	case c.Concurrency.PageDownloads <= 0:
@@ -283,9 +278,6 @@ func (f fileConfig) applyTo(cfg *Config) error {
 		if f.Download.Type != nil {
 			cfg.Download.Type = *f.Download.Type
 		}
-		if f.Download.ImageType != nil {
-			cfg.Download.ImageType = *f.Download.ImageType
-		}
 	}
 	if f.Concurrency != nil {
 		if f.Concurrency.PageFetches != nil {
@@ -325,9 +317,8 @@ func newFileConfig(cfg Config) fileConfig {
 			Timeout: stringPtr(cfg.HTTP.Timeout.String()),
 		},
 		Download: &fileDownloadConfig{
-			Dir:       stringPtr(cfg.Download.Dir),
-			Type:      stringPtr(cfg.Download.Type),
-			ImageType: stringPtr(cfg.Download.ImageType),
+			Dir:  stringPtr(cfg.Download.Dir),
+			Type: stringPtr(cfg.Download.Type),
 		},
 		Concurrency: &fileConcurrencyConfig{
 			PageFetches:      intPtr(cfg.Concurrency.PageFetches),

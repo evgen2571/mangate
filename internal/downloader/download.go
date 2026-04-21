@@ -3,7 +3,9 @@ package downloader
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	urlpkg "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +38,9 @@ func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReport
 		util.SanitizeString(chapterDirName(c)),
 	)
 
+	if err := os.RemoveAll(chapterDir); err != nil {
+		return fmt.Errorf("remove existing chapter workspace %q: %w", chapterDir, err)
+	}
 	if err := util.EnsureDir(chapterDir, "chapter directory"); err != nil {
 		return err
 	}
@@ -52,12 +57,12 @@ func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReport
 		page := page
 
 		g.Go(func() error {
-			filePath := filepath.Join(
+			filePathBase := filepath.Join(
 				chapterDir,
-				fmt.Sprintf("%04d.%v", idx+1, d.cfg.Download.ImageType),
+				fmt.Sprintf("%04d", idx+1),
 			)
 
-			if err := d.downloadPage(page, filePath); err != nil {
+			if _, err := d.downloadPage(page, filePathBase); err != nil {
 				return err
 			}
 			if reporter != nil {
@@ -68,6 +73,14 @@ func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReport
 	}
 
 	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	if err := d.converter.ConvertChapter(
+		chapterDir,
+		util.SanitizeString(c.From.Title),
+		util.SanitizeString(chapterDirName(c)),
+	); err != nil {
 		return err
 	}
 
@@ -143,55 +156,78 @@ func chapterDirName(c *source.Chapter) string {
 	}
 }
 
-func (d *Downloader) downloadPage(p *source.Page, filePath string) error {
+func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, error) {
 	if p == nil {
-		return fmt.Errorf("download page: nil page")
+		return "", fmt.Errorf("download page: nil page")
 	}
 	if strings.TrimSpace(p.URL) == "" {
-		return fmt.Errorf("download page: empty page url")
+		return "", fmt.Errorf("download page: empty page url")
 	}
 
 	resp, err := d.client.Get(p.URL)
 	if err != nil {
-		return fmt.Errorf("failed to GET %q: %w", p.URL, err)
+		return "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %v", resp.StatusCode)
+		return "", fmt.Errorf("unexpected status code: %v", resp.StatusCode)
 	}
 
+	filePath := filePathBase + detectPageExtension(resp.Header.Get("Content-Type"), p.URL)
 	out, err := os.Create(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to create file %q: %w", filePath, err)
+		return "", fmt.Errorf("failed to create file %q: %w", filePath, err)
 	}
 
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		_ = out.Close()
 		_ = os.Remove(filePath)
-		return fmt.Errorf("failed to write file %q: %w", filePath, err)
+		return "", fmt.Errorf("failed to write file %q: %w", filePath, err)
 	}
 
 	if err := out.Close(); err != nil {
 		_ = os.Remove(filePath)
-		return fmt.Errorf("failed to close file %q: %w", filePath, err)
+		return "", fmt.Errorf("failed to close file %q: %w", filePath, err)
 	}
 
-	return nil
+	return filePath, nil
+}
+
+func detectPageExtension(contentType, rawURL string) string {
+	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil && strings.HasPrefix(mediaType, "image/") {
+		if exts, err := mime.ExtensionsByType(mediaType); err == nil {
+			for _, ext := range exts {
+				ext = strings.ToLower(ext)
+				switch ext {
+				case ".jpeg", ".jpe":
+					return ".jpg"
+				default:
+					if ext != "" {
+						return ext
+					}
+				}
+			}
+		}
+	}
+
+	return tempPageExtension(rawURL)
+}
+
+func tempPageExtension(rawURL string) string {
+	parsed, err := urlpkg.Parse(rawURL)
+	if err == nil {
+		ext := strings.ToLower(filepath.Ext(parsed.Path))
+		if ext != "" {
+			return ext
+		}
+	}
+
+	return ".img"
 }
 
 func (d *Downloader) basePath() (string, error) {
 	d.basePathOnce.Do(func() {
-		if d.cfg.Download.Type == "plain" {
-			d.basePathErr = util.EnsureDir(d.cfg.Download.Dir, "download directory")
-			if d.basePathErr != nil {
-				return
-			}
-			d.workPath = d.cfg.Download.Dir
-			d.ownsWorkPath = false
-			return
-		}
-
 		d.basePathErr = util.EnsureDir(d.cfg.Dirs.Temp, "temporary root directory")
 		if d.basePathErr != nil {
 			return
