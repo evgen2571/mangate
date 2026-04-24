@@ -59,7 +59,6 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	}
 
 	var g errgroup.Group
-	g.SetLimit(d.cfg.Concurrency.PageDownloads)
 
 	if reporter != nil {
 		reporter.chapterStarted(c)
@@ -181,6 +180,9 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 		return "", fmt.Errorf("download page: empty page url")
 	}
 
+	d.acquirePageDownload()
+	defer d.releasePageDownload()
+
 	resp, err := d.client.Get(p.URL)
 	if err != nil {
 		return "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
@@ -209,6 +211,20 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 	}
 
 	return filePath, nil
+}
+
+func (d *Downloader) acquirePageDownload() {
+	if d.pageDownloads == nil {
+		return
+	}
+	d.pageDownloads <- struct{}{}
+}
+
+func (d *Downloader) releasePageDownload() {
+	if d.pageDownloads == nil {
+		return
+	}
+	<-d.pageDownloads
 }
 
 func detectPageExtension(contentType, rawURL string) string {

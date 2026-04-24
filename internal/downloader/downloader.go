@@ -18,6 +18,8 @@ type Downloader struct {
 	client    *http.Client
 	converter *converter.Converter
 
+	pageDownloads chan struct{}
+
 	basePathOnce sync.Once
 	workPath     string
 	ownsWorkPath bool
@@ -25,10 +27,16 @@ type Downloader struct {
 }
 
 func New(config config.Config, client *http.Client) *Downloader {
+	pageDownloads := config.Concurrency.PageDownloads
+	if pageDownloads <= 0 {
+		pageDownloads = 1
+	}
+
 	return &Downloader{
-		cfg:       config,
-		client:    client,
-		converter: converter.New(config),
+		cfg:           config,
+		client:        client,
+		converter:     converter.New(config),
+		pageDownloads: make(chan struct{}, pageDownloads),
 	}
 }
 

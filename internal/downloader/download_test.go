@@ -10,7 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/constant"
@@ -106,6 +109,55 @@ func TestDownloadMangaWithPageLoaderLoadsMissingPages(t *testing.T) {
 
 	if finalProgress.TotalPages != 2 || finalProgress.CompletedPages != 2 {
 		t.Fatalf("final progress pages = %d/%d, want 2/2", finalProgress.CompletedPages, finalProgress.TotalPages)
+	}
+}
+
+func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{B: 255, A: 255})
+	var active atomic.Int32
+	var maxActive atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := active.Add(1)
+		for {
+			max := maxActive.Load()
+			if current <= max || maxActive.CompareAndSwap(max, current) {
+				break
+			}
+		}
+		defer active.Add(-1)
+
+		time.Sleep(25 * time.Millisecond)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 1
+	cfg.Concurrency.ChapterDownloads = 4
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Limited Manga"}
+	for idx := 1; idx <= 4; idx++ {
+		chapter := &source.Chapter{
+			Index: strconv.Itoa(idx),
+			From:  manga,
+			Pages: []*source.Page{{URL: server.URL + "/page.png"}},
+		}
+		manga.Chapters = append(manga.Chapters, chapter)
+	}
+
+	if err := d.DownloadManga(manga); err != nil {
+		t.Fatalf("DownloadManga() error = %v", err)
+	}
+
+	if got := maxActive.Load(); got != 1 {
+		t.Fatalf("max concurrent page downloads = %d, want 1", got)
 	}
 }
 
