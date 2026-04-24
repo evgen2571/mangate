@@ -147,7 +147,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		progressCh := make(chan tea.Msg, 1024)
-		m.downloading = newDownloadingModel("Preparing chapters", downloadDetailText(msg.Chapters), progressCh)
+		m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(msg.Chapters), progressCh)
 		m.state = stateDownloading
 		m.resizeActiveModel()
 		return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(msg.Manga, msg.Chapters, progressCh))

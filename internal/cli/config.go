@@ -36,7 +36,6 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Concurrency:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  PageFetches:      %d\n", cfg.Concurrency.PageFetches)
 			fmt.Fprintf(cmd.OutOrStdout(), "  PageDownloads:    %d\n", cfg.Concurrency.PageDownloads)
 			fmt.Fprintf(cmd.OutOrStdout(), "  ChapterDownloads: %d\n", cfg.Concurrency.ChapterDownloads)
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")

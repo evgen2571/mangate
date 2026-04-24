@@ -41,13 +41,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 
 	// Concurrency
 	f.IntVar(
-		&cfg.Concurrency.PageFetches,
-		"page-fetches",
-		cfg.Concurrency.PageFetches,
-		"Number of concurrent page fetches",
-	)
-
-	f.IntVar(
 		&cfg.Concurrency.PageDownloads,
 		"page-downloads",
 		cfg.Concurrency.PageDownloads,

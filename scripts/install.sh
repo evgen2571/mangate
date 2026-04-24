@@ -55,7 +55,6 @@ else
     "type": "plain"
   },
   "concurrency": {
-    "pageFetches": 8,
     "pageDownloads": 8,
     "chapterDownloads": 2
   },
