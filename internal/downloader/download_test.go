@@ -161,6 +161,46 @@ func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 	}
 }
 
+func TestDownloadPageRetriesTooManyRequests(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, G: 255, A: 255})
+	var attempts atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		if attempt == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 1
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Retry Manga"}
+	chapter := &source.Chapter{
+		Index: "1",
+		From:  manga,
+		Pages: []*source.Page{{URL: server.URL + "/page.png"}},
+	}
+
+	if err := d.DownloadChapter(chapter); err != nil {
+		t.Fatalf("DownloadChapter() error = %v", err)
+	}
+
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
 func TestDetectPageExtensionUsesAnyImageContentType(t *testing.T) {
 	ext := detectPageExtension("image/tiff", "https://example.com/page")
 	if ext != ".tiff" && ext != ".tif" {
