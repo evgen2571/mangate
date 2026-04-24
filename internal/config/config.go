@@ -48,7 +48,6 @@ type DownloadConfig struct {
 }
 
 type ConcurrencyConfig struct {
-	PageFetches      int
 	PageDownloads    int
 	ChapterDownloads int
 }
@@ -88,7 +87,6 @@ type fileDownloadConfig struct {
 }
 
 type fileConcurrencyConfig struct {
-	PageFetches      *int `json:"pageFetches,omitempty"`
 	PageDownloads    *int `json:"pageDownloads,omitempty"`
 	ChapterDownloads *int `json:"chapterDownloads,omitempty"`
 }
@@ -117,7 +115,6 @@ func DefaultConfig() Config {
 			Type: "plain",
 		},
 		Concurrency: ConcurrencyConfig{
-			PageFetches:      8,
 			PageDownloads:    8,
 			ChapterDownloads: 2,
 		},
@@ -144,8 +141,6 @@ func (c Config) Validate() error {
 		return fmt.Errorf("download dir cannot be empty")
 	case strings.TrimSpace(c.Download.Type) == "":
 		return fmt.Errorf("download type cannot be empty")
-	case c.Concurrency.PageFetches <= 0:
-		return fmt.Errorf("page-fetches must be > 0")
 	case c.Concurrency.PageDownloads <= 0:
 		return fmt.Errorf("page-downloads must be > 0")
 	case c.Concurrency.ChapterDownloads <= 0:
@@ -280,9 +275,6 @@ func (f fileConfig) applyTo(cfg *Config) error {
 		}
 	}
 	if f.Concurrency != nil {
-		if f.Concurrency.PageFetches != nil {
-			cfg.Concurrency.PageFetches = *f.Concurrency.PageFetches
-		}
 		if f.Concurrency.PageDownloads != nil {
 			cfg.Concurrency.PageDownloads = *f.Concurrency.PageDownloads
 		}
@@ -321,7 +313,6 @@ func newFileConfig(cfg Config) fileConfig {
 			Type: stringPtr(cfg.Download.Type),
 		},
 		Concurrency: &fileConcurrencyConfig{
-			PageFetches:      intPtr(cfg.Concurrency.PageFetches),
 			PageDownloads:    intPtr(cfg.Concurrency.PageDownloads),
 			ChapterDownloads: intPtr(cfg.Concurrency.ChapterDownloads),
 		},

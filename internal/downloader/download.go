@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -8,23 +9,40 @@ import (
 	urlpkg "net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
 	"golang.org/x/sync/errgroup"
 )
 
+type PageLoader func(context.Context, *source.Chapter) ([]*source.Page, error)
+
+const maxPageDownloadRetries = 3
+
 func (d *Downloader) DownloadChapter(c *source.Chapter) error {
-	return d.downloadChapter(c, nil)
+	return d.downloadChapter(context.Background(), c, nil, nil)
 }
 
-func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReporter) error {
+func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, reporter *progressReporter, pageLoader PageLoader) error {
 	if c == nil {
 		return fmt.Errorf("download chapter: nil chapter")
 	}
 	if c.From == nil {
 		return fmt.Errorf("download chapter %q: missing parent manga", c.ID)
+	}
+	if len(c.Pages) == 0 && pageLoader != nil {
+		pages, err := pageLoader(ctx, c)
+		if err != nil {
+			return fmt.Errorf("load pages for chapter %q: %w", c.ID, err)
+		}
+		c.Pages = pages
+		c.PageCount = len(pages)
+		if reporter != nil {
+			reporter.pagesDiscovered(c)
+		}
 	}
 
 	basePath, err := d.basePath()
@@ -46,7 +64,6 @@ func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReport
 	}
 
 	var g errgroup.Group
-	g.SetLimit(d.cfg.Concurrency.PageDownloads)
 
 	if reporter != nil {
 		reporter.chapterStarted(c)
@@ -92,14 +109,18 @@ func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReport
 }
 
 func (d *Downloader) DownloadManga(m *source.Manga) error {
-	return d.downloadManga(m, nil)
+	return d.downloadManga(context.Background(), m, nil, nil)
 }
 
 func (d *Downloader) DownloadMangaWithProgress(m *source.Manga, notify func(DownloadProgress)) error {
-	return d.downloadManga(m, newProgressReporter(m, notify))
+	return d.downloadManga(context.Background(), m, newProgressReporter(m, notify), nil)
 }
 
-func (d *Downloader) downloadManga(m *source.Manga, reporter *progressReporter) error {
+func (d *Downloader) DownloadMangaWithProgressAndPageLoader(ctx context.Context, m *source.Manga, pageLoader PageLoader, notify func(DownloadProgress)) error {
+	return d.downloadManga(ctx, m, newProgressReporter(m, notify), pageLoader)
+}
+
+func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporter *progressReporter, pageLoader PageLoader) error {
 	if m == nil {
 		return fmt.Errorf("download manga: nil manga")
 	}
@@ -125,7 +146,7 @@ func (d *Downloader) downloadManga(m *source.Manga, reporter *progressReporter) 
 		chapter := chapter
 
 		g.Go(func() error {
-			if err := d.downloadChapter(chapter, reporter); err != nil {
+			if err := d.downloadChapter(ctx, chapter, reporter, pageLoader); err != nil {
 				return err
 			}
 
@@ -164,7 +185,10 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 		return "", fmt.Errorf("download page: empty page url")
 	}
 
-	resp, err := d.client.Get(p.URL)
+	d.acquirePageDownload()
+	defer d.releasePageDownload()
+
+	resp, err := d.getPageResponseWithRetry(p.URL)
 	if err != nil {
 		return "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
@@ -192,6 +216,56 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 	}
 
 	return filePath, nil
+}
+
+func (d *Downloader) getPageResponseWithRetry(rawURL string) (*http.Response, error) {
+	for attempt := 0; ; attempt++ {
+		resp, err := d.client.Get(rawURL)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusTooManyRequests || attempt >= maxPageDownloadRetries {
+			return resp, nil
+		}
+
+		wait := pageRetryAfterDelay(resp.Header.Get("Retry-After"), attempt)
+		resp.Body.Close()
+		time.Sleep(wait)
+	}
+}
+
+func pageRetryAfterDelay(value string, attempt int) time.Duration {
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+
+	if retryAt, err := http.ParseTime(value); err == nil {
+		delay := time.Until(retryAt)
+		if delay > 0 {
+			return delay
+		}
+	}
+
+	delay := 10 * time.Millisecond << attempt
+	if delay > 250*time.Millisecond {
+		return 250 * time.Millisecond
+	}
+	return delay
+}
+
+func (d *Downloader) acquirePageDownload() {
+	if d.pageDownloads == nil {
+		return
+	}
+	d.pageDownloads <- struct{}{}
+}
+
+func (d *Downloader) releasePageDownload() {
+	if d.pageDownloads == nil {
+		return
+	}
+	<-d.pageDownloads
 }
 
 func detectPageExtension(contentType, rawURL string) string {

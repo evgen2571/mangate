@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/evgen2571/mangate/internal/source"
 )
@@ -32,7 +33,7 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 		return nil, fmt.Errorf("decode pages response in %q: %w", pr.Name(), err)
 	}
 
-	pages := pageResp.toSourcePages(pr.uploads("data/"))
+	pages := pageResp.toSourcePages()
 	for _, page := range pages {
 		page.From = chapter
 	}
@@ -40,8 +41,9 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 	return pages, nil
 }
 
-func (mdpr *mangaDexPageResponse) toSourcePages(urlStart string) []*source.Page {
+func (mdpr *mangaDexPageResponse) toSourcePages() []*source.Page {
 	pages := make([]*source.Page, 0, len(mdpr.Chapter.Data))
+	urlStart := strings.TrimRight(mdpr.BaseURL, "/") + "/data/"
 
 	for _, fileName := range mdpr.Chapter.Data {
 		page := &source.Page{

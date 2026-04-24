@@ -21,6 +21,7 @@ type mangaDexChapter struct {
 		Volume   string `json:"volume"`
 		Chapter  string `json:"chapter"`
 		Title    string `json:"title"`
+		Pages    int    `json:"pages"`
 		Language string `json:"translatedLanguage"`
 	} `json:"attributes"`
 }
@@ -104,10 +105,11 @@ func (mdc *mangaDexChapter) getIndex() string {
 
 func (mdc *mangaDexChapter) toSource() *source.Chapter {
 	return &source.Chapter{
-		ID:    mdc.ID,
-		URL:   mdc.URL,
-		Index: mdc.getIndex(),
-		Title: mdc.getTitle(),
+		ID:        mdc.ID,
+		URL:       mdc.URL,
+		Index:     mdc.getIndex(),
+		Title:     mdc.getTitle(),
+		PageCount: mdc.Attributes.Pages,
 	}
 }
 
