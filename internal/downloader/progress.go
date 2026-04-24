@@ -43,10 +43,11 @@ func newProgressReporter(manga *source.Manga, notify func(DownloadProgress)) *pr
 			}
 
 			name := downloadProgressChapterName(chapter)
-			totalPages += len(chapter.Pages)
+			pageCount := knownPageCount(chapter)
+			totalPages += pageCount
 			chapters = append(chapters, ChapterDownloadProgress{
 				Name:       name,
-				TotalPages: len(chapter.Pages),
+				TotalPages: pageCount,
 			})
 			order = append(order, name)
 		}
@@ -85,8 +86,9 @@ func (r *progressReporter) pagesDiscovered(chapter *source.Chapter) {
 
 	r.mu.Lock()
 	if current := r.chapterProgress(chapter); current != nil {
-		delta := len(chapter.Pages) - current.TotalPages
-		current.TotalPages = len(chapter.Pages)
+		pageCount := knownPageCount(chapter)
+		delta := pageCount - current.TotalPages
+		current.TotalPages = pageCount
 		r.progress.TotalPages += delta
 	}
 	progress := r.snapshotLocked()
@@ -150,6 +152,16 @@ func (r *progressReporter) snapshotLocked() DownloadProgress {
 		TotalChapters:     r.progress.TotalChapters,
 		Chapters:          chapters,
 	}
+}
+
+func knownPageCount(chapter *source.Chapter) int {
+	if chapter == nil {
+		return 0
+	}
+	if chapter.PageCount > 0 {
+		return chapter.PageCount
+	}
+	return len(chapter.Pages)
 }
 
 func downloadProgressChapterName(chapter *source.Chapter) string {

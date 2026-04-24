@@ -39,6 +39,7 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 			return fmt.Errorf("load pages for chapter %q: %w", c.ID, err)
 		}
 		c.Pages = pages
+		c.PageCount = len(pages)
 		if reporter != nil {
 			reporter.pagesDiscovered(c)
 		}

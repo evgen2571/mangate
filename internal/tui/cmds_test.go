@@ -9,10 +9,11 @@ import (
 func TestBuildDownloadMangaLeavesPagesForLazyLoading(t *testing.T) {
 	manga := &source.Manga{ID: "manga-id", Title: "My Manga"}
 	chapter := &source.Chapter{
-		ID:    "chapter-1",
-		Index: "1",
-		Title: "Intro",
-		Pages: []*source.Page{{URL: "https://example.com/page.png"}},
+		ID:        "chapter-1",
+		Index:     "1",
+		Title:     "Intro",
+		PageCount: 23,
+		Pages:     []*source.Page{{URL: "https://example.com/page.png"}},
 	}
 
 	downloadManga, err := buildDownloadManga(manga, []*source.Chapter{chapter})
@@ -26,6 +27,9 @@ func TestBuildDownloadMangaLeavesPagesForLazyLoading(t *testing.T) {
 	downloadChapter := downloadManga.Chapters[0]
 	if len(downloadChapter.Pages) != 0 {
 		t.Fatalf("len(downloadChapter.Pages) = %d, want 0 for lazy loading", len(downloadChapter.Pages))
+	}
+	if downloadChapter.PageCount != 23 {
+		t.Fatalf("download chapter PageCount = %d, want 23", downloadChapter.PageCount)
 	}
 	if downloadChapter == chapter {
 		t.Fatalf("download chapter reuses original pointer")
