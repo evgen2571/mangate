@@ -78,6 +78,23 @@ func (r *progressReporter) chapterStarted(chapter *source.Chapter) {
 	r.notify(progress)
 }
 
+func (r *progressReporter) pagesDiscovered(chapter *source.Chapter) {
+	if r == nil || r.notify == nil || chapter == nil {
+		return
+	}
+
+	r.mu.Lock()
+	if current := r.chapterProgress(chapter); current != nil {
+		delta := len(chapter.Pages) - current.TotalPages
+		current.TotalPages = len(chapter.Pages)
+		r.progress.TotalPages += delta
+	}
+	progress := r.snapshotLocked()
+	r.mu.Unlock()
+
+	r.notify(progress)
+}
+
 func (r *progressReporter) pageCompleted(chapter *source.Chapter) {
 	if r == nil || r.notify == nil {
 		return

@@ -78,54 +78,10 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				return
 			}
 
-			progressCh <- downloadProgressMsg{
-				Title:     "Preparing chapters",
-				Detail:    downloadDetailText(chapters),
-				Status:    "Loading chapter pages...",
-				Completed: 0,
-				Total:     len(chapters),
-			}
-
-			downloadChapters := make([]*source.Chapter, 0, len(chapters))
-			for idx, chapter := range chapters {
-				if chapter == nil {
-					progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: fmt.Errorf("download chapters: selected chapter is nil")}
-					return
-				}
-
-				ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
-				pages, err := provider.Pages(ctx, chapter)
-				cancel()
-				if err != nil {
-					progressCh <- downloadFailedMsg{
-						Manga:    manga,
-						Chapters: chapters,
-						Err:      fmt.Errorf("load pages for %s: %w", chapterDisplayName(chapter), err),
-					}
-					return
-				}
-
-				chapterCopy := *chapter
-				chapterCopy.From = manga
-				chapterCopy.Pages = pages
-				downloadChapters = append(downloadChapters, &chapterCopy)
-
-				progressCh <- downloadProgressMsg{
-					Title:     "Preparing chapters",
-					Detail:    chapterDisplayName(chapter),
-					Status:    fmt.Sprintf("Loaded pages for %s", chapterDisplayName(chapter)),
-					Completed: idx + 1,
-					Total:     len(chapters),
-				}
-			}
-
-			downloadManga := &source.Manga{
-				ID:       manga.ID,
-				URL:      manga.URL,
-				Title:    manga.Title,
-				Cover:    manga.Cover,
-				Chapters: downloadChapters,
-				Metadata: manga.Metadata,
+			downloadManga, err := buildDownloadManga(manga, chapters)
+			if err != nil {
+				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
+				return
 			}
 
 			progressCh <- downloadProgressMsg{
@@ -133,10 +89,22 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				Detail:    downloadDetailText(chapters),
 				Status:    "Starting downloads...",
 				Completed: 0,
-				Total:     totalPages(downloadChapters),
+				Total:     0,
 			}
 
-			err = m.app.Downloader.DownloadMangaWithProgress(downloadManga, func(progress downloader.DownloadProgress) {
+			pageLoader := downloader.PageLoader(func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
+				defer cancel()
+
+				pages, err := provider.Pages(ctx, chapter)
+				if err != nil {
+					return nil, fmt.Errorf("load pages for %s: %w", chapterDisplayName(chapter), err)
+				}
+
+				return pages, nil
+			})
+
+			err = m.app.Downloader.DownloadMangaWithProgressAndPageLoader(context.Background(), downloadManga, pageLoader, func(progress downloader.DownloadProgress) {
 				progressCh <- downloadProgressMsg{
 					Title:     "Downloading pages",
 					Detail:    progressSummaryDetail(progress.Chapters),
@@ -210,15 +178,35 @@ func chapterDisplayName(chapter *source.Chapter) string {
 	}
 }
 
-func totalPages(chapters []*source.Chapter) int {
-	total := 0
+func buildDownloadManga(manga *source.Manga, chapters []*source.Chapter) (*source.Manga, error) {
+	if manga == nil {
+		return nil, fmt.Errorf("download chapters: nil manga")
+	}
+	if len(chapters) == 0 {
+		return nil, fmt.Errorf("download chapters: no chapters selected")
+	}
+
+	downloadManga := &source.Manga{
+		ID:       manga.ID,
+		URL:      manga.URL,
+		Title:    manga.Title,
+		Cover:    manga.Cover,
+		Metadata: manga.Metadata,
+		Chapters: make([]*source.Chapter, 0, len(chapters)),
+	}
+
 	for _, chapter := range chapters {
 		if chapter == nil {
-			continue
+			return nil, fmt.Errorf("download chapters: selected chapter is nil")
 		}
-		total += len(chapter.Pages)
+
+		chapterCopy := *chapter
+		chapterCopy.From = downloadManga
+		chapterCopy.Pages = nil
+		downloadManga.Chapters = append(downloadManga.Chapters, &chapterCopy)
 	}
-	return total
+
+	return downloadManga, nil
 }
 
 func toChapterProgressViews(chapters []downloader.ChapterDownloadProgress) []chapterProgressView {

@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -15,16 +16,28 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type PageLoader func(context.Context, *source.Chapter) ([]*source.Page, error)
+
 func (d *Downloader) DownloadChapter(c *source.Chapter) error {
-	return d.downloadChapter(c, nil)
+	return d.downloadChapter(context.Background(), c, nil, nil)
 }
 
-func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReporter) error {
+func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, reporter *progressReporter, pageLoader PageLoader) error {
 	if c == nil {
 		return fmt.Errorf("download chapter: nil chapter")
 	}
 	if c.From == nil {
 		return fmt.Errorf("download chapter %q: missing parent manga", c.ID)
+	}
+	if len(c.Pages) == 0 && pageLoader != nil {
+		pages, err := pageLoader(ctx, c)
+		if err != nil {
+			return fmt.Errorf("load pages for chapter %q: %w", c.ID, err)
+		}
+		c.Pages = pages
+		if reporter != nil {
+			reporter.pagesDiscovered(c)
+		}
 	}
 
 	basePath, err := d.basePath()
@@ -92,14 +105,18 @@ func (d *Downloader) downloadChapter(c *source.Chapter, reporter *progressReport
 }
 
 func (d *Downloader) DownloadManga(m *source.Manga) error {
-	return d.downloadManga(m, nil)
+	return d.downloadManga(context.Background(), m, nil, nil)
 }
 
 func (d *Downloader) DownloadMangaWithProgress(m *source.Manga, notify func(DownloadProgress)) error {
-	return d.downloadManga(m, newProgressReporter(m, notify))
+	return d.downloadManga(context.Background(), m, newProgressReporter(m, notify), nil)
 }
 
-func (d *Downloader) downloadManga(m *source.Manga, reporter *progressReporter) error {
+func (d *Downloader) DownloadMangaWithProgressAndPageLoader(ctx context.Context, m *source.Manga, pageLoader PageLoader, notify func(DownloadProgress)) error {
+	return d.downloadManga(ctx, m, newProgressReporter(m, notify), pageLoader)
+}
+
+func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporter *progressReporter, pageLoader PageLoader) error {
 	if m == nil {
 		return fmt.Errorf("download manga: nil manga")
 	}
@@ -125,7 +142,7 @@ func (d *Downloader) downloadManga(m *source.Manga, reporter *progressReporter) 
 		chapter := chapter
 
 		g.Go(func() error {
-			if err := d.downloadChapter(chapter, reporter); err != nil {
+			if err := d.downloadChapter(ctx, chapter, reporter, pageLoader); err != nil {
 				return err
 			}
 

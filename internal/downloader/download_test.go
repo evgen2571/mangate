@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"context"
 	"image"
 	"image/color"
 	"image/png"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/config"
@@ -52,6 +54,58 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 
 	if _, err := png.Decode(f); err != nil {
 		t.Fatalf("png.Decode(%q) error = %v", pagePath, err)
+	}
+}
+
+func TestDownloadMangaWithPageLoaderLoadsMissingPages(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{G: 255, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 1
+	cfg.Concurrency.ChapterDownloads = 1
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Lazy Manga"}
+	manga.Chapters = []*source.Chapter{
+		{ID: "chapter-1", Index: "1", Title: "One", From: manga},
+		{ID: "chapter-2", Index: "2", Title: "Two", From: manga},
+	}
+
+	loaded := make([]string, 0, len(manga.Chapters))
+	loader := func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+		loaded = append(loaded, chapter.ID)
+		return []*source.Page{{URL: server.URL + "/" + chapter.ID + ".png"}}, nil
+	}
+
+	var finalProgress DownloadProgress
+	if err := d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, func(progress DownloadProgress) {
+		finalProgress = progress
+	}); err != nil {
+		t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+	}
+
+	if !reflect.DeepEqual(loaded, []string{"chapter-1", "chapter-2"}) {
+		t.Fatalf("loaded chapters = %#v, want %#v", loaded, []string{"chapter-1", "chapter-2"})
+	}
+
+	for _, chapterName := range []string{"Chapter-1-One", "Chapter-2-Two"} {
+		pagePath := filepath.Join(cfg.Download.Dir, "Lazy-Manga", chapterName, "0001.png")
+		if _, err := os.Stat(pagePath); err != nil {
+			t.Fatalf("Stat(%q) error = %v", pagePath, err)
+		}
+	}
+
+	if finalProgress.TotalPages != 2 || finalProgress.CompletedPages != 2 {
+		t.Fatalf("final progress pages = %d/%d, want 2/2", finalProgress.CompletedPages, finalProgress.TotalPages)
 	}
 }
 
