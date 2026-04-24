@@ -31,9 +31,8 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Download:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  Dir:       %s\n", cfg.Download.Dir)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Type:      %s\n", cfg.Download.Type)
-			fmt.Fprintf(cmd.OutOrStdout(), "  ImageType: %s\n", cfg.Download.ImageType)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Dir:  %s\n", cfg.Download.Dir)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Type: %s\n", cfg.Download.Type)
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Concurrency:\n")

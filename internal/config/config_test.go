@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,8 +38,7 @@ func TestLoadMergesOverridesFromConfigFile(t *testing.T) {
   },
   "download": {
     "dir": "/tmp/custom-downloads",
-    "type": "cbz",
-    "imageType": "png"
+    "type": "cbz"
   },
   "concurrency": {
     "pageDownloads": 3
@@ -68,9 +68,6 @@ func TestLoadMergesOverridesFromConfigFile(t *testing.T) {
 	if cfg.Download.Type != "cbz" {
 		t.Fatalf("Download.Type = %q, want %q", cfg.Download.Type, "cbz")
 	}
-	if cfg.Download.ImageType != "png" {
-		t.Fatalf("Download.ImageType = %q, want %q", cfg.Download.ImageType, "png")
-	}
 	if cfg.Concurrency.PageDownloads != 3 {
 		t.Fatalf("Concurrency.PageDownloads = %d, want %d", cfg.Concurrency.PageDownloads, 3)
 	}
@@ -98,6 +95,14 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 
 	if err := Save(configPath, cfg); err != nil {
 		t.Fatalf("Save() error = %v", err)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(string(data), "imageType") {
+		t.Fatalf("saved config unexpectedly contains imageType: %s", string(data))
 	}
 
 	t.Setenv(envConfigPath, configPath)

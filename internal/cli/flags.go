@@ -39,13 +39,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Download type (e.g. 'plain', 'cbz', 'zip')",
 	)
 
-	f.StringVar(
-		&cfg.Download.ImageType,
-		"image-format",
-		cfg.Download.ImageType,
-		"Image format if type is 'plain'",
-	)
-
 	// Concurrency
 	f.IntVar(
 		&cfg.Concurrency.PageFetches,

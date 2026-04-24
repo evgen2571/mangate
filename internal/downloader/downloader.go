@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/converter"
 	"github.com/evgen2571/mangate/internal/util"
 )
 
 type Downloader struct {
-	cfg    config.Config
-	client *http.Client
+	cfg       config.Config
+	client    *http.Client
+	converter *converter.Converter
 
 	basePathOnce sync.Once
 	workPath     string
@@ -24,8 +26,9 @@ type Downloader struct {
 
 func New(config config.Config, client *http.Client) *Downloader {
 	return &Downloader{
-		cfg:    config,
-		client: client,
+		cfg:       config,
+		client:    client,
+		converter: converter.New(config),
 	}
 }
 
