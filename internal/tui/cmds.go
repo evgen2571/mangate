@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -12,15 +11,7 @@ import (
 
 func (m model) searchMangaCmd(query string) tea.Cmd {
 	return func() tea.Msg {
-		provider, err := m.app.Registry.New(m.app.Cfg.Provider, m.app.Cfg, m.app.Client)
-		if err != nil {
-			return searchFailedMsg{Err: err}
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
-		defer cancel()
-
-		results, err := provider.Search(ctx, query)
+		results, err := m.app.UseCases().SearchManga(nil, query)
 		if err != nil {
 			return searchFailedMsg{Err: err}
 		}
@@ -38,15 +29,7 @@ func (m model) loadChaptersCmd(manga *source.Manga) tea.Cmd {
 			return nil
 		}
 
-		provider, err := m.app.Registry.New(m.app.Cfg.Provider, m.app.Cfg, m.app.Client)
-		if err != nil {
-			return chaptersFailedMsg{Manga: manga, Err: err}
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
-		defer cancel()
-
-		chapters, err := provider.Chapters(ctx, manga)
+		chapters, err := m.app.UseCases().Chapters(nil, manga)
 		if err != nil {
 			return chaptersFailedMsg{Manga: manga, Err: err}
 		}
@@ -63,27 +46,6 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 		go func() {
 			defer close(progressCh)
 
-			if manga == nil {
-				progressCh <- downloadFailedMsg{Err: fmt.Errorf("download chapters: nil manga")}
-				return
-			}
-			if len(chapters) == 0 {
-				progressCh <- downloadFailedMsg{Manga: manga, Err: fmt.Errorf("download chapters: no chapters selected")}
-				return
-			}
-
-			provider, err := m.app.Registry.New(m.app.Cfg.Provider, m.app.Cfg, m.app.Client)
-			if err != nil {
-				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
-				return
-			}
-
-			downloadManga, err := buildDownloadManga(manga, chapters)
-			if err != nil {
-				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
-				return
-			}
-
 			progressCh <- downloadProgressMsg{
 				Title:     "Downloading pages",
 				Detail:    downloadDetailText(chapters),
@@ -92,19 +54,7 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				Total:     0,
 			}
 
-			pageLoader := downloader.PageLoader(func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
-				defer cancel()
-
-				pages, err := provider.Pages(ctx, chapter)
-				if err != nil {
-					return nil, fmt.Errorf("load pages for %s: %w", chapterDisplayName(chapter), err)
-				}
-
-				return pages, nil
-			})
-
-			err = m.app.Downloader.DownloadMangaWithProgressAndPageLoader(context.Background(), downloadManga, pageLoader, func(progress downloader.DownloadProgress) {
+			err := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress downloader.DownloadProgress) {
 				progressCh <- downloadProgressMsg{
 					Title:     "Downloading pages",
 					Detail:    progressSummaryDetail(progress.Chapters),
@@ -132,15 +82,7 @@ func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
 			return nil
 		}
 
-		provider, err := m.app.Registry.New(m.app.Cfg.Provider, m.app.Cfg, m.app.Client)
-		if err != nil {
-			return coverFailedMsg{MangaID: manga.ID, Err: err}
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), m.app.Cfg.HTTP.Timeout)
-		defer cancel()
-
-		path, err := m.app.Cache.Get(ctx, provider, manga)
+		path, err := m.app.UseCases().CoverPath(nil, manga)
 		if err != nil {
 			return coverFailedMsg{MangaID: manga.ID, Err: err}
 		}
@@ -176,37 +118,6 @@ func chapterDisplayName(chapter *source.Chapter) string {
 	default:
 		return "unknown chapter"
 	}
-}
-
-func buildDownloadManga(manga *source.Manga, chapters []*source.Chapter) (*source.Manga, error) {
-	if manga == nil {
-		return nil, fmt.Errorf("download chapters: nil manga")
-	}
-	if len(chapters) == 0 {
-		return nil, fmt.Errorf("download chapters: no chapters selected")
-	}
-
-	downloadManga := &source.Manga{
-		ID:       manga.ID,
-		URL:      manga.URL,
-		Title:    manga.Title,
-		Cover:    manga.Cover,
-		Metadata: manga.Metadata,
-		Chapters: make([]*source.Chapter, 0, len(chapters)),
-	}
-
-	for _, chapter := range chapters {
-		if chapter == nil {
-			return nil, fmt.Errorf("download chapters: selected chapter is nil")
-		}
-
-		chapterCopy := *chapter
-		chapterCopy.From = downloadManga
-		chapterCopy.Pages = nil
-		downloadManga.Chapters = append(downloadManga.Chapters, &chapterCopy)
-	}
-
-	return downloadManga, nil
 }
 
 func toChapterProgressViews(chapters []downloader.ChapterDownloadProgress) []chapterProgressView {
