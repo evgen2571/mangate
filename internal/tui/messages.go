@@ -22,6 +22,10 @@ type chaptersOpenRequestedMsg struct {
 	Manga *source.Manga
 }
 
+type fullMangaDownloadRequestedMsg struct {
+	Manga *source.Manga
+}
+
 type chaptersLoadedMsg struct {
 	Manga    *source.Manga
 	Chapters []*source.Chapter

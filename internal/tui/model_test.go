@@ -1,0 +1,113 @@
+package tui
+
+import (
+	"testing"
+
+	"github.com/evgen2571/mangate/internal/source"
+)
+
+func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testing.T) {
+	manga := &source.Manga{ID: "manga-a", Title: "Manga A"}
+	chapters := []*source.Chapter{
+		{ID: "chapter-a", Index: "1"},
+		nil,
+		{ID: "chapter-b", Index: "2"},
+	}
+	m := model{
+		state:                    stateLoading,
+		pendingFullMangaDownload: manga,
+	}
+
+	updated, cmd := m.Update(chaptersLoadedMsg{Manga: manga, Chapters: chapters})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+
+	if got.state != stateDownloading {
+		t.Fatalf("state = %v, want stateDownloading", got.state)
+	}
+	if got.pendingFullMangaDownload != nil {
+		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
+	}
+	if cmd == nil {
+		t.Fatalf("Update() returned nil command")
+	}
+	if got.downloading.detail != "2 chapters selected" {
+		t.Fatalf("downloading detail = %q, want %q", got.downloading.detail, "2 chapters selected")
+	}
+}
+
+func TestModelFullMangaDownloadIgnoresStaleChaptersLoad(t *testing.T) {
+	pending := &source.Manga{ID: "manga-pending", Title: "Pending"}
+	stale := &source.Manga{ID: "manga-stale", Title: "Stale"}
+	m := model{
+		state:                    stateLoading,
+		pendingFullMangaDownload: pending,
+	}
+
+	updated, cmd := m.Update(chaptersLoadedMsg{
+		Manga:    stale,
+		Chapters: []*source.Chapter{{ID: "stale-chapter", Index: "1"}},
+	})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+
+	if got.state != stateChapters {
+		t.Fatalf("state = %v, want stateChapters", got.state)
+	}
+	if got.pendingFullMangaDownload != pending {
+		t.Fatalf("pendingFullMangaDownload = %#v, want pending manga", got.pendingFullMangaDownload)
+	}
+	if cmd != nil {
+		t.Fatalf("Update() returned unexpected command for stale chapters load")
+	}
+}
+
+func TestModelFullMangaDownloadShowsStatusWhenNoChaptersLoad(t *testing.T) {
+	manga := &source.Manga{ID: "manga-a", Title: "Manga A"}
+	m := model{
+		state:                    stateLoading,
+		pendingFullMangaDownload: manga,
+	}
+
+	updated, cmd := m.Update(chaptersLoadedMsg{Manga: manga, Chapters: []*source.Chapter{nil}})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+
+	if got.state != stateChapters {
+		t.Fatalf("state = %v, want stateChapters", got.state)
+	}
+	if got.pendingFullMangaDownload != nil {
+		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
+	}
+	if got.chapters.status != "no chapters to download" {
+		t.Fatalf("chapters status = %q, want %q", got.chapters.status, "no chapters to download")
+	}
+	if cmd != nil {
+		t.Fatalf("Update() returned unexpected command")
+	}
+}
+
+func TestModelPlainChaptersOpenClearsPendingFullDownload(t *testing.T) {
+	manga := &source.Manga{ID: "manga-a", Title: "Manga A"}
+	pending := &source.Manga{ID: "pending", Title: "Pending"}
+	m := model{pendingFullMangaDownload: pending}
+
+	updated, _ := m.Update(chaptersOpenRequestedMsg{Manga: manga})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+
+	if got.pendingFullMangaDownload != nil {
+		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
+	}
+	if got.state != stateLoading {
+		t.Fatalf("state = %v, want stateLoading", got.state)
+	}
+}

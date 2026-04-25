@@ -122,6 +122,11 @@ func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 			m.toggleSelectionAt(m.list.Index())
 			return m, nil
 		case key.Matches(msg, m.keys.SelectAll):
+			if m.allChaptersSelected() {
+				m.deselectAll()
+				m.setStatus("cleared selection")
+				return m, nil
+			}
 			m.selectAll()
 			m.setStatus("selected all chapters")
 			return m, nil
@@ -132,6 +137,7 @@ func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 		case key.Matches(msg, m.keys.Download):
 			chapters := m.chaptersForDownload()
 			if len(chapters) == 0 {
+				m.setStatus("no chapter selected")
 				return m, nil
 			}
 			return m, func() tea.Msg {
@@ -209,11 +215,11 @@ func (m chaptersModel) footerText() string {
 	selectedCount := m.selectedCount()
 	if selectedCount > 0 {
 		parts = append(parts, fmt.Sprintf("selected: %d", selectedCount))
-		parts = append(parts, "enter downloads selected")
+		parts = append(parts, "enter: selected")
 	} else {
-		parts = append(parts, "enter downloads current")
+		parts = append(parts, "enter: current")
 	}
-	parts = append(parts, "space toggles selection")
+	parts = append(parts, "space: toggle")
 
 	if strings.TrimSpace(m.status) != "" {
 		parts = append(parts, m.status)
@@ -238,6 +244,11 @@ func (m *chaptersModel) clearSelection() {
 }
 
 func (m *chaptersModel) selectAll() {
+	if m.allChaptersSelected() {
+		m.deselectAll()
+		return
+	}
+
 	m.selected = make(map[string]bool)
 	for idx, chapter := range m.chapters {
 		if chapter == nil {
@@ -291,6 +302,22 @@ func (m chaptersModel) chaptersForDownload() []*source.Chapter {
 
 func (m chaptersModel) selectedCount() int {
 	return len(m.selected)
+}
+
+func (m chaptersModel) allChaptersSelected() bool {
+	if m.chapterCount() == 0 {
+		return false
+	}
+
+	for idx, chapter := range m.chapters {
+		if chapter == nil {
+			continue
+		}
+		if !m.selected[chapterSelectionKey(chapter, idx)] {
+			return false
+		}
+	}
+	return true
 }
 
 func (m chaptersModel) chapterCount() int {

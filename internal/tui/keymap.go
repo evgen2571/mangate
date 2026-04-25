@@ -20,7 +20,7 @@ func newKeyMap() keyMap {
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
-			key.WithHelp("?", "toggle help"),
+			key.WithHelp("?", "help"),
 		),
 		Suspend: key.NewBinding(
 			key.WithKeys("ctrl+z"),
@@ -60,6 +60,7 @@ type resultsKeyMap struct {
 	Up       key.Binding
 	Down     key.Binding
 	Select   key.Binding
+	Download key.Binding
 	MetaUp   key.Binding
 	MetaDown key.Binding
 	Back     key.Binding
@@ -78,6 +79,10 @@ func newResultsKeyMap() resultsKeyMap {
 		Select: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "open chapters"),
+		),
+		Download: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "full"),
 		),
 		MetaUp: key.NewBinding(
 			key.WithKeys("i"),
@@ -105,7 +110,6 @@ func (k searchHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Clear,
 		k.global.Config,
 		k.global.Help,
-		k.global.Suspend,
 		k.global.Quit,
 	}
 }
@@ -120,7 +124,6 @@ func (k searchHelpKeyMap) FullHelp() [][]key.Binding {
 func (k loadingHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.global.Help,
-		k.global.Suspend,
 		k.global.Quit,
 	}
 }
@@ -136,18 +139,16 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Up,
 		k.local.Down,
 		k.local.Select,
-		k.local.MetaDown,
+		k.local.Download,
 		k.local.Back,
-		k.global.Config,
 		k.global.Help,
-		k.global.Suspend,
 		k.global.Quit,
 	}
 }
 
 func (k resultsHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Select, k.local.Back},
+		{k.local.Up, k.local.Down, k.local.Select, k.local.Download, k.local.Back},
 		{k.local.MetaUp, k.local.MetaDown},
 		{k.global.Config, k.global.Help, k.global.Suspend, k.global.Quit},
 	}
@@ -191,15 +192,15 @@ func newChaptersKeyMap() chaptersKeyMap {
 		),
 		SelectAll: key.NewBinding(
 			key.WithKeys("a"),
-			key.WithHelp("a", "select all"),
+			key.WithHelp("a", "all"),
 		),
 		DeselectAll: key.NewBinding(
 			key.WithKeys("d"),
-			key.WithHelp("d", "deselect all"),
+			key.WithHelp("d", "clear"),
 		),
 		Download: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("enter", "download current/selected"),
+			key.WithHelp("enter", "download"),
 		),
 		Back: key.NewBinding(
 			key.WithKeys("esc", "backspace"),
@@ -214,11 +215,9 @@ func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Down,
 		k.local.Toggle,
 		k.local.SelectAll,
+		k.local.DeselectAll,
 		k.local.Download,
-		k.local.Back,
-		k.global.Config,
 		k.global.Help,
-		k.global.Suspend,
 		k.global.Quit,
 	}
 }
@@ -288,7 +287,6 @@ func (k configHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Save,
 		k.local.Back,
 		k.global.Help,
-		k.global.Suspend,
 		k.global.Quit,
 	}
 }

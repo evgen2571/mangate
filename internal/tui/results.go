@@ -181,6 +181,16 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 				return chaptersOpenRequestedMsg{Manga: selected}
 			})...)
 
+		case key.Matches(msg, m.keys.Download):
+			selected := m.selectedManga()
+			if selected == nil {
+				return m, tea.Batch(cmds...)
+			}
+
+			return m, tea.Batch(append(cmds, func() tea.Msg {
+				return fullMangaDownloadRequestedMsg{Manga: selected}
+			})...)
+
 		case key.Matches(msg, m.keys.MetaUp):
 			m.metadata.LineUp(5)
 			return m, tea.Batch(cmds...)

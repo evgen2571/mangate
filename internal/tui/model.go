@@ -26,10 +26,11 @@ const (
 type model struct {
 	app *app.App
 
-	state         state
-	previousState state
-	width         int
-	height        int
+	state                    state
+	previousState            state
+	pendingFullMangaDownload *source.Manga
+	width                    int
+	height                   int
 
 	keys keyMap
 	help help.Model
@@ -134,6 +135,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Manga == nil {
 			return m, nil
 		}
+		m.pendingFullMangaDownload = nil
+
+		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.state = stateLoading
+		m.resizeActiveModel()
+		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
+
+	case fullMangaDownloadRequestedMsg:
+		if msg.Manga == nil {
+			return m, nil
+		}
+		m.pendingFullMangaDownload = msg.Manga
 
 		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
 		m.state = stateLoading
@@ -146,11 +159,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
 		}
 		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
+		if m.pendingFullMangaDownload == msg.Manga {
+			m.pendingFullMangaDownload = nil
+			chapters := nonNilChapters(msg.Chapters)
+			if msg.Manga != nil && len(chapters) > 0 {
+				progressCh := make(chan tea.Msg, 1024)
+				m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(chapters), progressCh)
+				m.state = stateDownloading
+				m.resizeActiveModel()
+				return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(msg.Manga, chapters, progressCh))
+			}
+			m.chapters.setStatus("no chapters to download")
+		}
 		m.state = stateChapters
 		m.resizeActiveModel()
 		return m, nil
 
 	case chaptersFailedMsg:
+		if m.pendingFullMangaDownload == msg.Manga {
+			m.pendingFullMangaDownload = nil
+		}
 		m.state = stateResults
 		m.resizeActiveModel()
 		return m, nil
@@ -374,4 +402,15 @@ func downloadDetailText(chapters []*source.Chapter) string {
 		return chapterDisplayName(chapters[0])
 	}
 	return fmt.Sprintf("%d chapters selected", count)
+}
+
+func nonNilChapters(chapters []*source.Chapter) []*source.Chapter {
+	result := make([]*source.Chapter, 0, len(chapters))
+	for _, chapter := range chapters {
+		if chapter == nil {
+			continue
+		}
+		result = append(result, chapter)
+	}
+	return result
 }
