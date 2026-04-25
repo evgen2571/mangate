@@ -1,59 +1,75 @@
-# Tasks
+# Mangate roadmap
 
-### Refactoring
-- [x] Refactor config logic (_it's really disgusting_)
-- [x] Refactor folder managment
-- [x] Refactor unnecessary public functions, variables, methods to private
-- [x] Change `sources` package to `source` (_@evgen2571 i really don't like this title_)
+This roadmap reflects the current `develop` branch. The old checklist mixed completed MVP work with stale items, so this file now tracks the remaining high-value work.
 
-### Source managment
-- [x] Somehow get a manga cover
-- [ ] Improve metadata organization
-- [ ] Create converter to download in custom types (_e.g. zip, cbz, plain_)
+## Done / baseline
 
-### CLI
-- [x] Possibility to switch between TUI and CLI (_maybe create `tui` endpoint to use it_)
-- [ ] Add some flags (_e.g. --path, --type_)
-- [ ] Add flags to update config
+- [x] MangaDex provider: search, chapters, covers, pages
+- [x] Language-aware MangaDex chapter filtering
+- [x] MangaDex chapter pagination
+- [x] MangaDex@Home page URLs use the returned `baseUrl`
+- [x] Lazy page loading during downloads to avoid MangaDex@Home request bursts
+- [x] Rate-limit retries for page downloads
+- [x] Stable TUI download progress with per-chapter rows
+- [x] Config loading from user config path with runtime application
+- [x] Plain downloads preserve provider-native image file types
+- [x] Converter package and safe replacement behavior
+- [x] TUI search/results/chapters/download flow
+- [x] CLI `search` and `config` commands
 
----
+## Next priority: CLI parity with TUI
 
-## Problems to fix
+- [x] Add `mangate chapters <manga-id>` to list chapters without launching the TUI
+- [ ] Add `mangate download <manga-id> --chapters <selector>` for non-interactive downloads
+- [ ] Support chapter selectors by index/range/ID, for example `1`, `1,3,5`, `1-10`, `all`
+- [ ] Print download progress in CLI mode without Bubble Tea
+- [ ] Add CLI smoke tests for command wiring and output formatting
 
-- [x] Some mangas has multiple languages (*add default language to config*), and as result we see a lot of same chapters, but in diffrent languages
-- [ ] `DownloadManga` in TUI is really slow
-- [x] CLI broke after I change something (_@amSagitari fixed and added option to launch tui using command 'tui'_)
-- [ ] Change `run.go` file location (_it launches tui from cli and i can't figure out the best location for it..._)
+## Config and install ergonomics
 
----
+- [ ] Add `mangate config path`
+- [ ] Add `mangate config init` to write default config only when explicitly requested
+- [ ] Add safe config update commands or documented examples for common edits
+- [ ] Keep `scripts/install.sh` focused on install/build and delegate default config generation to Go code
+- [ ] Document `MANGATE_CONFIG` and common flags in README
 
-## Main parts
-- [x] Create simple API request (DO NOT MOVE TO THE NEXT STEPS BEFORE THIS ONE)
-- [x] Create [MangaDex API](https://api.mangadex.org/docs/) client
-- [x] Add client method to get manga chapters (_by manga id_)
-- [x] Add download function to download manga's chapter & manga itself
-- [x] Create simple CLI interface (_using [cobra](https://github.com/spf13/cobra)_)
-- [x] Create TUI interface (_using [bubbltea](https://github.com/charmbracelet/bubbletea)_)
+## Download formats and metadata
 
-## Features
-- [x] Search for title 
-- [x] Move between titles shown as result on search request
-- [ ] Show title metadata (e.g. cover, alternative titles; maybe we will need to use [AniList API](https://docs.anilist.co/) for this)
-- [x] Choose title
-- [x] Show it's chapters, move between them
-- [ ] Choose one or more chapters
-- [ ] Choose provider
-- [ ] Download chosen chapters (maybe add possibility to choose download type, e. g. .zip, plain images)
+- [ ] Verify and finish `zip` output format
+- [ ] Verify and finish `cbz` output format
+- [ ] Add manga/chapter metadata files beside downloads where useful
+- [ ] Preserve stable page ordering across all output formats
+- [ ] Add regression tests for format replacement and partial failure cleanup
 
----
+## TUI improvements
 
-### MVP Plan
-Only one provider (*MangaDex*), CLI version with these commands:
-- `search <name>`
-- `chapters <manga-id>`
-- `download <query>`
+- [ ] Add a manga details screen before opening chapters
+- [ ] Show description, alt titles, status/year/tags when provider metadata supports them
+- [ ] Add a provider/config screen only after CLI config commands are stable
+- [ ] Add clearer empty/error states for network failures
+- [ ] Keep the current Bubble help style unless a deliberate redesign is chosen
 
-Download flags:
-- `--dir` - save location (_default: '.'_)
-- `--type` - format of downloaded chapter (_e.g. plain, .zip, .cbz; default: plain_)
+## Provider architecture
 
+- [ ] Keep provider-layer chapter titles raw; presentation fallback belongs in UI/CLI/downloader naming
+- [ ] Cache MangaDex@Home metadata in-memory for the short validity window to reduce duplicate page metadata calls within one run
+- [ ] Consider a dedicated low-rate budget for MangaDex@Home metadata requests if large downloads still hit endpoint limits
+- [ ] Add another provider only after CLI download and config UX are reliable
+
+## Quality gates
+
+Run before commits:
+
+```bash
+gofmt -w <changed Go files>
+go test ./...
+go vet ./...
+```
+
+For config/script work, also run:
+
+```bash
+go run ./cmd/mangate config
+go run ./cmd/mangate --language ru --page-downloads 3 config
+bash -n scripts/run.sh scripts/install.sh
+```

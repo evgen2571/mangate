@@ -32,6 +32,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 	bindPersistentConfigFlags(cmd, &a.Cfg)
 
 	cmd.AddCommand(
+		NewChaptersCmd(a),
 		NewConfigCmd(a),
 		NewSearchCmd(a),
 	)
