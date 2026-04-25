@@ -112,6 +112,88 @@ func TestDownloadMangaWithPageLoaderLoadsMissingPages(t *testing.T) {
 	}
 }
 
+func TestDownloadMangaReportsChaptersActiveBeforeLazyPageLoadingCompletes(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, B: 255, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.ChapterDownloads = 5
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Lazy Active Manga"}
+	for idx := 1; idx <= 5; idx++ {
+		manga.Chapters = append(manga.Chapters, &source.Chapter{
+			ID:        "chapter-" + strconv.Itoa(idx),
+			Index:     strconv.Itoa(idx),
+			From:      manga,
+			PageCount: 1,
+		})
+	}
+
+	loaderStarted := make(chan struct{}, len(manga.Chapters))
+	releaseLoader := make(chan struct{})
+	loader := func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+		loaderStarted <- struct{}{}
+		<-releaseLoader
+		return []*source.Page{{URL: server.URL + "/" + chapter.ID + ".png"}}, nil
+	}
+
+	progressCh := make(chan DownloadProgress, 32)
+	done := make(chan error, 1)
+	go func() {
+		done <- d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, func(progress DownloadProgress) {
+			progressCh <- progress
+		})
+	}()
+
+	for range manga.Chapters {
+		select {
+		case <-loaderStarted:
+		case <-time.After(time.Second):
+			close(releaseLoader)
+			t.Fatalf("timed out waiting for all chapter workers to enter lazy page loading")
+		}
+	}
+
+	observedAllActive := false
+	deadline := time.After(time.Second)
+	for !observedAllActive {
+		select {
+		case progress := <-progressCh:
+			active := 0
+			for _, chapter := range progress.Chapters {
+				if chapter.Active {
+					active++
+				}
+			}
+			observedAllActive = active == 5
+		case err := <-done:
+			t.Fatalf("download finished before reporting active lazy-loading chapters: %v", err)
+		case <-deadline:
+			close(releaseLoader)
+			t.Fatalf("timed out waiting for progress with 5 active chapters")
+		}
+	}
+
+	close(releaseLoader)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for download to finish")
+	}
+}
+
 func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 	pngBytes := mustPNGBytes(t, color.RGBA{B: 255, A: 255})
 	var active atomic.Int32

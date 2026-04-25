@@ -33,6 +33,10 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	if c.From == nil {
 		return fmt.Errorf("download chapter %q: missing parent manga", c.ID)
 	}
+	if reporter != nil {
+		reporter.chapterStarted(c)
+	}
+
 	if len(c.Pages) == 0 && pageLoader != nil {
 		pages, err := pageLoader(ctx, c)
 		if err != nil {
@@ -64,10 +68,6 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	}
 
 	var g errgroup.Group
-
-	if reporter != nil {
-		reporter.chapterStarted(c)
-	}
 
 	for idx, page := range c.Pages {
 		idx := idx
