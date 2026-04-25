@@ -121,6 +121,14 @@ func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 		case key.Matches(msg, m.keys.Toggle):
 			m.toggleSelectionAt(m.list.Index())
 			return m, nil
+		case key.Matches(msg, m.keys.SelectAll):
+			m.selectAll()
+			m.setStatus("selected all chapters")
+			return m, nil
+		case key.Matches(msg, m.keys.DeselectAll):
+			m.deselectAll()
+			m.setStatus("cleared selection")
+			return m, nil
 		case key.Matches(msg, m.keys.Download):
 			chapters := m.chaptersForDownload()
 			if len(chapters) == 0 {
@@ -190,11 +198,13 @@ func (m chaptersModel) listHeight() int {
 
 func (m chaptersModel) footerText() string {
 	parts := []string{}
+	chapterCount := m.chapterCount()
 	if m.manga == nil || strings.TrimSpace(m.manga.Title) == "" {
 		parts = append(parts, "Chapters")
 	} else {
 		parts = append(parts, fmt.Sprintf("Chapters for %q", strings.TrimSpace(m.manga.Title)))
 	}
+	parts = append(parts, fmt.Sprintf("chapters: %d", chapterCount))
 
 	selectedCount := m.selectedCount()
 	if selectedCount > 0 {
@@ -224,6 +234,21 @@ func (m *chaptersModel) setStatus(status string) {
 }
 
 func (m *chaptersModel) clearSelection() {
+	m.deselectAll()
+}
+
+func (m *chaptersModel) selectAll() {
+	m.selected = make(map[string]bool)
+	for idx, chapter := range m.chapters {
+		if chapter == nil {
+			continue
+		}
+		m.selected[chapterSelectionKey(chapter, idx)] = true
+	}
+	m.syncListItems()
+}
+
+func (m *chaptersModel) deselectAll() {
 	m.selected = make(map[string]bool)
 	m.syncListItems()
 }
@@ -266,6 +291,16 @@ func (m chaptersModel) chaptersForDownload() []*source.Chapter {
 
 func (m chaptersModel) selectedCount() int {
 	return len(m.selected)
+}
+
+func (m chaptersModel) chapterCount() int {
+	count := 0
+	for _, chapter := range m.chapters {
+		if chapter != nil {
+			count++
+		}
+	}
+	return count
 }
 
 func (m chaptersModel) chapterAt(index int) *source.Chapter {

@@ -374,10 +374,15 @@ func (m resultsModel) metadataContent() string {
 		fmt.Sprintf("Title: %s", item.value.Title),
 		fmt.Sprintf("ID: %s", item.value.ID),
 		fmt.Sprintf("URL: %s", item.value.URL),
+	}
+	if item.value.Metadata.ChapterCount > 0 {
+		header = append(header, fmt.Sprintf("Chapters: %d", item.value.Metadata.ChapterCount))
+	}
+	header = append(header,
 		"",
 		"Description:",
 		"",
-	}
+	)
 
 	return strings.Join(header, "\n") + m.renderMarkdown(desc)
 }

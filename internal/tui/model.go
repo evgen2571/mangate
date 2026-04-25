@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
@@ -19,14 +20,16 @@ const (
 	stateResults
 	stateChapters
 	stateDownloading
+	stateConfig
 )
 
 type model struct {
 	app *app.App
 
-	state  state
-	width  int
-	height int
+	state         state
+	previousState state
+	width         int
+	height        int
 
 	keys keyMap
 	help help.Model
@@ -36,6 +39,7 @@ type model struct {
 	results     resultsModel
 	chapters    chaptersModel
 	downloading downloadingModel
+	config      configModel
 }
 
 func New(a *app.App) tea.Model {
@@ -48,6 +52,7 @@ func New(a *app.App) tea.Model {
 		keys:   newKeyMap(),
 		help:   h,
 		search: newSearchModel(),
+		config: newConfigModel(a.Cfg),
 	}
 }
 
@@ -112,6 +117,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case goBackMsg:
+		if m.state == stateConfig {
+			m.state = m.previousState
+			m.resizeActiveModel()
+			return m, nil
+		}
 		if m.state == stateChapters || m.state == stateDownloading {
 			m.state = stateResults
 		} else {
@@ -131,6 +141,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
 
 	case chaptersLoadedMsg:
+		if msg.Manga != nil {
+			msg.Manga.Chapters = msg.Chapters
+			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
+		}
 		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
 		m.state = stateChapters
 		m.resizeActiveModel()
@@ -174,6 +188,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeActiveModel()
 		return m, nil
 
+	case configApplyRequestedMsg:
+		if err := m.app.ApplyConfig(msg.Config); err != nil {
+			m.config.setStatus(fmt.Sprintf("apply failed: %v", err))
+			return m, nil
+		}
+		m.config.draft = m.app.Cfg.Clone()
+		m.config.syncInput()
+		m.config.setStatus("applied for this session")
+		return m, nil
+
+	case configSaveRequestedMsg:
+		if err := m.app.ApplyConfig(msg.Config); err != nil {
+			m.config.setStatus(fmt.Sprintf("apply failed: %v", err))
+			return m, nil
+		}
+		if err := config.Save(m.app.ConfigPath, m.app.Cfg); err != nil {
+			m.config.setStatus(fmt.Sprintf("save failed: %v", err))
+			return m, nil
+		}
+		m.config.draft = m.app.Cfg.Clone()
+		m.config.syncInput()
+		m.config.setStatus("saved and applied")
+		return m, nil
+
 	case tea.ResumeMsg:
 		if m.state == stateResults {
 			return m, m.reloadSelectedCoverCmd()
@@ -186,6 +224,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Suspend):
 			return m, tea.Suspend
+		case key.Matches(msg, m.keys.Config) && m.state != stateConfig && m.state != stateDownloading && m.state != stateLoading:
+			m.previousState = m.state
+			m.config = newConfigModel(m.app.Cfg)
+			m.state = stateConfig
+			m.resizeActiveModel()
+			return m, nil
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 			m.resizeActiveModel()
@@ -221,6 +265,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.downloading, cmd = m.downloading.Update(msg)
 		return m, cmd
+
+	case stateConfig:
+		var cmd tea.Cmd
+		m.config, cmd = m.config.Update(msg)
+		return m, cmd
 	}
 
 	return m, nil
@@ -240,6 +289,8 @@ func (m model) View() string {
 		body = m.chapters.View()
 	case stateDownloading:
 		body = m.downloading.View()
+	case stateConfig:
+		body = m.config.View()
 	default:
 		body = ""
 	}
@@ -266,6 +317,8 @@ func (m model) currentHelp() help.KeyMap {
 		return m.chapters.HelpKeys(m.keys)
 	case stateDownloading:
 		return m.downloading.HelpKeys(m.keys)
+	case stateConfig:
+		return m.config.HelpKeys(m.keys)
 	default:
 		return m.search.HelpKeys(m.keys)
 	}
@@ -292,6 +345,8 @@ func (m *model) resizeActiveModel() {
 		m.chapters.SetSize(m.width, bodyHeight)
 	case stateDownloading:
 		m.downloading.SetSize(m.width, bodyHeight)
+	case stateConfig:
+		m.config.SetSize(m.width, bodyHeight)
 	}
 }
 
