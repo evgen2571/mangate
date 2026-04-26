@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+func TestDefaultConfigUsesParallelChapterDownloads(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Concurrency.ChapterDownloads != 6 {
+		t.Fatalf("ChapterDownloads = %d, want 6", cfg.Concurrency.ChapterDownloads)
+	}
+}
+
 func TestLoadReturnsDefaultsWhenConfigFileMissing(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv(envConfigPath, configPath)

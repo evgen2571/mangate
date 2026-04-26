@@ -56,7 +56,7 @@ else
   },
   "concurrency": {
     "pageDownloads": 8,
-    "chapterDownloads": 2
+    "chapterDownloads": 6
   },
   "dirs": {
     "cache": "$cache_dir",

@@ -243,6 +243,103 @@ func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 	}
 }
 
+func TestDownloadMangaDisambiguatesDuplicateChapterDirectoryNames(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 128, G: 128, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 2
+	cfg.Concurrency.ChapterDownloads = 2
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Duplicate Manga"}
+	manga.Chapters = []*source.Chapter{
+		{ID: "chapter-a", Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/a.png"}}},
+		{ID: "chapter-b", Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/b.png"}}},
+	}
+
+	if err := d.DownloadManga(manga); err != nil {
+		t.Fatalf("DownloadManga() error = %v", err)
+	}
+
+	wantDirs := []string{"Chapter-1", "Chapter-1-chapter-b"}
+	for _, dir := range wantDirs {
+		pagePath := filepath.Join(cfg.Download.Dir, "Duplicate-Manga", dir, "0001.png")
+		if _, err := os.Stat(pagePath); err != nil {
+			t.Fatalf("Stat(%q) error = %v", pagePath, err)
+		}
+	}
+}
+
+func TestDownloadMangaRefreshesLazyPagesAfterForbiddenImage(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 64, B: 200, A: 255})
+	var staleAttempts atomic.Int32
+	var freshAttempts atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/stale.png":
+			staleAttempts.Add(1)
+			w.WriteHeader(http.StatusForbidden)
+		case "/fresh.png":
+			freshAttempts.Add(1)
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes)
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 1
+	cfg.Concurrency.ChapterDownloads = 1
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Refresh Manga"}
+	chapter := &source.Chapter{ID: "chapter-1", Index: "1", From: manga, PageCount: 1}
+	manga.Chapters = []*source.Chapter{chapter}
+
+	var loads atomic.Int32
+	loader := func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+		if loads.Add(1) == 1 {
+			return []*source.Page{{URL: server.URL + "/stale.png"}}, nil
+		}
+		return []*source.Page{{URL: server.URL + "/fresh.png"}}, nil
+	}
+
+	if err := d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, nil); err != nil {
+		t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+	}
+
+	if got := loads.Load(); got != 2 {
+		t.Fatalf("page loads = %d, want 2", got)
+	}
+	if got := staleAttempts.Load(); got != 1 {
+		t.Fatalf("stale attempts = %d, want 1", got)
+	}
+	if got := freshAttempts.Load(); got != 1 {
+		t.Fatalf("fresh attempts = %d, want 1", got)
+	}
+
+	pagePath := filepath.Join(cfg.Download.Dir, "Refresh-Manga", "Chapter-1", "0001.png")
+	if _, err := os.Stat(pagePath); err != nil {
+		t.Fatalf("Stat(%q) error = %v", pagePath, err)
+	}
+}
+
 func TestDownloadPageRetriesTooManyRequests(t *testing.T) {
 	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, G: 255, A: 255})
 	var attempts atomic.Int32

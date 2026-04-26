@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -20,23 +21,52 @@ import (
 
 type PageLoader func(context.Context, *source.Chapter) ([]*source.Page, error)
 
-const maxPageDownloadRetries = 3
+const (
+	maxPageDownloadRetries = 3
+	maxPageRefreshRetries  = 1
+)
 
-func (d *Downloader) DownloadChapter(c *source.Chapter) error {
-	return d.downloadChapter(context.Background(), c, nil, nil)
+type pageStatusError struct {
+	url        string
+	statusCode int
 }
 
-func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, reporter *progressReporter, pageLoader PageLoader) error {
+func (e pageStatusError) Error() string {
+	return fmt.Sprintf("unexpected status code %d for %q", e.statusCode, e.url)
+}
+
+func (d *Downloader) DownloadChapter(c *source.Chapter) error {
+	return d.downloadChapter(context.Background(), c, c.DownloadDirName(), nil, nil)
+}
+
+func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
 	if c == nil {
 		return fmt.Errorf("download chapter: nil chapter")
 	}
 	if c.From == nil {
 		return fmt.Errorf("download chapter %q: missing parent manga", c.ID)
 	}
+	if strings.TrimSpace(chapterName) == "" {
+		chapterName = c.DownloadDirName()
+	}
 	if reporter != nil {
 		reporter.chapterStarted(c)
 	}
 
+	for attempt := 0; ; attempt++ {
+		err := d.downloadChapterAttempt(ctx, c, chapterName, reporter, pageLoader)
+		if err == nil {
+			return nil
+		}
+		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
+			return err
+		}
+		c.Pages = nil
+		c.PageCount = 0
+	}
+}
+
+func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
 	if len(c.Pages) == 0 && pageLoader != nil {
 		pages, err := pageLoader(ctx, c)
 		if err != nil {
@@ -57,7 +87,7 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	chapterDir := filepath.Join(
 		basePath,
 		util.SanitizeString(c.From.Title),
-		util.SanitizeString(c.DownloadDirName()),
+		util.SanitizeString(chapterName),
 	)
 
 	if err := os.RemoveAll(chapterDir); err != nil {
@@ -96,7 +126,7 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	if err := d.converter.ConvertChapter(
 		chapterDir,
 		util.SanitizeString(c.From.Title),
-		util.SanitizeString(c.DownloadDirName()),
+		util.SanitizeString(chapterName),
 	); err != nil {
 		return err
 	}
@@ -142,11 +172,13 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 	var g errgroup.Group
 	g.SetLimit(d.cfg.Concurrency.ChapterDownloads)
 
-	for _, chapter := range m.Chapters {
+	chapterNames := uniqueChapterDirNames(m.Chapters)
+	for idx, chapter := range m.Chapters {
 		chapter := chapter
+		chapterName := chapterNames[idx]
 
 		g.Go(func() error {
-			if err := d.downloadChapter(ctx, chapter, reporter, pageLoader); err != nil {
+			if err := d.downloadChapter(ctx, chapter, chapterName, reporter, pageLoader); err != nil {
 				return err
 			}
 
@@ -155,6 +187,45 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 	}
 
 	return g.Wait()
+}
+
+func uniqueChapterDirNames(chapters []*source.Chapter) []string {
+	names := make([]string, len(chapters))
+	seenBase := make(map[string]int, len(chapters))
+	used := make(map[string]struct{}, len(chapters))
+
+	for idx, chapter := range chapters {
+		baseName := chapter.DownloadDirName()
+		seenBase[baseName]++
+
+		name := baseName
+		if seenBase[baseName] > 1 {
+			name = disambiguatedChapterDirName(baseName, chapter, idx)
+		}
+		for suffix := 2; ; suffix++ {
+			if _, exists := used[name]; !exists {
+				break
+			}
+			name = fmt.Sprintf("%s-%d", baseName, suffix)
+		}
+
+		used[name] = struct{}{}
+		names[idx] = name
+	}
+
+	return names
+}
+
+func disambiguatedChapterDirName(baseName string, chapter *source.Chapter, idx int) string {
+	if chapter != nil && strings.TrimSpace(chapter.ID) != "" {
+		return baseName + "-" + chapter.ID
+	}
+	return fmt.Sprintf("%s-%d", baseName, idx+1)
+}
+
+func isForbiddenPageError(err error) bool {
+	var statusErr pageStatusError
+	return errors.As(err, &statusErr) && statusErr.statusCode == http.StatusForbidden
 }
 
 func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, error) {
@@ -175,7 +246,7 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %v", resp.StatusCode)
+		return "", pageStatusError{url: p.URL, statusCode: resp.StatusCode}
 	}
 
 	filePath := filePathBase + detectPageExtension(resp.Header.Get("Content-Type"), p.URL)

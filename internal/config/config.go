@@ -116,7 +116,7 @@ func DefaultConfig() Config {
 		},
 		Concurrency: ConcurrencyConfig{
 			PageDownloads:    8,
-			ChapterDownloads: 2,
+			ChapterDownloads: 6,
 		},
 		Dirs: DirsConfig{
 			Cache: defaultCacheDir(),
