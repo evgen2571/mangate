@@ -57,7 +57,7 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	chapterDir := filepath.Join(
 		basePath,
 		util.SanitizeString(c.From.Title),
-		util.SanitizeString(chapterDirName(c)),
+		util.SanitizeString(c.DownloadDirName()),
 	)
 
 	if err := os.RemoveAll(chapterDir); err != nil {
@@ -96,7 +96,7 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, rep
 	if err := d.converter.ConvertChapter(
 		chapterDir,
 		util.SanitizeString(c.From.Title),
-		util.SanitizeString(chapterDirName(c)),
+		util.SanitizeString(c.DownloadDirName()),
 	); err != nil {
 		return err
 	}
@@ -155,26 +155,6 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 	}
 
 	return g.Wait()
-}
-
-func chapterDirName(c *source.Chapter) string {
-	if c == nil {
-		return "unknown-chapter"
-	}
-
-	index := strings.TrimSpace(c.Index)
-	title := strings.TrimSpace(c.Title)
-
-	switch {
-	case index != "" && title != "":
-		return "Chapter-" + index + "-" + title
-	case index != "":
-		return "Chapter-" + index
-	case title != "":
-		return "Title-" + title
-	default:
-		return "unknown-chapter"
-	}
 }
 
 func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, error) {

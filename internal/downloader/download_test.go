@@ -292,22 +292,22 @@ func TestDetectPageExtensionUsesAnyImageContentType(t *testing.T) {
 
 func TestChapterDirNameUsesConsistentPrefix(t *testing.T) {
 	chapter := &source.Chapter{Index: "1", Title: "Intro"}
-	if got := chapterDirName(chapter); got != "Chapter-1-Intro" {
-		t.Fatalf("chapterDirName() = %q, want %q", got, "Chapter-1-Intro")
+	if got := chapter.DownloadDirName(); got != "Chapter-1-Intro" {
+		t.Fatalf("DownloadDirName() = %q, want %q", got, "Chapter-1-Intro")
 	}
 }
 
 func TestChapterDirNamePrefixesTitleOnlyChapter(t *testing.T) {
 	chapter := &source.Chapter{Title: "Special"}
-	if got := chapterDirName(chapter); got != "Title-Special" {
-		t.Fatalf("chapterDirName() = %q, want %q", got, "Title-Special")
+	if got := chapter.DownloadDirName(); got != "Title-Special" {
+		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-Special")
 	}
 }
 
 func TestChapterDirNameAvoidsIndexedChapterCollisionForTitleOnlyChapter(t *testing.T) {
 	chapter := &source.Chapter{Title: "1"}
-	if got := chapterDirName(chapter); got != "Title-1" {
-		t.Fatalf("chapterDirName() = %q, want %q", got, "Title-1")
+	if got := chapter.DownloadDirName(); got != "Title-1" {
+		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-1")
 	}
 }
 

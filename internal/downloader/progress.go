@@ -1,8 +1,6 @@
 package downloader
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/evgen2571/mangate/internal/source"
@@ -42,7 +40,7 @@ func newProgressReporter(manga *source.Manga, notify func(DownloadProgress)) *pr
 				continue
 			}
 
-			name := downloadProgressChapterName(chapter)
+			name := chapter.DisplayName()
 			pageCount := knownPageCount(chapter)
 			totalPages += pageCount
 			chapters = append(chapters, ChapterDownloadProgress{
@@ -132,7 +130,7 @@ func (r *progressReporter) chapterCompleted(chapter *source.Chapter) {
 }
 
 func (r *progressReporter) chapterProgress(chapter *source.Chapter) *ChapterDownloadProgress {
-	name := downloadProgressChapterName(chapter)
+	name := chapter.DisplayName()
 	for idx := range r.progress.Chapters {
 		if r.progress.Chapters[idx].Name == name {
 			return &r.progress.Chapters[idx]
@@ -162,24 +160,4 @@ func knownPageCount(chapter *source.Chapter) int {
 		return chapter.PageCount
 	}
 	return len(chapter.Pages)
-}
-
-func downloadProgressChapterName(chapter *source.Chapter) string {
-	if chapter == nil {
-		return "Unknown chapter"
-	}
-
-	index := strings.TrimSpace(chapter.Index)
-	title := strings.TrimSpace(chapter.Title)
-
-	switch {
-	case index != "" && title != "":
-		return fmt.Sprintf("Chapter %s - %s", index, title)
-	case title != "":
-		return title
-	case index != "":
-		return fmt.Sprintf("Chapter %s", index)
-	default:
-		return "Unknown chapter"
-	}
 }

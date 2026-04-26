@@ -20,37 +20,11 @@ type chapterItem struct {
 }
 
 func (i chapterItem) FilterValue() string {
-	if i.value == nil {
-		return ""
-	}
-
-	parts := []string{
-		strings.TrimSpace(i.value.Index),
-		strings.TrimSpace(i.value.Title),
-	}
-	return strings.TrimSpace(strings.Join(parts, " "))
+	return i.value.DisplayName()
 }
 
 func (i chapterItem) Title() string {
-	var text string
-
-	if i.value == nil {
-		text = fmt.Sprintf("Unknown chapter #%d", i.idx+1)
-	} else {
-		index := strings.TrimSpace(i.value.Index)
-		title := strings.TrimSpace(i.value.Title)
-
-		switch {
-		case index != "" && title != "":
-			text = fmt.Sprintf("Chapter %s - %s", index, title)
-		case title != "":
-			text = title
-		case index != "":
-			text = fmt.Sprintf("Chapter %s", index)
-		default:
-			text = fmt.Sprintf("Unknown chapter #%d", i.idx+1)
-		}
-	}
+	text := i.value.DisplayTitle(i.idx)
 
 	if i.selected {
 		marker := lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true).Render("● ")

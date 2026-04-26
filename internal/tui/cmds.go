@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/downloader"
@@ -97,26 +96,6 @@ func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
 			Path:    path,
 			Render:  render,
 		}
-	}
-}
-
-func chapterDisplayName(chapter *source.Chapter) string {
-	if chapter == nil {
-		return "unknown chapter"
-	}
-
-	index := strings.TrimSpace(chapter.Index)
-	title := strings.TrimSpace(chapter.Title)
-
-	switch {
-	case index != "" && title != "":
-		return fmt.Sprintf("chapter %s (%s)", index, title)
-	case index != "":
-		return fmt.Sprintf("chapter %s", index)
-	case title != "":
-		return title
-	default:
-		return "unknown chapter"
 	}
 }
 

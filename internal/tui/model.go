@@ -399,7 +399,7 @@ func (m model) reloadSelectedCoverCmd() tea.Cmd {
 func downloadDetailText(chapters []*source.Chapter) string {
 	count := len(chapters)
 	if count == 1 {
-		return chapterDisplayName(chapters[0])
+		return chapters[0].LogName()
 	}
 	return fmt.Sprintf("%d chapters selected", count)
 }

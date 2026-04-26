@@ -39,7 +39,7 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 					return fmt.Errorf("chapter #%d is nil", i+1)
 				}
 
-				fmt.Fprintf(out, "%d. %s\n", i+1, chapterTitle(chapter, i))
+				fmt.Fprintf(out, "%d. %s\n", i+1, chapter.DisplayTitle(i))
 				if chapter.ID != "" {
 					fmt.Fprintf(out, "   ID:    %s\n", chapter.ID)
 				}
@@ -54,25 +54,5 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 
 			return nil
 		},
-	}
-}
-
-func chapterTitle(chapter *source.Chapter, fallbackIndex int) string {
-	if chapter == nil {
-		return fmt.Sprintf("Unknown chapter #%d", fallbackIndex+1)
-	}
-
-	index := strings.TrimSpace(chapter.Index)
-	title := strings.TrimSpace(chapter.Title)
-
-	switch {
-	case index != "" && title != "":
-		return fmt.Sprintf("Chapter %s - %s", index, title)
-	case index != "":
-		return fmt.Sprintf("Chapter %s", index)
-	case title != "":
-		return title
-	default:
-		return fmt.Sprintf("Unknown chapter #%d", fallbackIndex+1)
 	}
 }

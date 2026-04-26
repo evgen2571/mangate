@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/evgen2571/mangate/internal/cache"
 	"github.com/evgen2571/mangate/internal/config"
@@ -97,7 +96,7 @@ func (s Service) DownloadChapters(ctx context.Context, manga *source.Manga, chap
 
 		pages, err := provider.Pages(requestCtx, chapter)
 		if err != nil {
-			return nil, fmt.Errorf("load pages for %s: %w", chapterDisplayName(chapter), err)
+			return nil, fmt.Errorf("load pages for %s: %w", chapter.LogName(), err)
 		}
 
 		return pages, nil
@@ -161,24 +160,4 @@ func buildDownloadManga(manga *source.Manga, chapters []*source.Chapter) (*sourc
 	}
 
 	return downloadManga, nil
-}
-
-func chapterDisplayName(chapter *source.Chapter) string {
-	if chapter == nil {
-		return "unknown chapter"
-	}
-
-	index := strings.TrimSpace(chapter.Index)
-	title := strings.TrimSpace(chapter.Title)
-
-	switch {
-	case index != "" && title != "":
-		return fmt.Sprintf("chapter %s (%s)", index, title)
-	case index != "":
-		return fmt.Sprintf("chapter %s", index)
-	case title != "":
-		return title
-	default:
-		return "unknown chapter"
-	}
 }
