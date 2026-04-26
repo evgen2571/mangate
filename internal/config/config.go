@@ -25,6 +25,7 @@ type Config struct {
 	HTTP        HTTPConfig
 	Download    DownloadConfig
 	Concurrency ConcurrencyConfig
+	Search      SearchConfig
 	Dirs        DirsConfig
 }
 
@@ -52,6 +53,10 @@ type ConcurrencyConfig struct {
 	ChapterDownloads int
 }
 
+type SearchConfig struct {
+	HistoryMax int
+}
+
 type DirsConfig struct {
 	Cache string
 	Temp  string
@@ -64,6 +69,7 @@ type fileConfig struct {
 	HTTP        *fileHTTPConfig        `json:"http,omitempty"`
 	Download    *fileDownloadConfig    `json:"download,omitempty"`
 	Concurrency *fileConcurrencyConfig `json:"concurrency,omitempty"`
+	Search      *fileSearchConfig      `json:"search,omitempty"`
 	Dirs        *fileDirsConfig        `json:"dirs,omitempty"`
 }
 
@@ -89,6 +95,10 @@ type fileDownloadConfig struct {
 type fileConcurrencyConfig struct {
 	PageDownloads    *int `json:"pageDownloads,omitempty"`
 	ChapterDownloads *int `json:"chapterDownloads,omitempty"`
+}
+
+type fileSearchConfig struct {
+	HistoryMax *int `json:"historyMax,omitempty"`
 }
 
 type fileDirsConfig struct {
@@ -118,6 +128,9 @@ func DefaultConfig() Config {
 			PageDownloads:    8,
 			ChapterDownloads: 6,
 		},
+		Search: SearchConfig{
+			HistoryMax: 100,
+		},
 		Dirs: DirsConfig{
 			Cache: defaultCacheDir(),
 			Temp:  defaultTempDir(),
@@ -145,6 +158,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("page-downloads must be > 0")
 	case c.Concurrency.ChapterDownloads <= 0:
 		return fmt.Errorf("chapter-downloads must be > 0")
+	case c.Search.HistoryMax < 0:
+		return fmt.Errorf("search history max must be >= 0")
 	case strings.TrimSpace(c.Dirs.Cache) == "":
 		return fmt.Errorf("cache dir cannot be empty")
 	case strings.TrimSpace(c.Dirs.Temp) == "":
@@ -282,6 +297,9 @@ func (f fileConfig) applyTo(cfg *Config) error {
 			cfg.Concurrency.ChapterDownloads = *f.Concurrency.ChapterDownloads
 		}
 	}
+	if f.Search != nil && f.Search.HistoryMax != nil {
+		cfg.Search.HistoryMax = *f.Search.HistoryMax
+	}
 	if f.Dirs != nil {
 		if f.Dirs.Cache != nil {
 			cfg.Dirs.Cache = *f.Dirs.Cache
@@ -315,6 +333,9 @@ func newFileConfig(cfg Config) fileConfig {
 		Concurrency: &fileConcurrencyConfig{
 			PageDownloads:    intPtr(cfg.Concurrency.PageDownloads),
 			ChapterDownloads: intPtr(cfg.Concurrency.ChapterDownloads),
+		},
+		Search: &fileSearchConfig{
+			HistoryMax: intPtr(cfg.Search.HistoryMax),
 		},
 		Dirs: &fileDirsConfig{
 			Cache: stringPtr(cfg.Dirs.Cache),

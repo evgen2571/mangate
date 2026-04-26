@@ -47,12 +47,19 @@ func New(a *app.App) tea.Model {
 	h := help.New()
 	h.ShowAll = false
 
+	searchHistory := []string(nil)
+	if a != nil && a.Cache != nil {
+		if history, err := a.Cache.SearchHistory(); err == nil {
+			searchHistory = history
+		}
+	}
+
 	return &model{
 		app:    a,
 		state:  stateSearch,
 		keys:   newKeyMap(),
 		help:   h,
-		search: newSearchModel(),
+		search: newSearchModel(searchHistory),
 		config: newConfigModel(a.Cfg),
 	}
 }
@@ -74,6 +81,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case searchSubmittedMsg:
+		if m.app != nil && m.app.Cache != nil {
+			if err := m.app.Cache.AddSearchQuery(msg.Query); err == nil {
+				if history, err := m.app.Cache.SearchHistory(); err == nil {
+					m.search.SetHistory(history)
+				}
+			}
+		}
 		m.loading = newLoadingModel("Searching manga", msg.Query)
 		m.state = stateLoading
 		m.resizeActiveModel()

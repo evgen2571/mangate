@@ -54,6 +54,14 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Number of concurrent chapter downloads",
 	)
 
+	// Search
+	f.IntVar(
+		&cfg.Search.HistoryMax,
+		"search-history-max",
+		cfg.Search.HistoryMax,
+		"Maximum number of search queries to remember (0 disables history)",
+	)
+
 	// Directories
 	f.StringVar(
 		&cfg.Dirs.Cache,

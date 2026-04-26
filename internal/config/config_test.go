@@ -15,6 +15,13 @@ func TestDefaultConfigUsesParallelChapterDownloads(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigKeepsSearchHistory(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Search.HistoryMax != 100 {
+		t.Fatalf("Search.HistoryMax = %d, want 100", cfg.Search.HistoryMax)
+	}
+}
+
 func TestLoadReturnsDefaultsWhenConfigFileMissing(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv(envConfigPath, configPath)
@@ -50,6 +57,9 @@ func TestLoadMergesOverridesFromConfigFile(t *testing.T) {
   "concurrency": {
     "pageDownloads": 3
   },
+  "search": {
+    "historyMax": 25
+  },
   "dirs": {
     "temp": "/tmp/custom-temp"
   }
@@ -77,6 +87,9 @@ func TestLoadMergesOverridesFromConfigFile(t *testing.T) {
 	}
 	if cfg.Concurrency.PageDownloads != 3 {
 		t.Fatalf("Concurrency.PageDownloads = %d, want %d", cfg.Concurrency.PageDownloads, 3)
+	}
+	if cfg.Search.HistoryMax != 25 {
+		t.Fatalf("Search.HistoryMax = %d, want %d", cfg.Search.HistoryMax, 25)
 	}
 	if cfg.Dirs.Temp != "/tmp/custom-temp" {
 		t.Fatalf("Dirs.Temp = %q, want %q", cfg.Dirs.Temp, "/tmp/custom-temp")

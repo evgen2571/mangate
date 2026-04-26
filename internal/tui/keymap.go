@@ -34,8 +34,11 @@ func newKeyMap() keyMap {
 }
 
 type searchKeyMap struct {
-	Submit key.Binding
-	Clear  key.Binding
+	Submit   key.Binding
+	Clear    key.Binding
+	Complete key.Binding
+	Previous key.Binding
+	Next     key.Binding
 }
 
 func newSearchKeyMap() searchKeyMap {
@@ -47,6 +50,18 @@ func newSearchKeyMap() searchKeyMap {
 		Clear: key.NewBinding(
 			key.WithKeys("ctrl+u"),
 			key.WithHelp("ctrl+u", "clear"),
+		),
+		Complete: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "complete"),
+		),
+		Previous: key.NewBinding(
+			key.WithKeys("up"),
+			key.WithHelp("↑", "history prev"),
+		),
+		Next: key.NewBinding(
+			key.WithKeys("down"),
+			key.WithHelp("↓", "history next"),
 		),
 	}
 }
@@ -107,6 +122,9 @@ type resultsHelpKeyMap struct {
 func (k searchHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.local.Submit,
+		k.local.Complete,
+		k.local.Previous,
+		k.local.Next,
 		k.local.Clear,
 		k.global.Config,
 		k.global.Help,
@@ -116,7 +134,7 @@ func (k searchHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k searchHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Submit, k.local.Clear},
+		{k.local.Submit, k.local.Complete, k.local.Previous, k.local.Next, k.local.Clear},
 		{k.global.Config, k.global.Help, k.global.Suspend, k.global.Quit},
 	}
 }

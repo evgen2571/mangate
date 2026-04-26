@@ -25,6 +25,7 @@ const (
 	configFieldHTTPTimeout
 	configFieldPageDownloads
 	configFieldChapterDownloads
+	configFieldSearchHistoryMax
 	configFieldCacheDir
 	configFieldTempDir
 	configFieldCount
@@ -187,6 +188,8 @@ func (m configModel) fieldLabel(field configField) string {
 		return "Page downloads"
 	case configFieldChapterDownloads:
 		return "Chapter downloads"
+	case configFieldSearchHistoryMax:
+		return "Search history max"
 	case configFieldCacheDir:
 		return "Cache dir"
 	case configFieldTempDir:
@@ -212,6 +215,8 @@ func (m configModel) fieldValue(field configField) string {
 		return strconv.Itoa(m.draft.Concurrency.PageDownloads)
 	case configFieldChapterDownloads:
 		return strconv.Itoa(m.draft.Concurrency.ChapterDownloads)
+	case configFieldSearchHistoryMax:
+		return strconv.Itoa(m.draft.Search.HistoryMax)
 	case configFieldCacheDir:
 		return m.draft.Dirs.Cache
 	case configFieldTempDir:
@@ -256,6 +261,12 @@ func (m *configModel) updateDraftFromInput() error {
 			return fmt.Errorf("parse chapter downloads: %w", err)
 		}
 		next.Concurrency.ChapterDownloads = n
+	case configFieldSearchHistoryMax:
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse search history max: %w", err)
+		}
+		next.Search.HistoryMax = n
 	case configFieldCacheDir:
 		next.Dirs.Cache = value
 	case configFieldTempDir:

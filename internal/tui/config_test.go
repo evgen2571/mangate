@@ -19,6 +19,7 @@ func TestConfigModelUpdateDraftFromCurrentFieldParsesValues(t *testing.T) {
 		{configFieldLanguage, "ru", func(c config.Config) bool { return c.Language == "ru" }},
 		{configFieldHTTPTimeout, "45s", func(c config.Config) bool { return c.HTTP.Timeout == 45*time.Second }},
 		{configFieldPageDownloads, "3", func(c config.Config) bool { return c.Concurrency.PageDownloads == 3 }},
+		{configFieldSearchHistoryMax, "25", func(c config.Config) bool { return c.Search.HistoryMax == 25 }},
 	}
 
 	for _, tc := range cases {
