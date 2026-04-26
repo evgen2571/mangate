@@ -6,11 +6,16 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/evgen2571/mangate/internal/source"
 )
 
 func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+	if err := pr.paceAtHomeRequest(ctx); err != nil {
+		return nil, fmt.Errorf("wait for at-home request slot in %q: %w", pr.Name(), err)
+	}
+
 	url := pr.api("at-home/server/" + chapter.ID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -39,6 +44,26 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 	}
 
 	return pages, nil
+}
+
+func (pr *Provider) paceAtHomeRequest(ctx context.Context) error {
+	if pr.atHomeMinInterval <= 0 {
+		return nil
+	}
+
+	pr.atHomeMu.Lock()
+	defer pr.atHomeMu.Unlock()
+
+	if !pr.lastAtHomeRequest.IsZero() {
+		wait := pr.atHomeMinInterval - time.Since(pr.lastAtHomeRequest)
+		if wait > 0 {
+			if err := sleepWithContext(ctx, wait); err != nil {
+				return err
+			}
+		}
+	}
+	pr.lastAtHomeRequest = time.Now()
+	return nil
 }
 
 func (mdpr *mangaDexPageResponse) toSourcePages() []*source.Page {

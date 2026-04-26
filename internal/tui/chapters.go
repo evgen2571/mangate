@@ -20,37 +20,11 @@ type chapterItem struct {
 }
 
 func (i chapterItem) FilterValue() string {
-	if i.value == nil {
-		return ""
-	}
-
-	parts := []string{
-		strings.TrimSpace(i.value.Index),
-		strings.TrimSpace(i.value.Title),
-	}
-	return strings.TrimSpace(strings.Join(parts, " "))
+	return i.value.DisplayName()
 }
 
 func (i chapterItem) Title() string {
-	var text string
-
-	if i.value == nil {
-		text = fmt.Sprintf("Unknown chapter #%d", i.idx+1)
-	} else {
-		index := strings.TrimSpace(i.value.Index)
-		title := strings.TrimSpace(i.value.Title)
-
-		switch {
-		case index != "" && title != "":
-			text = fmt.Sprintf("Chapter %s - %s", index, title)
-		case title != "":
-			text = title
-		case index != "":
-			text = fmt.Sprintf("Chapter %s", index)
-		default:
-			text = fmt.Sprintf("Unknown chapter #%d", i.idx+1)
-		}
-	}
+	text := i.value.DisplayTitle(i.idx)
 
 	if i.selected {
 		marker := lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true).Render("● ")
@@ -121,9 +95,23 @@ func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 		case key.Matches(msg, m.keys.Toggle):
 			m.toggleSelectionAt(m.list.Index())
 			return m, nil
+		case key.Matches(msg, m.keys.SelectAll):
+			if m.allChaptersSelected() {
+				m.deselectAll()
+				m.setStatus("cleared selection")
+				return m, nil
+			}
+			m.selectAll()
+			m.setStatus("selected all chapters")
+			return m, nil
+		case key.Matches(msg, m.keys.DeselectAll):
+			m.deselectAll()
+			m.setStatus("cleared selection")
+			return m, nil
 		case key.Matches(msg, m.keys.Download):
 			chapters := m.chaptersForDownload()
 			if len(chapters) == 0 {
+				m.setStatus("no chapter selected")
 				return m, nil
 			}
 			return m, func() tea.Msg {
@@ -190,20 +178,22 @@ func (m chaptersModel) listHeight() int {
 
 func (m chaptersModel) footerText() string {
 	parts := []string{}
+	chapterCount := m.chapterCount()
 	if m.manga == nil || strings.TrimSpace(m.manga.Title) == "" {
 		parts = append(parts, "Chapters")
 	} else {
 		parts = append(parts, fmt.Sprintf("Chapters for %q", strings.TrimSpace(m.manga.Title)))
 	}
+	parts = append(parts, fmt.Sprintf("chapters: %d", chapterCount))
 
 	selectedCount := m.selectedCount()
 	if selectedCount > 0 {
 		parts = append(parts, fmt.Sprintf("selected: %d", selectedCount))
-		parts = append(parts, "enter downloads selected")
+		parts = append(parts, "enter: selected")
 	} else {
-		parts = append(parts, "enter downloads current")
+		parts = append(parts, "enter: current")
 	}
-	parts = append(parts, "space toggles selection")
+	parts = append(parts, "space: toggle")
 
 	if strings.TrimSpace(m.status) != "" {
 		parts = append(parts, m.status)
@@ -224,6 +214,26 @@ func (m *chaptersModel) setStatus(status string) {
 }
 
 func (m *chaptersModel) clearSelection() {
+	m.deselectAll()
+}
+
+func (m *chaptersModel) selectAll() {
+	if m.allChaptersSelected() {
+		m.deselectAll()
+		return
+	}
+
+	m.selected = make(map[string]bool)
+	for idx, chapter := range m.chapters {
+		if chapter == nil {
+			continue
+		}
+		m.selected[chapterSelectionKey(chapter, idx)] = true
+	}
+	m.syncListItems()
+}
+
+func (m *chaptersModel) deselectAll() {
 	m.selected = make(map[string]bool)
 	m.syncListItems()
 }
@@ -266,6 +276,32 @@ func (m chaptersModel) chaptersForDownload() []*source.Chapter {
 
 func (m chaptersModel) selectedCount() int {
 	return len(m.selected)
+}
+
+func (m chaptersModel) allChaptersSelected() bool {
+	if m.chapterCount() == 0 {
+		return false
+	}
+
+	for idx, chapter := range m.chapters {
+		if chapter == nil {
+			continue
+		}
+		if !m.selected[chapterSelectionKey(chapter, idx)] {
+			return false
+		}
+	}
+	return true
+}
+
+func (m chaptersModel) chapterCount() int {
+	count := 0
+	for _, chapter := range m.chapters {
+		if chapter != nil {
+			count++
+		}
+	}
+	return count
 }
 
 func (m chaptersModel) chapterAt(index int) *source.Chapter {

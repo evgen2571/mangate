@@ -57,8 +57,6 @@ func (c *Converter) ConvertChapter(sourceDir, mangaDirName, chapterName string) 
 	if err := os.RemoveAll(sourceDir); err != nil {
 		return fmt.Errorf("remove converted source directory %q: %w", sourceDir, err)
 	}
-	removeIfEmpty(filepath.Dir(sourceDir))
-
 	return nil
 }
 
@@ -232,12 +230,4 @@ func replacePath(sourcePath, targetPath string) error {
 		return fmt.Errorf("move new path %q to %q: %w", sourcePath, targetPath, err)
 	}
 	return nil
-}
-
-func removeIfEmpty(path string) {
-	entries, err := os.ReadDir(path)
-	if err != nil || len(entries) > 0 {
-		return
-	}
-	_ = os.Remove(path)
 }

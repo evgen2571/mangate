@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/evgen2571/mangate/internal/source"
+import (
+	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/source"
+)
 
 type searchSubmittedMsg struct {
 	Query string
@@ -16,6 +19,10 @@ type searchFailedMsg struct {
 }
 
 type chaptersOpenRequestedMsg struct {
+	Manga *source.Manga
+}
+
+type fullMangaDownloadRequestedMsg struct {
 	Manga *source.Manga
 }
 
@@ -70,3 +77,11 @@ type coverFailedMsg struct {
 }
 
 type goBackMsg struct{}
+
+type configApplyRequestedMsg struct {
+	Config config.Config
+}
+
+type configSaveRequestedMsg struct {
+	Config config.Config
+}

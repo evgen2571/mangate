@@ -3,9 +3,13 @@ package mangadex
 import (
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/evgen2571/mangate/internal/config"
 )
+
+const defaultAtHomeMinInterval = 1500 * time.Millisecond
 
 type Provider struct {
 	client     *http.Client
@@ -13,15 +17,20 @@ type Provider struct {
 	baseURL    string
 	uploadsURL string
 	language   string
+
+	atHomeMu          sync.Mutex
+	lastAtHomeRequest time.Time
+	atHomeMinInterval time.Duration
 }
 
 func New(cfg config.Config, client *http.Client) (*Provider, error) {
 	return &Provider{
-		client:     client,
-		siteURL:    cfg.Providers.MangaDex.SiteURL,
-		baseURL:    cfg.Providers.MangaDex.BaseURL,
-		uploadsURL: cfg.Providers.MangaDex.UploadsURL,
-		language:   cfg.Language,
+		client:            client,
+		siteURL:           cfg.Providers.MangaDex.SiteURL,
+		baseURL:           cfg.Providers.MangaDex.BaseURL,
+		uploadsURL:        cfg.Providers.MangaDex.UploadsURL,
+		language:          cfg.Language,
+		atHomeMinInterval: defaultAtHomeMinInterval,
 	}, nil
 }
 

@@ -181,6 +181,16 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 				return chaptersOpenRequestedMsg{Manga: selected}
 			})...)
 
+		case key.Matches(msg, m.keys.Download):
+			selected := m.selectedManga()
+			if selected == nil {
+				return m, tea.Batch(cmds...)
+			}
+
+			return m, tea.Batch(append(cmds, func() tea.Msg {
+				return fullMangaDownloadRequestedMsg{Manga: selected}
+			})...)
+
 		case key.Matches(msg, m.keys.MetaUp):
 			m.metadata.LineUp(5)
 			return m, tea.Batch(cmds...)
@@ -374,10 +384,15 @@ func (m resultsModel) metadataContent() string {
 		fmt.Sprintf("Title: %s", item.value.Title),
 		fmt.Sprintf("ID: %s", item.value.ID),
 		fmt.Sprintf("URL: %s", item.value.URL),
+	}
+	if item.value.Metadata.ChapterCount > 0 {
+		header = append(header, fmt.Sprintf("Chapters: %d", item.value.Metadata.ChapterCount))
+	}
+	header = append(header,
 		"",
 		"Description:",
 		"",
-	}
+	)
 
 	return strings.Join(header, "\n") + m.renderMarkdown(desc)
 }

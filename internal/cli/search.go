@@ -19,14 +19,9 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 				return fmt.Errorf("title cannot be empty")
 			}
 
-			provider, err := a.Registry.New(a.Cfg.Provider, a.Cfg, a.Client)
+			results, err := a.UseCases().SearchManga(cmd.Context(), title)
 			if err != nil {
-				return fmt.Errorf("create provider %q: %w", a.Cfg.Provider, err)
-			}
-
-			results, err := provider.Search(cmd.Context(), title)
-			if err != nil {
-				return fmt.Errorf("search %q with provider %q: %w", title, provider.Name(), err)
+				return fmt.Errorf("search %q with provider %q: %w", title, a.Cfg.Provider, err)
 			}
 
 			if len(results) == 0 {

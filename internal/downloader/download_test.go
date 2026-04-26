@@ -112,6 +112,88 @@ func TestDownloadMangaWithPageLoaderLoadsMissingPages(t *testing.T) {
 	}
 }
 
+func TestDownloadMangaReportsChaptersActiveBeforeLazyPageLoadingCompletes(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, B: 255, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.ChapterDownloads = 5
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Lazy Active Manga"}
+	for idx := 1; idx <= 5; idx++ {
+		manga.Chapters = append(manga.Chapters, &source.Chapter{
+			ID:        "chapter-" + strconv.Itoa(idx),
+			Index:     strconv.Itoa(idx),
+			From:      manga,
+			PageCount: 1,
+		})
+	}
+
+	loaderStarted := make(chan struct{}, len(manga.Chapters))
+	releaseLoader := make(chan struct{})
+	loader := func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+		loaderStarted <- struct{}{}
+		<-releaseLoader
+		return []*source.Page{{URL: server.URL + "/" + chapter.ID + ".png"}}, nil
+	}
+
+	progressCh := make(chan DownloadProgress, 32)
+	done := make(chan error, 1)
+	go func() {
+		done <- d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, func(progress DownloadProgress) {
+			progressCh <- progress
+		})
+	}()
+
+	for range manga.Chapters {
+		select {
+		case <-loaderStarted:
+		case <-time.After(time.Second):
+			close(releaseLoader)
+			t.Fatalf("timed out waiting for all chapter workers to enter lazy page loading")
+		}
+	}
+
+	observedAllActive := false
+	deadline := time.After(time.Second)
+	for !observedAllActive {
+		select {
+		case progress := <-progressCh:
+			active := 0
+			for _, chapter := range progress.Chapters {
+				if chapter.Active {
+					active++
+				}
+			}
+			observedAllActive = active == 5
+		case err := <-done:
+			t.Fatalf("download finished before reporting active lazy-loading chapters: %v", err)
+		case <-deadline:
+			close(releaseLoader)
+			t.Fatalf("timed out waiting for progress with 5 active chapters")
+		}
+	}
+
+	close(releaseLoader)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for download to finish")
+	}
+}
+
 func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 	pngBytes := mustPNGBytes(t, color.RGBA{B: 255, A: 255})
 	var active atomic.Int32
@@ -158,6 +240,103 @@ func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 
 	if got := maxActive.Load(); got != 1 {
 		t.Fatalf("max concurrent page downloads = %d, want 1", got)
+	}
+}
+
+func TestDownloadMangaDisambiguatesDuplicateChapterDirectoryNames(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 128, G: 128, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 2
+	cfg.Concurrency.ChapterDownloads = 2
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Duplicate Manga"}
+	manga.Chapters = []*source.Chapter{
+		{ID: "chapter-a", Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/a.png"}}},
+		{ID: "chapter-b", Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/b.png"}}},
+	}
+
+	if err := d.DownloadManga(manga); err != nil {
+		t.Fatalf("DownloadManga() error = %v", err)
+	}
+
+	wantDirs := []string{"Chapter-1", "Chapter-1-chapter-b"}
+	for _, dir := range wantDirs {
+		pagePath := filepath.Join(cfg.Download.Dir, "Duplicate-Manga", dir, "0001.png")
+		if _, err := os.Stat(pagePath); err != nil {
+			t.Fatalf("Stat(%q) error = %v", pagePath, err)
+		}
+	}
+}
+
+func TestDownloadMangaRefreshesLazyPagesAfterForbiddenImage(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 64, B: 200, A: 255})
+	var staleAttempts atomic.Int32
+	var freshAttempts atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/stale.png":
+			staleAttempts.Add(1)
+			w.WriteHeader(http.StatusForbidden)
+		case "/fresh.png":
+			freshAttempts.Add(1)
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes)
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 1
+	cfg.Concurrency.ChapterDownloads = 1
+
+	d := New(cfg, server.Client())
+
+	manga := &source.Manga{Title: "Refresh Manga"}
+	chapter := &source.Chapter{ID: "chapter-1", Index: "1", From: manga, PageCount: 1}
+	manga.Chapters = []*source.Chapter{chapter}
+
+	var loads atomic.Int32
+	loader := func(_ context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+		if loads.Add(1) == 1 {
+			return []*source.Page{{URL: server.URL + "/stale.png"}}, nil
+		}
+		return []*source.Page{{URL: server.URL + "/fresh.png"}}, nil
+	}
+
+	if err := d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, nil); err != nil {
+		t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+	}
+
+	if got := loads.Load(); got != 2 {
+		t.Fatalf("page loads = %d, want 2", got)
+	}
+	if got := staleAttempts.Load(); got != 1 {
+		t.Fatalf("stale attempts = %d, want 1", got)
+	}
+	if got := freshAttempts.Load(); got != 1 {
+		t.Fatalf("fresh attempts = %d, want 1", got)
+	}
+
+	pagePath := filepath.Join(cfg.Download.Dir, "Refresh-Manga", "Chapter-1", "0001.png")
+	if _, err := os.Stat(pagePath); err != nil {
+		t.Fatalf("Stat(%q) error = %v", pagePath, err)
 	}
 }
 
@@ -210,22 +389,22 @@ func TestDetectPageExtensionUsesAnyImageContentType(t *testing.T) {
 
 func TestChapterDirNameUsesConsistentPrefix(t *testing.T) {
 	chapter := &source.Chapter{Index: "1", Title: "Intro"}
-	if got := chapterDirName(chapter); got != "Chapter-1-Intro" {
-		t.Fatalf("chapterDirName() = %q, want %q", got, "Chapter-1-Intro")
+	if got := chapter.DownloadDirName(); got != "Chapter-1-Intro" {
+		t.Fatalf("DownloadDirName() = %q, want %q", got, "Chapter-1-Intro")
 	}
 }
 
 func TestChapterDirNamePrefixesTitleOnlyChapter(t *testing.T) {
 	chapter := &source.Chapter{Title: "Special"}
-	if got := chapterDirName(chapter); got != "Title-Special" {
-		t.Fatalf("chapterDirName() = %q, want %q", got, "Title-Special")
+	if got := chapter.DownloadDirName(); got != "Title-Special" {
+		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-Special")
 	}
 }
 
 func TestChapterDirNameAvoidsIndexedChapterCollisionForTitleOnlyChapter(t *testing.T) {
 	chapter := &source.Chapter{Title: "1"}
-	if got := chapterDirName(chapter); got != "Title-1" {
-		t.Fatalf("chapterDirName() = %q, want %q", got, "Title-1")
+	if got := chapter.DownloadDirName(); got != "Title-1" {
+		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-1")
 	}
 }
 
