@@ -18,8 +18,13 @@ type Provider interface {
 	Cover(context.Context, *source.Manga) (string, error)
 }
 
+type CoverProvider interface {
+	Name() string
+	Cover(context.Context, *source.Manga) (string, error)
+}
+
 type CoverCache interface {
-	Get(context.Context, Provider, *source.Manga) (string, error)
+	Get(context.Context, CoverProvider, *source.Manga) (string, error)
 }
 
 type PageLoader func(context.Context, *source.Chapter) ([]*source.Page, error)

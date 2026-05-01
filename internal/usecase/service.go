@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/evgen2571/mangate/internal/source"
@@ -49,6 +50,15 @@ func (s Service) Chapters(ctx context.Context, manga *source.Manga) ([]*source.C
 	defer cancel()
 
 	return provider.Chapters(ctx, manga)
+}
+
+func (s Service) ChaptersByID(ctx context.Context, id string) ([]*source.Chapter, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, fmt.Errorf("load chapters: manga id cannot be empty")
+	}
+
+	return s.Chapters(ctx, &source.Manga{ID: id, Title: id})
 }
 
 func (s Service) CoverPath(ctx context.Context, manga *source.Manga) (string, error) {

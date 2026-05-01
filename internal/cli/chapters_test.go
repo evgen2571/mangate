@@ -86,16 +86,15 @@ func newTestApp(t *testing.T, provider fakeProvider) *app.App {
 	cfg := config.DefaultConfig()
 	cfg.Provider = "fake"
 
-	a, err := app.New(cfg)
-	if err != nil {
-		t.Fatalf("app.New() error = %v", err)
-	}
-
 	registry := providers.NewRegistry()
 	registry.Register("fake", func(cfg config.Config, client *http.Client) (providers.Provider, error) {
 		return provider, nil
 	})
-	a.Registry = registry
+
+	a, err := app.New(cfg, app.WithRegistry(registry))
+	if err != nil {
+		t.Fatalf("app.New() error = %v", err)
+	}
 
 	return a
 }

@@ -14,10 +14,14 @@ import (
 	"sync"
 
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/providers"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
 )
+
+type CoverProvider interface {
+	Name() string
+	Cover(context.Context, *source.Manga) (string, error)
+}
 
 type inflightDownload struct {
 	done chan struct{}
@@ -40,7 +44,7 @@ func New(cfg config.Config, client *http.Client) *Cache {
 	}
 }
 
-func (c *Cache) Get(ctx context.Context, provider providers.Provider, manga *source.Manga) (string, error) {
+func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.Manga) (string, error) {
 	if manga == nil {
 		return "", fmt.Errorf("nil manga")
 	}

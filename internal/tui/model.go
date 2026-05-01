@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
-	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
@@ -48,8 +47,8 @@ func New(a *app.App) tea.Model {
 	h.ShowAll = false
 
 	searchHistory := []string(nil)
-	if a != nil && a.Cache != nil {
-		if history, err := a.Cache.SearchHistory(); err == nil {
+	if a != nil {
+		if history, err := a.SearchHistory(); err == nil {
 			searchHistory = history
 		}
 	}
@@ -81,9 +80,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case searchSubmittedMsg:
-		if m.app != nil && m.app.Cache != nil {
-			if err := m.app.Cache.AddSearchQuery(msg.Query); err == nil {
-				if history, err := m.app.Cache.SearchHistory(); err == nil {
+		if m.app != nil {
+			if err := m.app.AddSearchQuery(msg.Query); err == nil {
+				if history, err := m.app.SearchHistory(); err == nil {
 					m.search.SetHistory(history)
 				}
 			}
@@ -241,12 +240,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case configSaveRequestedMsg:
-		if err := m.app.ApplyConfig(msg.Config); err != nil {
-			m.config.setStatus(fmt.Sprintf("apply failed: %v", err))
-			return m, nil
-		}
-		if err := config.Save(m.app.ConfigPath, m.app.Cfg); err != nil {
-			m.config.setStatus(fmt.Sprintf("save failed: %v", err))
+		if err := m.app.ApplyAndSaveConfig(msg.Config); err != nil {
+			m.config.setStatus(err.Error())
 			return m, nil
 		}
 		m.config.draft = m.app.Cfg.Clone()

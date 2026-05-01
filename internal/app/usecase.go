@@ -41,7 +41,7 @@ type coverCache struct {
 	cache *cache.Cache
 }
 
-func (c coverCache) Get(ctx context.Context, provider usecase.Provider, manga *source.Manga) (string, error) {
+func (c coverCache) Get(ctx context.Context, provider usecase.CoverProvider, manga *source.Manga) (string, error) {
 	if c.cache == nil {
 		return "", fmt.Errorf("load cover: cache is not configured")
 	}

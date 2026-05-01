@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/evgen2571/mangate/internal/app"
-	"github.com/evgen2571/mangate/internal/source"
 )
 
 func NewChaptersCmd(a *app.App) *cobra.Command {
@@ -21,8 +20,7 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 				return fmt.Errorf("manga id cannot be empty")
 			}
 
-			manga := &source.Manga{ID: mangaID, Title: mangaID}
-			chapters, err := a.UseCases().Chapters(cmd.Context(), manga)
+			chapters, err := a.UseCases().ChaptersByID(cmd.Context(), mangaID)
 			if err != nil {
 				return fmt.Errorf("load chapters for manga %q with provider %q: %w", mangaID, a.Cfg.Provider, err)
 			}

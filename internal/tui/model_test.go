@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
+	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
@@ -109,5 +112,73 @@ func TestModelPlainChaptersOpenClearsPendingFullDownload(t *testing.T) {
 	}
 	if got.state != stateLoading {
 		t.Fatalf("state = %v, want stateLoading", got.state)
+	}
+}
+
+func TestModelConfigSaveUsesAppFacadeStatus(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Dirs.Cache = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Dir = t.TempDir()
+
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatalf("app.New() error = %v", err)
+	}
+	a.ConfigPath = filepath.Join(t.TempDir(), "config.json")
+
+	updatedCfg := cfg
+	updatedCfg.Language = "ru"
+	m := model{app: a, config: newConfigModel(cfg)}
+
+	updated, cmd := m.Update(configSaveRequestedMsg{Config: updatedCfg})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+	if cmd != nil {
+		t.Fatalf("Update() returned unexpected command")
+	}
+	if got.config.status != "saved and applied" {
+		t.Fatalf("config status = %q, want %q", got.config.status, "saved and applied")
+	}
+	if got.config.draft != updatedCfg {
+		t.Fatalf("draft config = %#v, want %#v", got.config.draft, updatedCfg)
+	}
+}
+
+func TestModelConfigSaveShowsApplyAndSaveFailuresFromAppFacade(t *testing.T) {
+	cfg := config.DefaultConfig()
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatalf("app.New() error = %v", err)
+	}
+	a.ConfigPath = filepath.Join(t.TempDir(), "config.json")
+
+	invalid := cfg
+	invalid.Provider = ""
+	m := model{app: a, config: newConfigModel(cfg)}
+
+	updated, _ := m.Update(configSaveRequestedMsg{Config: invalid})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+	if got.config.status != "apply failed: provider cannot be empty" {
+		t.Fatalf("apply failure status = %q", got.config.status)
+	}
+
+	a.ConfigPath = "  "
+	validUpdate := cfg
+	validUpdate.Language = "ru"
+	m = model{app: a, config: newConfigModel(cfg)}
+
+	updated, _ = m.Update(configSaveRequestedMsg{Config: validUpdate})
+	got, ok = updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+	if got.config.status != "save failed: config path cannot be empty" {
+		t.Fatalf("save failure status = %q", got.config.status)
 	}
 }

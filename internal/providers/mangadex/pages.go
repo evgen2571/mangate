@@ -38,12 +38,7 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 		return nil, fmt.Errorf("decode pages response in %q: %w", pr.Name(), err)
 	}
 
-	pages := pageResp.toSourcePages()
-	for _, page := range pages {
-		page.From = chapter
-	}
-
-	return pages, nil
+	return pageResp.toSourcePages(), nil
 }
 
 func (pr *Provider) paceAtHomeRequest(ctx context.Context) error {

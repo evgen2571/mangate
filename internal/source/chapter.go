@@ -69,24 +69,6 @@ func (c *Chapter) LogName() string {
 	}
 }
 
-func (c *Chapter) DownloadDirName() string {
-	if c == nil {
-		return "unknown-chapter"
-	}
-
-	index, title := c.trimmedIndexAndTitle()
-	switch {
-	case index != "" && title != "":
-		return "Chapter-" + index + "-" + title
-	case index != "":
-		return "Chapter-" + index
-	case title != "":
-		return "Title-" + title
-	default:
-		return "unknown-chapter"
-	}
-}
-
 func (c *Chapter) trimmedIndexAndTitle() (string, string) {
 	if c == nil {
 		return "", ""

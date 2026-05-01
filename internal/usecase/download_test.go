@@ -95,6 +95,58 @@ func TestServiceUsesProviderPortForSearchChaptersAndCover(t *testing.T) {
 	}
 }
 
+func TestServiceChaptersByIDBuildsIDOnlyManga(t *testing.T) {
+	chapters := []*source.Chapter{{ID: "chapter-1", Title: "One"}}
+	provider := &fakeProvider{chapters: chapters}
+	service := New(Deps{ProviderResolver: fakeProviderResolver{provider: provider}})
+
+	gotChapters, err := service.ChaptersByID(context.Background(), "  manga-123  ")
+	if err != nil {
+		t.Fatalf("ChaptersByID() error = %v", err)
+	}
+	if !reflect.DeepEqual(gotChapters, chapters) {
+		t.Fatalf("ChaptersByID() = %#v, want %#v", gotChapters, chapters)
+	}
+	if provider.chaptersManga == nil {
+		t.Fatalf("provider chapters manga was nil")
+	}
+	if provider.chaptersManga.ID != "manga-123" {
+		t.Fatalf("provider manga ID = %q, want manga-123", provider.chaptersManga.ID)
+	}
+	if provider.chaptersManga.Title != "manga-123" {
+		t.Fatalf("provider manga Title = %q, want manga-123 fallback title", provider.chaptersManga.Title)
+	}
+}
+
+func TestServiceChaptersByIDRejectsBlankID(t *testing.T) {
+	service := New(Deps{ProviderResolver: fakeProviderResolver{provider: &fakeProvider{}}})
+
+	_, err := service.ChaptersByID(context.Background(), " \t\n ")
+	if err == nil {
+		t.Fatal("ChaptersByID() error = nil, want error")
+	}
+	if err.Error() != "load chapters: manga id cannot be empty" {
+		t.Fatalf("ChaptersByID() error = %q, want empty manga id error", err)
+	}
+}
+
+func TestCoverCachePortAcceptsCoverOnlyProvider(t *testing.T) {
+	provider := &fakeCoverProvider{}
+	cache := &fakeCoverCache{path: "/tmp/cover.img"}
+	manga := &source.Manga{ID: "manga-id", Title: "Manga"}
+
+	gotPath, err := cache.Get(context.Background(), provider, manga)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if gotPath != cache.path {
+		t.Fatalf("Get() = %q, want %q", gotPath, cache.path)
+	}
+	if cache.provider != provider {
+		t.Fatalf("cache provider = %p, want %p", cache.provider, provider)
+	}
+}
+
 func TestServiceDownloadChaptersOrchestratesProviderPagesAndDownloader(t *testing.T) {
 	manga := &source.Manga{ID: "manga-id", Title: "Manga"}
 	chapter := &source.Chapter{ID: "chapter-1", Index: "1", Title: "One"}
@@ -202,13 +254,23 @@ func (p *fakeProvider) Cover(context.Context, *source.Manga) (string, error) {
 	return "https://example.com/cover.jpg", nil
 }
 
+type fakeCoverProvider struct{}
+
+func (p *fakeCoverProvider) Name() string {
+	return "fake"
+}
+
+func (p *fakeCoverProvider) Cover(context.Context, *source.Manga) (string, error) {
+	return "https://example.com/cover.jpg", nil
+}
+
 type fakeCoverCache struct {
 	path     string
-	provider Provider
+	provider CoverProvider
 	manga    *source.Manga
 }
 
-func (c *fakeCoverCache) Get(_ context.Context, provider Provider, manga *source.Manga) (string, error) {
+func (c *fakeCoverCache) Get(_ context.Context, provider CoverProvider, manga *source.Manga) (string, error) {
 	c.provider = provider
 	c.manga = manga
 	return c.path, nil

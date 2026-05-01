@@ -54,14 +54,7 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 			}
 
 			err := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress usecase.DownloadProgress) {
-				progressCh <- downloadProgressMsg{
-					Title:     "Downloading pages",
-					Detail:    progressSummaryDetail(progress.Chapters),
-					Status:    fmt.Sprintf("Downloaded %d/%d chapters", progress.CompletedChapters, progress.TotalChapters),
-					Completed: progress.CompletedPages,
-					Total:     progress.TotalPages,
-					Chapters:  toChapterProgressViews(progress.Chapters),
-				}
+				progressCh <- downloadProgressMsgFromUsecase(progress)
 			})
 			if err != nil {
 				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
@@ -99,6 +92,18 @@ func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
 	}
 }
 
+func downloadProgressMsgFromUsecase(progress usecase.DownloadProgress) downloadProgressMsg {
+	chapters := toChapterProgressViews(progress.Chapters)
+	return downloadProgressMsg{
+		Title:     "Downloading pages",
+		Detail:    progressSummaryDetail(chapters),
+		Status:    fmt.Sprintf("Downloaded %d/%d chapters", progress.CompletedChapters, progress.TotalChapters),
+		Completed: progress.CompletedPages,
+		Total:     progress.TotalPages,
+		Chapters:  chapters,
+	}
+}
+
 func toChapterProgressViews(chapters []usecase.ChapterDownloadProgress) []chapterProgressView {
 	views := make([]chapterProgressView, 0, len(chapters))
 	for _, chapter := range chapters {
@@ -113,7 +118,7 @@ func toChapterProgressViews(chapters []usecase.ChapterDownloadProgress) []chapte
 	return views
 }
 
-func progressSummaryDetail(chapters []usecase.ChapterDownloadProgress) string {
+func progressSummaryDetail(chapters []chapterProgressView) string {
 	active := make([]string, 0)
 	queued := 0
 

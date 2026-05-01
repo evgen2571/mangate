@@ -71,10 +71,7 @@ func (mdm *mangaDexManga) toSource() *source.Manga {
 		ID:    mdm.ID,
 		URL:   mdm.URL,
 		Title: mdm.getTitle(),
-		Metadata: struct {
-			Description  map[string]string
-			ChapterCount int
-		}{
+		Metadata: source.MangaMetadata{
 			Description: mdm.Attributes.DescriptionMap,
 		},
 	}

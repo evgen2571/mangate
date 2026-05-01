@@ -6,10 +6,12 @@ type Manga struct {
 	Title    string
 	Chapters []*Chapter
 	Cover    Cover
-	Metadata struct {
-		Description  map[string]string
-		ChapterCount int
-	}
+	Metadata MangaMetadata
+}
+
+type MangaMetadata struct {
+	Description  map[string]string
+	ChapterCount int
 }
 
 type Cover struct {

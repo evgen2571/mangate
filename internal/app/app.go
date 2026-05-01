@@ -2,7 +2,9 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/evgen2571/mangate/internal/cache"
 	"github.com/evgen2571/mangate/internal/config"
@@ -19,9 +21,29 @@ type App struct {
 	Cache      *cache.Cache
 }
 
-func New(cfg config.Config) (*App, error) {
+type Option func(*App) error
+
+func WithRegistry(registry *providers.Registry) Option {
+	return func(a *App) error {
+		if registry == nil {
+			return fmt.Errorf("registry cannot be nil")
+		}
+		a.Registry = registry
+		return nil
+	}
+}
+
+func New(cfg config.Config, opts ...Option) (*App, error) {
 	a := &App{
 		Registry: providers.NewDefaultRegistry(),
+	}
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(a); err != nil {
+			return nil, err
+		}
 	}
 	if err := a.ApplyConfig(cfg); err != nil {
 		return nil, err
@@ -52,6 +74,36 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 	a.Cache = cache.New(cfg, client)
 
 	return applyErr
+}
+
+func (a *App) ApplyAndSaveConfig(cfg config.Config) error {
+	if a == nil {
+		return fmt.Errorf("apply failed: app is nil")
+	}
+	if err := a.ApplyConfig(cfg); err != nil {
+		return fmt.Errorf("apply failed: %w", err)
+	}
+	if strings.TrimSpace(a.ConfigPath) == "" {
+		return fmt.Errorf("save failed: config path cannot be empty")
+	}
+	if err := config.Save(a.ConfigPath, a.Cfg); err != nil {
+		return fmt.Errorf("save failed: %w", err)
+	}
+	return nil
+}
+
+func (a *App) SearchHistory() ([]string, error) {
+	if a == nil || a.Cache == nil {
+		return nil, nil
+	}
+	return a.Cache.SearchHistory()
+}
+
+func (a *App) AddSearchQuery(query string) error {
+	if a == nil || a.Cache == nil {
+		return nil
+	}
+	return a.Cache.AddSearchQuery(query)
 }
 
 func (a *App) Close() error {

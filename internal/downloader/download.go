@@ -36,7 +36,7 @@ func (e pageStatusError) Error() string {
 }
 
 func (d *Downloader) DownloadChapter(c *source.Chapter) error {
-	return d.downloadChapter(context.Background(), c, c.DownloadDirName(), nil, nil)
+	return d.downloadChapter(context.Background(), c, chapterDirBaseName(c), nil, nil)
 }
 
 func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
@@ -47,7 +47,7 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 		return fmt.Errorf("download chapter %q: missing parent manga", c.ID)
 	}
 	if strings.TrimSpace(chapterName) == "" {
-		chapterName = c.DownloadDirName()
+		chapterName = chapterDirBaseName(c)
 	}
 	if reporter != nil {
 		reporter.chapterStarted(c)
@@ -195,7 +195,7 @@ func uniqueChapterDirNames(chapters []*source.Chapter) []string {
 	used := make(map[string]struct{}, len(chapters))
 
 	for idx, chapter := range chapters {
-		baseName := chapter.DownloadDirName()
+		baseName := chapterDirBaseName(chapter)
 		seenBase[baseName]++
 
 		name := baseName
@@ -214,6 +214,25 @@ func uniqueChapterDirNames(chapters []*source.Chapter) []string {
 	}
 
 	return names
+}
+
+func chapterDirBaseName(chapter *source.Chapter) string {
+	if chapter == nil {
+		return "unknown-chapter"
+	}
+
+	index := strings.TrimSpace(chapter.Index)
+	title := strings.TrimSpace(chapter.Title)
+	switch {
+	case index != "" && title != "":
+		return "Chapter-" + index + "-" + title
+	case index != "":
+		return "Chapter-" + index
+	case title != "":
+		return "Title-" + title
+	default:
+		return "unknown-chapter"
+	}
 }
 
 func disambiguatedChapterDirName(baseName string, chapter *source.Chapter, idx int) string {

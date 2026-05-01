@@ -387,24 +387,26 @@ func TestDetectPageExtensionUsesAnyImageContentType(t *testing.T) {
 	}
 }
 
-func TestChapterDirNameUsesConsistentPrefix(t *testing.T) {
-	chapter := &source.Chapter{Index: "1", Title: "Intro"}
-	if got := chapter.DownloadDirName(); got != "Chapter-1-Intro" {
-		t.Fatalf("DownloadDirName() = %q, want %q", got, "Chapter-1-Intro")
+func TestChapterDirBaseName(t *testing.T) {
+	tests := []struct {
+		name    string
+		chapter *source.Chapter
+		want    string
+	}{
+		{name: "nil chapter", chapter: nil, want: "unknown-chapter"},
+		{name: "index and title", chapter: &source.Chapter{Index: " 1 ", Title: " Intro "}, want: "Chapter-1-Intro"},
+		{name: "index only", chapter: &source.Chapter{Index: " 2 "}, want: "Chapter-2"},
+		{name: "title only is prefixed", chapter: &source.Chapter{Title: " Special "}, want: "Title-Special"},
+		{name: "title only avoids indexed chapter collision", chapter: &source.Chapter{Title: "1"}, want: "Title-1"},
+		{name: "empty chapter", chapter: &source.Chapter{}, want: "unknown-chapter"},
 	}
-}
 
-func TestChapterDirNamePrefixesTitleOnlyChapter(t *testing.T) {
-	chapter := &source.Chapter{Title: "Special"}
-	if got := chapter.DownloadDirName(); got != "Title-Special" {
-		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-Special")
-	}
-}
-
-func TestChapterDirNameAvoidsIndexedChapterCollisionForTitleOnlyChapter(t *testing.T) {
-	chapter := &source.Chapter{Title: "1"}
-	if got := chapter.DownloadDirName(); got != "Title-1" {
-		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-1")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := chapterDirBaseName(tt.chapter); got != tt.want {
+				t.Fatalf("chapterDirBaseName() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
