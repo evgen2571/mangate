@@ -3,21 +3,16 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"net/http"
+	"time"
 
-	"github.com/evgen2571/mangate/internal/cache"
-	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/downloader"
-	"github.com/evgen2571/mangate/internal/providers"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
 type Deps struct {
-	Cfg        config.Config
-	Client     *http.Client
-	Registry   *providers.Registry
-	Downloader *downloader.Downloader
-	Cache      *cache.Cache
+	ProviderResolver ProviderResolver
+	Downloader       MangaDownloader
+	Cache            CoverCache
+	Timeout          time.Duration
 }
 
 type Service struct {
@@ -75,7 +70,7 @@ func (s Service) CoverPath(ctx context.Context, manga *source.Manga) (string, er
 	return s.deps.Cache.Get(ctx, provider, manga)
 }
 
-func (s Service) DownloadChapters(ctx context.Context, manga *source.Manga, chapters []*source.Chapter, notify func(downloader.DownloadProgress)) error {
+func (s Service) DownloadChapters(ctx context.Context, manga *source.Manga, chapters []*source.Chapter, notify func(DownloadProgress)) error {
 	if s.deps.Downloader == nil {
 		return fmt.Errorf("download chapters: downloader is not configured")
 	}
@@ -90,7 +85,7 @@ func (s Service) DownloadChapters(ctx context.Context, manga *source.Manga, chap
 		return err
 	}
 
-	pageLoader := downloader.PageLoader(func(loaderCtx context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+	pageLoader := PageLoader(func(loaderCtx context.Context, chapter *source.Chapter) ([]*source.Page, error) {
 		requestCtx, cancel := s.withTimeout(loaderCtx)
 		defer cancel()
 
@@ -102,26 +97,31 @@ func (s Service) DownloadChapters(ctx context.Context, manga *source.Manga, chap
 		return pages, nil
 	})
 
-	return s.deps.Downloader.DownloadMangaWithProgressAndPageLoader(ctxOrBackground(ctx), downloadManga, pageLoader, notify)
+	return s.deps.Downloader.DownloadManga(ctxOrBackground(ctx), downloadManga, pageLoader, notify)
 }
 
-func (s Service) provider() (providers.Provider, error) {
-	if s.deps.Registry == nil {
-		return nil, fmt.Errorf("provider: registry is not configured")
-	}
-	if s.deps.Client == nil {
-		return nil, fmt.Errorf("provider: http client is not configured")
+func (s Service) provider() (Provider, error) {
+	if s.deps.ProviderResolver == nil {
+		return nil, fmt.Errorf("provider: resolver is not configured")
 	}
 
-	return s.deps.Registry.New(s.deps.Cfg.Provider, s.deps.Cfg, s.deps.Client)
+	provider, err := s.deps.ProviderResolver.Provider()
+	if err != nil {
+		return nil, err
+	}
+	if provider == nil {
+		return nil, fmt.Errorf("provider: resolver returned nil provider")
+	}
+
+	return provider, nil
 }
 
 func (s Service) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	ctx = ctxOrBackground(ctx)
-	if s.deps.Cfg.HTTP.Timeout <= 0 {
+	if s.deps.Timeout <= 0 {
 		return context.WithCancel(ctx)
 	}
-	return context.WithTimeout(ctx, s.deps.Cfg.HTTP.Timeout)
+	return context.WithTimeout(ctx, s.deps.Timeout)
 }
 
 func ctxOrBackground(ctx context.Context) context.Context {

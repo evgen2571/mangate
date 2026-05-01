@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/usecase"
 )
 
 func (m model) searchMangaCmd(query string) tea.Cmd {
@@ -53,7 +53,7 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				Total:     0,
 			}
 
-			err := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress downloader.DownloadProgress) {
+			err := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress usecase.DownloadProgress) {
 				progressCh <- downloadProgressMsg{
 					Title:     "Downloading pages",
 					Detail:    progressSummaryDetail(progress.Chapters),
@@ -99,7 +99,7 @@ func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
 	}
 }
 
-func toChapterProgressViews(chapters []downloader.ChapterDownloadProgress) []chapterProgressView {
+func toChapterProgressViews(chapters []usecase.ChapterDownloadProgress) []chapterProgressView {
 	views := make([]chapterProgressView, 0, len(chapters))
 	for _, chapter := range chapters {
 		views = append(views, chapterProgressView{
@@ -113,7 +113,7 @@ func toChapterProgressViews(chapters []downloader.ChapterDownloadProgress) []cha
 	return views
 }
 
-func progressSummaryDetail(chapters []downloader.ChapterDownloadProgress) string {
+func progressSummaryDetail(chapters []usecase.ChapterDownloadProgress) string {
 	active := make([]string, 0)
 	queued := 0
 
