@@ -31,6 +31,9 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Local agent/Ralph workspace
+.hermes/
+
 # Media files
 *.png
 *.jpeg
