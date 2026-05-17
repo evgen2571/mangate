@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testing.T) {
@@ -18,7 +20,7 @@ func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testin
 	}
 	m := model{
 		state:                    stateLoading,
-		pendingFullMangaDownload: manga,
+		pendingFullMangaDownload: manga.ID,
 	}
 
 	updated, cmd := m.Update(chaptersLoadedMsg{Manga: manga, Chapters: chapters})
@@ -30,7 +32,7 @@ func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testin
 	if got.state != stateDownloading {
 		t.Fatalf("state = %v, want stateDownloading", got.state)
 	}
-	if got.pendingFullMangaDownload != nil {
+	if got.pendingFullMangaDownload != "" {
 		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
 	}
 	if cmd == nil {
@@ -46,7 +48,7 @@ func TestModelFullMangaDownloadIgnoresStaleChaptersLoad(t *testing.T) {
 	stale := &source.Manga{ID: "manga-stale", Title: "Stale"}
 	m := model{
 		state:                    stateLoading,
-		pendingFullMangaDownload: pending,
+		pendingFullMangaDownload: pending.ID,
 	}
 
 	updated, cmd := m.Update(chaptersLoadedMsg{
@@ -61,8 +63,8 @@ func TestModelFullMangaDownloadIgnoresStaleChaptersLoad(t *testing.T) {
 	if got.state != stateChapters {
 		t.Fatalf("state = %v, want stateChapters", got.state)
 	}
-	if got.pendingFullMangaDownload != pending {
-		t.Fatalf("pendingFullMangaDownload = %#v, want pending manga", got.pendingFullMangaDownload)
+	if got.pendingFullMangaDownload != pending.ID {
+		t.Fatalf("pendingFullMangaDownload = %#v, want pending manga id %q", got.pendingFullMangaDownload, pending.ID)
 	}
 	if cmd != nil {
 		t.Fatalf("Update() returned unexpected command for stale chapters load")
@@ -73,7 +75,7 @@ func TestModelFullMangaDownloadShowsStatusWhenNoChaptersLoad(t *testing.T) {
 	manga := &source.Manga{ID: "manga-a", Title: "Manga A"}
 	m := model{
 		state:                    stateLoading,
-		pendingFullMangaDownload: manga,
+		pendingFullMangaDownload: manga.ID,
 	}
 
 	updated, cmd := m.Update(chaptersLoadedMsg{Manga: manga, Chapters: []*source.Chapter{nil}})
@@ -85,7 +87,7 @@ func TestModelFullMangaDownloadShowsStatusWhenNoChaptersLoad(t *testing.T) {
 	if got.state != stateChapters {
 		t.Fatalf("state = %v, want stateChapters", got.state)
 	}
-	if got.pendingFullMangaDownload != nil {
+	if got.pendingFullMangaDownload != "" {
 		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
 	}
 	if got.chapters.status != "no chapters to download" {
@@ -99,19 +101,32 @@ func TestModelFullMangaDownloadShowsStatusWhenNoChaptersLoad(t *testing.T) {
 func TestModelPlainChaptersOpenClearsPendingFullDownload(t *testing.T) {
 	manga := &source.Manga{ID: "manga-a", Title: "Manga A"}
 	pending := &source.Manga{ID: "pending", Title: "Pending"}
-	m := model{pendingFullMangaDownload: pending}
+	m := model{pendingFullMangaDownload: pending.ID}
 
-	updated, _ := m.Update(chaptersOpenRequestedMsg{Manga: manga})
+	updated, _ := m.Update(chaptersOpenRequestedMsg{Result: tuiapp.SearchResult{ID: manga.ID, Title: manga.Title, URL: manga.URL}})
 	got, ok := updated.(model)
 	if !ok {
 		t.Fatalf("Update() returned %T, want model", updated)
 	}
 
-	if got.pendingFullMangaDownload != nil {
+	if got.pendingFullMangaDownload != "" {
 		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
 	}
 	if got.state != stateLoading {
 		t.Fatalf("state = %v, want stateLoading", got.state)
+	}
+}
+
+func TestNewModelLoadsSearchHistoryFromService(t *testing.T) {
+	svc := fakeTUIService{history: []string{"Dandadan", "Puniru"}}
+
+	got, ok := newModel(nil, svc).(*model)
+	if !ok {
+		t.Fatalf("newModel() returned %T, want *model", newModel(nil, svc))
+	}
+
+	if len(got.search.history) != 2 || got.search.history[0] != "Dandadan" || got.search.history[1] != "Puniru" {
+		t.Fatalf("search history = %#v, want service history", got.search.history)
 	}
 }
 
@@ -181,4 +196,43 @@ func TestModelConfigSaveShowsApplyAndSaveFailuresFromAppFacade(t *testing.T) {
 	if got.config.status != "save failed: config path cannot be empty" {
 		t.Fatalf("save failure status = %q", got.config.status)
 	}
+}
+
+type fakeTUIService struct {
+	searchResults []tuiapp.SearchResult
+	searchErr     error
+	history       []string
+	historyErr    error
+}
+
+func (f fakeTUIService) Search(context.Context, string) ([]tuiapp.SearchResult, error) {
+	return f.searchResults, f.searchErr
+}
+
+func (f fakeTUIService) SearchHistory(context.Context) ([]string, error) {
+	return f.history, f.historyErr
+}
+
+func (f fakeTUIService) LoadChapters(context.Context, tuiapp.SearchResult) (tuiapp.MangaDetails, []tuiapp.ChapterItem, error) {
+	return tuiapp.MangaDetails{}, nil, nil
+}
+
+func (f fakeTUIService) LoadCover(context.Context, tuiapp.SearchResult, tuiapp.CoverSize) (tuiapp.CoverResult, error) {
+	return tuiapp.CoverResult{}, nil
+}
+
+func (f fakeTUIService) Download(context.Context, tuiapp.DownloadRequest, func(tuiapp.DownloadProgress)) error {
+	return nil
+}
+
+func (f fakeTUIService) Config() tuiapp.ConfigState {
+	return tuiapp.ConfigState{}
+}
+
+func (f fakeTUIService) ApplyConfig(context.Context, tuiapp.ConfigState) (tuiapp.ConfigState, error) {
+	return tuiapp.ConfigState{}, nil
+}
+
+func (f fakeTUIService) SaveConfig(context.Context, tuiapp.ConfigState) (tuiapp.ConfigState, error) {
+	return tuiapp.ConfigState{}, nil
 }

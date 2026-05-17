@@ -12,12 +12,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/constant"
-	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 type resultItem struct {
 	idx   int
-	value *source.Manga
+	value tuiapp.SearchResult
 }
 
 type coverState struct {
@@ -28,23 +28,17 @@ type coverState struct {
 }
 
 func (i resultItem) FilterValue() string {
-	if i.value == nil {
-		return ""
-	}
 	return i.value.Title
 }
 
 func (i resultItem) Title() string {
-	if i.value == nil || strings.TrimSpace(i.value.Title) == "" {
+	if strings.TrimSpace(i.value.Title) == "" {
 		return fmt.Sprintf("Unknown #%d", i.idx+1)
 	}
 	return strings.TrimSpace(i.value.Title)
 }
 
 func (i resultItem) Description() string {
-	if i.value == nil {
-		return ""
-	}
 	return strings.TrimSpace(i.value.URL)
 }
 
@@ -59,7 +53,7 @@ type resultsModel struct {
 	metadata     viewport.Model
 	coverSpinner spinner.Model
 	covers       map[string]coverState
-	results      []*source.Manga
+	results      []tuiapp.SearchResult
 }
 
 type resultsLayout struct {
@@ -70,7 +64,7 @@ type resultsLayout struct {
 	bottomContentHeight int
 }
 
-func newResultsModel(query string, results []*source.Manga) resultsModel {
+func newResultsModel(query string, results []tuiapp.SearchResult) resultsModel {
 	items := make([]list.Item, 0, len(results))
 	for i, r := range results {
 		items = append(items, resultItem{
@@ -172,23 +166,23 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 			return m, tea.Batch(append(cmds, func() tea.Msg { return goBackMsg{} })...)
 
 		case key.Matches(msg, m.keys.Select):
-			selected := m.selectedManga()
-			if selected == nil {
+			selected, ok := m.selectedResult()
+			if !ok {
 				return m, tea.Batch(cmds...)
 			}
 
 			return m, tea.Batch(append(cmds, func() tea.Msg {
-				return chaptersOpenRequestedMsg{Manga: selected}
+				return chaptersOpenRequestedMsg{Result: selected}
 			})...)
 
 		case key.Matches(msg, m.keys.Download):
-			selected := m.selectedManga()
-			if selected == nil {
+			selected, ok := m.selectedResult()
+			if !ok {
 				return m, tea.Batch(cmds...)
 			}
 
 			return m, tea.Batch(append(cmds, func() tea.Msg {
-				return fullMangaDownloadRequestedMsg{Manga: selected}
+				return fullMangaDownloadRequestedMsg{Result: selected}
 			})...)
 
 		case key.Matches(msg, m.keys.MetaUp):
@@ -212,8 +206,8 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 	if m.list.Index() != prevIndex {
 		m.syncMetadataViewport()
 
-		selected := m.selectedManga()
-		if selected != nil {
+		selected, ok := m.selectedResult()
+		if ok {
 			cmds = append(cmds, func() tea.Msg {
 				return coverLoadRequestedMsg{MangaID: selected.ID}
 			})
@@ -301,12 +295,12 @@ func (m resultsModel) coverView() string {
 		Render("Cover")
 
 	bodyWidth, bodyHeight := m.coverBodySize()
-	selected := m.selectedManga()
+	selected, ok := m.selectedResult()
 
 	var body string
 
 	switch {
-	case selected == nil:
+	case !ok:
 		body = renderCoverPlaceholder(bodyWidth, bodyHeight, "No cover")
 
 	case m.covers[selected.ID].Loading:
@@ -362,22 +356,8 @@ func (m *resultsModel) syncMetadataViewport() {
 
 func (m resultsModel) metadataContent() string {
 	item := m.selectedItem()
-	if item == nil || item.value == nil {
+	if item == nil {
 		return "No result selected"
-	}
-
-	desc := ""
-	if item.value.Metadata.Description != nil {
-		if en, ok := item.value.Metadata.Description["en"]; ok {
-			desc = strings.TrimSpace(en)
-		} else {
-			for _, v := range item.value.Metadata.Description {
-				desc = strings.TrimSpace(v)
-				if desc != "" {
-					break
-				}
-			}
-		}
 	}
 
 	header := []string{
@@ -385,8 +365,8 @@ func (m resultsModel) metadataContent() string {
 		fmt.Sprintf("ID: %s", item.value.ID),
 		fmt.Sprintf("URL: %s", item.value.URL),
 	}
-	if item.value.Metadata.ChapterCount > 0 {
-		header = append(header, fmt.Sprintf("Chapters: %d", item.value.Metadata.ChapterCount))
+	if item.value.ChapterCount > 0 {
+		header = append(header, fmt.Sprintf("Chapters: %d", item.value.ChapterCount))
 	}
 	header = append(header,
 		"",
@@ -394,7 +374,7 @@ func (m resultsModel) metadataContent() string {
 		"",
 	)
 
-	return strings.Join(header, "\n") + m.renderMarkdown(desc)
+	return strings.Join(header, "\n") + m.renderMarkdown(item.value.SummaryMD)
 }
 
 func (m resultsModel) rightPanelInnerWidth() int {
@@ -421,12 +401,12 @@ func (m resultsModel) renderMarkdown(input string) string {
 	return out
 }
 
-func (m resultsModel) selectedManga() *source.Manga {
+func (m resultsModel) selectedResult() (tuiapp.SearchResult, bool) {
 	item := m.selectedItem()
 	if item == nil {
-		return nil
+		return tuiapp.SearchResult{}, false
 	}
-	return item.value
+	return item.value, true
 }
 
 func (m resultsModel) coverBodySize() (int, int) {
@@ -466,8 +446,8 @@ func (m *resultsModel) setCoverFailed(mangaID string, err error) {
 }
 
 func (m resultsModel) isCoverLoading() bool {
-	selected := m.selectedManga()
-	if selected == nil {
+	selected, ok := m.selectedResult()
+	if !ok {
 		return false
 	}
 

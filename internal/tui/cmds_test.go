@@ -3,8 +3,39 @@ package tui
 import (
 	"testing"
 
+	"github.com/evgen2571/mangate/internal/tuiapp"
 	"github.com/evgen2571/mangate/internal/usecase"
 )
+
+func TestSearchMangaCmdUsesTUIAppServiceResultsAndHistory(t *testing.T) {
+	svc := fakeTUIService{
+		searchResults: []tuiapp.SearchResult{{
+			ID:           "manga-a",
+			Title:        "Manga A",
+			URL:          "https://example.com/manga-a",
+			SummaryMD:    "A test summary.",
+			ChapterCount: 5,
+		}},
+		history: []string{"query"},
+	}
+	m := model{svc: svc}
+
+	msg := m.searchMangaCmd("query")()
+
+	got, ok := msg.(searchSucceededMsg)
+	if !ok {
+		t.Fatalf("searchMangaCmd() returned %T, want searchSucceededMsg", msg)
+	}
+	if got.Query != "query" {
+		t.Fatalf("Query = %q, want %q", got.Query, "query")
+	}
+	if len(got.Results) != 1 || got.Results[0].ID != "manga-a" || got.Results[0].SummaryMD != "A test summary." {
+		t.Fatalf("Results = %#v, want mapped tuiapp results", got.Results)
+	}
+	if len(got.History) != 1 || got.History[0] != "query" {
+		t.Fatalf("History = %#v, want updated service history", got.History)
+	}
+}
 
 func TestProgressSummaryDetailUsesChapterProgressViews(t *testing.T) {
 	tests := []struct {

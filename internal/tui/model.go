@@ -8,7 +8,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 type state int
@@ -24,10 +26,11 @@ const (
 
 type model struct {
 	app *app.App
+	svc tuiapp.Service
 
 	state                    state
 	previousState            state
-	pendingFullMangaDownload *source.Manga
+	pendingFullMangaDownload string
 	width                    int
 	height                   int
 
@@ -43,23 +46,32 @@ type model struct {
 }
 
 func New(a *app.App) tea.Model {
+	return newModel(a, tuiapp.New(a))
+}
+
+func newModel(a *app.App, svc tuiapp.Service) tea.Model {
 	h := help.New()
 	h.ShowAll = false
 
 	searchHistory := []string(nil)
-	if a != nil {
-		if history, err := a.SearchHistory(); err == nil {
+	if svc != nil {
+		if history, err := svc.SearchHistory(nil); err == nil {
 			searchHistory = history
 		}
+	}
+	configDraft := config.DefaultConfig()
+	if a != nil {
+		configDraft = a.Cfg
 	}
 
 	return &model{
 		app:    a,
+		svc:    svc,
 		state:  stateSearch,
 		keys:   newKeyMap(),
 		help:   h,
 		search: newSearchModel(searchHistory),
-		config: newConfigModel(a.Cfg),
+		config: newConfigModel(configDraft),
 	}
 }
 
@@ -80,25 +92,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case searchSubmittedMsg:
-		if m.app != nil {
-			if err := m.app.AddSearchQuery(msg.Query); err == nil {
-				if history, err := m.app.SearchHistory(); err == nil {
-					m.search.SetHistory(history)
-				}
-			}
-		}
 		m.loading = newLoadingModel("Searching manga", msg.Query)
 		m.state = stateLoading
 		m.resizeActiveModel()
 		return m, tea.Batch(m.loading.spinner.Tick, m.searchMangaCmd(msg.Query))
 
 	case searchSucceededMsg:
+		m.search.SetHistory(msg.History)
 		m.results = newResultsModel(msg.Query, msg.Results)
 		m.state = stateResults
 		m.resizeActiveModel()
 
-		selected := m.results.selectedManga()
-		if selected == nil {
+		selected, ok := m.results.selectedResult()
+		if !ok {
 			return m, nil
 		}
 
@@ -110,8 +116,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case coverLoadRequestedMsg:
-		selected := m.results.selectedManga()
-		if selected == nil || selected.ID != msg.MangaID {
+		selected, ok := m.results.selectedResult()
+		if !ok || selected.ID != msg.MangaID {
 			return m, nil
 		}
 
@@ -145,26 +151,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case chaptersOpenRequestedMsg:
-		if msg.Manga == nil {
+		if msg.Result.ID == "" {
 			return m, nil
 		}
-		m.pendingFullMangaDownload = nil
+		m.pendingFullMangaDownload = ""
 
-		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.loading = newLoadingModel("Loading chapters", msg.Result.Title)
 		m.state = stateLoading
 		m.resizeActiveModel()
-		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
+		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Result))
 
 	case fullMangaDownloadRequestedMsg:
-		if msg.Manga == nil {
+		if msg.Result.ID == "" {
 			return m, nil
 		}
-		m.pendingFullMangaDownload = msg.Manga
+		m.pendingFullMangaDownload = msg.Result.ID
 
-		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.loading = newLoadingModel("Loading chapters", msg.Result.Title)
 		m.state = stateLoading
 		m.resizeActiveModel()
-		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
+		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Result))
 
 	case chaptersLoadedMsg:
 		if msg.Manga != nil {
@@ -172,8 +178,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
 		}
 		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
-		if m.pendingFullMangaDownload == msg.Manga {
-			m.pendingFullMangaDownload = nil
+		if msg.Manga != nil && m.pendingFullMangaDownload != "" && m.pendingFullMangaDownload == msg.Manga.ID {
+			m.pendingFullMangaDownload = ""
 			chapters := nonNilChapters(msg.Chapters)
 			if msg.Manga != nil && len(chapters) > 0 {
 				progressCh := make(chan tea.Msg, 1024)
@@ -189,8 +195,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case chaptersFailedMsg:
-		if m.pendingFullMangaDownload == msg.Manga {
-			m.pendingFullMangaDownload = nil
+		if msg.Manga != nil && m.pendingFullMangaDownload == msg.Manga.ID {
+			m.pendingFullMangaDownload = ""
 		}
 		m.state = stateResults
 		m.resizeActiveModel()
@@ -392,8 +398,8 @@ func (m model) reloadSelectedCoverCmd() tea.Cmd {
 		return nil
 	}
 
-	selected := m.results.selectedManga()
-	if selected == nil {
+	selected, ok := m.results.selectedResult()
+	if !ok {
 		return nil
 	}
 

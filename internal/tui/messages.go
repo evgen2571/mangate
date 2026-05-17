@@ -3,6 +3,7 @@ package tui
 import (
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 type searchSubmittedMsg struct {
@@ -11,7 +12,8 @@ type searchSubmittedMsg struct {
 
 type searchSucceededMsg struct {
 	Query   string
-	Results []*source.Manga
+	Results []tuiapp.SearchResult
+	History []string
 }
 
 type searchFailedMsg struct {
@@ -19,11 +21,11 @@ type searchFailedMsg struct {
 }
 
 type chaptersOpenRequestedMsg struct {
-	Manga *source.Manga
+	Result tuiapp.SearchResult
 }
 
 type fullMangaDownloadRequestedMsg struct {
-	Manga *source.Manga
+	Result tuiapp.SearchResult
 }
 
 type chaptersLoadedMsg struct {

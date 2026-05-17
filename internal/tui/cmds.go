@@ -5,37 +5,43 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 	"github.com/evgen2571/mangate/internal/usecase"
 )
 
 func (m model) searchMangaCmd(query string) tea.Cmd {
 	return func() tea.Msg {
-		results, err := m.app.UseCases().SearchManga(nil, query)
+		results, err := m.svc.Search(nil, query)
 		if err != nil {
 			return searchFailedMsg{Err: err}
 		}
 
+		history, _ := m.svc.SearchHistory(nil)
 		return searchSucceededMsg{
 			Query:   query,
 			Results: results,
+			History: history,
 		}
 	}
 }
 
-func (m model) loadChaptersCmd(manga *source.Manga) tea.Cmd {
+func (m model) loadChaptersCmd(result tuiapp.SearchResult) tea.Cmd {
 	return func() tea.Msg {
-		if manga == nil {
+		if result.ID == "" {
 			return nil
 		}
 
-		chapters, err := m.app.UseCases().Chapters(nil, manga)
+		details, chapters, err := m.svc.LoadChapters(nil, result)
 		if err != nil {
-			return chaptersFailedMsg{Manga: manga, Err: err}
+			return chaptersFailedMsg{
+				Manga: &source.Manga{ID: result.ID, Title: result.Title, URL: result.URL},
+				Err:   err,
+			}
 		}
 
 		return chaptersLoadedMsg{
-			Manga:    manga,
-			Chapters: chapters,
+			Manga:    sourceMangaFromDetails(details),
+			Chapters: sourceChaptersFromItems(chapters),
 		}
 	}
 }
@@ -68,28 +74,52 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 	}
 }
 
-func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
+func (m model) loadCoverCmd(result tuiapp.SearchResult, width, height int) tea.Cmd {
 	return func() tea.Msg {
-		if manga == nil {
+		if result.ID == "" {
 			return nil
 		}
 
-		path, err := m.app.UseCases().CoverPath(nil, manga)
+		cover, err := m.svc.LoadCover(nil, result, tuiapp.CoverSize{Width: width, Height: height})
 		if err != nil {
-			return coverFailedMsg{MangaID: manga.ID, Err: err}
+			return coverFailedMsg{MangaID: result.ID, Err: err}
 		}
 
-		render, err := renderCoverText(path, width, height)
+		render, err := renderCoverText(cover.Path, width, height)
 		if err != nil {
-			return coverFailedMsg{MangaID: manga.ID, Err: err}
+			return coverFailedMsg{MangaID: result.ID, Err: err}
 		}
 
 		return coverLoadedMsg{
-			MangaID: manga.ID,
-			Path:    path,
+			MangaID: cover.MangaID,
+			Path:    cover.Path,
 			Render:  render,
 		}
 	}
+}
+
+func sourceMangaFromDetails(details tuiapp.MangaDetails) *source.Manga {
+	return &source.Manga{
+		ID:    details.ID,
+		Title: details.Title,
+		URL:   details.URL,
+		Metadata: source.MangaMetadata{
+			ChapterCount: details.ChapterCount,
+		},
+	}
+}
+
+func sourceChaptersFromItems(items []tuiapp.ChapterItem) []*source.Chapter {
+	chapters := make([]*source.Chapter, 0, len(items))
+	for _, item := range items {
+		chapters = append(chapters, &source.Chapter{
+			ID:    item.ID,
+			Index: item.Index,
+			Title: item.Title,
+			URL:   item.URL,
+		})
+	}
+	return chapters
 }
 
 func downloadProgressMsgFromUsecase(progress usecase.DownloadProgress) downloadProgressMsg {
