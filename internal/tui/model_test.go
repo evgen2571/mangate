@@ -2,11 +2,31 @@ package tui
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
+
+func TestModelGoDoesNotContainRootUpdateMethod(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller(0) failed")
+	}
+
+	content, err := os.ReadFile(filepath.Join(filepath.Dir(currentFile), "model.go"))
+	if err != nil {
+		t.Fatalf("ReadFile(model.go) error = %v", err)
+	}
+
+	if strings.Contains(string(content), "func (m model) Update(") {
+		t.Fatal("model.go still contains the root Update method")
+	}
+}
 
 func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testing.T) {
 	manga := tuiapp.MangaDetails{ID: "manga-a", Title: "Manga A"}
