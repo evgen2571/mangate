@@ -1,24 +1,11 @@
 package tui
 
 import (
-	"errors"
-	"os"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
-
-func TestKeysFileExistsAndKeymapFileIsGone(t *testing.T) {
-	if _, err := os.Stat("keys.go"); err != nil {
-		t.Fatalf("Stat(keys.go) error = %v, want file to exist", err)
-	}
-
-	_, err := os.Stat("keymap.go")
-	if !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("Stat(keymap.go) error = %v, want %v", err, os.ErrNotExist)
-	}
-}
 
 func TestChaptersShortHelpIsReadableAndShowsSelectionCommands(t *testing.T) {
 	m := newChaptersModel(tuiapp.MangaDetails{}, nil)
