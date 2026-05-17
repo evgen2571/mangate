@@ -15,6 +15,15 @@ func TestDefaultConfigUsesParallelChapterDownloads(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigPathUsesEnvOverride(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv(envConfigPath, want)
+
+	if got := DefaultConfigPath(); got != want {
+		t.Fatalf("DefaultConfigPath() = %q, want %q", got, want)
+	}
+}
+
 func TestDefaultConfigKeepsSearchHistory(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg.Search.HistoryMax != 100 {
