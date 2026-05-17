@@ -7,22 +7,6 @@ import (
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
-func (m model) searchMangaCmd(query string) tea.Cmd {
-	return func() tea.Msg {
-		results, err := m.svc.Search(nil, query)
-		if err != nil {
-			return searchFailedMsg{Err: err}
-		}
-
-		history, _ := m.svc.SearchHistory(nil)
-		return searchSucceededMsg{
-			Query:   query,
-			Results: results,
-			History: history,
-		}
-	}
-}
-
 func (m model) loadChaptersCmd(result tuiapp.SearchResult) tea.Cmd {
 	return func() tea.Msg {
 		if result.ID == "" {

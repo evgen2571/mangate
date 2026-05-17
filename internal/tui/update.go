@@ -21,10 +21,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case searchSubmittedMsg:
-		m.loading = newLoadingModel("Searching manga", msg.Query)
-		m.state = stateLoading
-		m.resizeActiveModel()
-		return m, tea.Batch(m.loading.spinner.Tick, m.searchMangaCmd(msg.Query))
+		return m.handleSearchSubmitted(msg)
 
 	case searchSucceededMsg:
 		m.search.SetHistory(msg.History)
@@ -203,6 +200,29 @@ func (m model) handleRootKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	default:
 		return m, nil, false
 	}
+}
+
+func (m model) handleSearchSubmitted(msg searchSubmittedMsg) (tea.Model, tea.Cmd) {
+	m.loading = newLoadingModel("Searching manga", msg.Query)
+	m.state = stateLoading
+	m.resizeActiveModel()
+
+	return m, tea.Batch(
+		m.loading.spinner.Tick,
+		func() tea.Msg {
+			results, err := m.svc.Search(nil, msg.Query)
+			if err != nil {
+				return searchFailedMsg{Err: err}
+			}
+
+			history, _ := m.svc.SearchHistory(nil)
+			return searchSucceededMsg{
+				Query:   msg.Query,
+				Results: results,
+				History: history,
+			}
+		},
+	)
 }
 
 func (m model) routeActiveModelUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {

@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -19,11 +20,35 @@ func TestSearchMangaCmdUsesTUIAppServiceResultsAndHistory(t *testing.T) {
 	}
 	m := model{svc: svc}
 
-	msg := m.searchMangaCmd("query")()
+	updated, cmd := m.Update(searchSubmittedMsg{Query: "query"})
+	gotModel, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+	if gotModel.state != stateLoading {
+		t.Fatalf("state = %v, want stateLoading", gotModel.state)
+	}
+	if cmd == nil {
+		t.Fatal("Update() command = nil, want search command")
+	}
+
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		msg = nil
+		for _, batchCmd := range batch {
+			if batchCmd == nil {
+				continue
+			}
+			if candidate, ok := batchCmd().(searchSucceededMsg); ok {
+				msg = candidate
+				break
+			}
+		}
+	}
 
 	got, ok := msg.(searchSucceededMsg)
 	if !ok {
-		t.Fatalf("searchMangaCmd() returned %T, want searchSucceededMsg", msg)
+		t.Fatalf("command returned %T, want searchSucceededMsg", msg)
 	}
 	if got.Query != "query" {
 		t.Fatalf("Query = %q, want %q", got.Query, "query")
