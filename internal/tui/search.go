@@ -20,6 +20,7 @@ type searchModel struct {
 
 	history         []string
 	suggestionIndex int
+	status          string
 }
 
 func newSearchModel(history []string) searchModel {
@@ -59,6 +60,7 @@ func (m searchModel) Update(msg tea.Msg) (searchModel, tea.Cmd) {
 				return m, nil
 			}
 
+			m.status = ""
 			return m, func() tea.Msg {
 				return searchSubmittedMsg{Query: query}
 			}
@@ -129,6 +131,13 @@ func (m searchModel) View() string {
 		)
 	}
 
+	if strings.TrimSpace(m.status) != "" {
+		statusText := lipgloss.NewStyle().
+			Foreground(constant.MutedColor).
+			Render(m.status)
+		lines = append(lines, "", statusText)
+	}
+
 	inner := lipgloss.JoinVertical(
 		lipgloss.Center,
 		lines...,
@@ -163,6 +172,10 @@ func (m searchModel) HelpKeys(global keyMap) searchHelpKeyMap {
 func (m *searchModel) SetHistory(history []string) {
 	m.history = cleanSearchHistory(history)
 	m.suggestionIndex = -1
+}
+
+func (m *searchModel) setStatus(status string) {
+	m.status = strings.TrimSpace(status)
 }
 
 func (m searchModel) matchingSuggestions() []string {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/config"
@@ -111,6 +112,28 @@ func TestModelPlainChaptersOpenClearsPendingFullDownload(t *testing.T) {
 	}
 	if got.state != stateLoading {
 		t.Fatalf("state = %v, want stateLoading", got.state)
+	}
+}
+
+func TestModelSearchFailureReturnsToSearchWithStatus(t *testing.T) {
+	m := model{
+		state:  stateLoading,
+		search: newSearchModel(nil),
+	}
+
+	updated, cmd := m.Update(searchFailedMsg{Err: errors.New("service unavailable")})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+	if cmd != nil {
+		t.Fatalf("Update() returned unexpected command")
+	}
+	if got.state != stateSearch {
+		t.Fatalf("state = %v, want stateSearch", got.state)
+	}
+	if got.search.status != "search failed: service unavailable" {
+		t.Fatalf("search status = %q, want failure message", got.search.status)
 	}
 }
 

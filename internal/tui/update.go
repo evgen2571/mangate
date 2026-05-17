@@ -25,6 +25,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case searchSucceededMsg:
 		m.search.SetHistory(msg.History)
+		m.search.setStatus("")
 		m.results = newResultsModel(msg.Query, msg.Results)
 		m.state = stateResults
 		m.resizeActiveModel()
@@ -40,6 +41,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.results.coverSpinner.Tick,
 			m.loadCoverCmd(selected, w, h),
 		)
+
+	case searchFailedMsg:
+		m.search.setStatus(fmt.Sprintf("search failed: %v", msg.Err))
+		m.state = stateSearch
+		m.resizeActiveModel()
+		return m, nil
 
 	case coverLoadRequestedMsg:
 		selected, ok := m.results.selectedResult()
