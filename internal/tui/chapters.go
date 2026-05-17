@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -39,12 +38,12 @@ func (i chapterItem) Title() string {
 	}
 
 	if i.selected {
-		marker := lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true).Render("● ")
-		styledText := lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true).Render(text)
+		marker := lipgloss.NewStyle().Foreground(logoColor).Bold(true).Render("● ")
+		styledText := lipgloss.NewStyle().Foreground(logoColor).Bold(true).Render(text)
 		return marker + styledText
 	}
 
-	marker := lipgloss.NewStyle().Foreground(constant.MutedColor).Render("○ ")
+	marker := lipgloss.NewStyle().Foreground(mutedColor).Render("○ ")
 	return marker + text
 }
 
@@ -55,7 +54,7 @@ func (i chapterItem) Description() string {
 
 	description := strings.TrimSpace(i.value.URL)
 	if i.selected {
-		return lipgloss.NewStyle().Foreground(constant.InputBorderColor).Render(description)
+		return lipgloss.NewStyle().Foreground(inputBorderColor).Render(description)
 	}
 
 	return description
@@ -144,7 +143,7 @@ func (m chaptersModel) View() string {
 	footer := lipgloss.NewStyle().
 		Width(contentWidth).
 		Padding(0, 1).
-		Foreground(constant.MutedColor).
+		Foreground(mutedColor).
 		Render(m.footerText())
 
 	footerHeight := lipgloss.Height(footer)
@@ -164,7 +163,7 @@ func (m chaptersModel) View() string {
 		Width(contentWidth).
 		Height(contentHeight).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.OuterBorderColor).
+		BorderForeground(outerBorderColor).
 		Render(inner)
 }
 

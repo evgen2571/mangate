@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/constant"
 )
 
 type loadingModel struct {
@@ -22,7 +21,7 @@ type loadingModel struct {
 func newLoadingModel(title, detail string) loadingModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(constant.LogoColor)
+	s.Style = lipgloss.NewStyle().Foreground(logoColor)
 
 	return loadingModel{
 		title:   title,
@@ -49,17 +48,17 @@ func (m loadingModel) Update(msg tea.Msg) (loadingModel, tea.Cmd) {
 func (m loadingModel) View() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(constant.LogoColor).
+		Foreground(logoColor).
 		Render(m.title)
 
 	body := lipgloss.NewStyle().
-		Foreground(constant.TextColor).
+		Foreground(textColor).
 		Render(fmt.Sprintf("%s %q", m.spinner.View(), m.detail))
 
 	panel := lipgloss.NewStyle().
 		Padding(1, 3).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.OuterBorderColor).
+		BorderForeground(outerBorderColor).
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Center,

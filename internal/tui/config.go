@@ -12,7 +12,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -48,9 +47,9 @@ func newConfigModel(state tuiapp.ConfigState) configModel {
 	in := textinput.New()
 	in.CharLimit = 256
 	in.Width = 60
-	in.PromptStyle = lipgloss.NewStyle().Foreground(constant.LogoColor)
-	in.TextStyle = lipgloss.NewStyle().Foreground(constant.TextColor)
-	in.PlaceholderStyle = lipgloss.NewStyle().Foreground(constant.MutedColor)
+	in.PromptStyle = lipgloss.NewStyle().Foreground(logoColor)
+	in.TextStyle = lipgloss.NewStyle().Foreground(textColor)
+	in.PlaceholderStyle = lipgloss.NewStyle().Foreground(mutedColor)
 
 	m := configModel{
 		keys:  newConfigKeyMap(),
@@ -123,14 +122,14 @@ func (m configModel) View() string {
 	contentHeight := max(1, m.height-2)
 
 	rows := []string{
-		lipgloss.NewStyle().Bold(true).Foreground(constant.LogoColor).Render("Config"),
-		lipgloss.NewStyle().Foreground(constant.MutedColor).Render("Edit draft values, apply for this session, or save to config file."),
+		lipgloss.NewStyle().Bold(true).Foreground(logoColor).Render("Config"),
+		lipgloss.NewStyle().Foreground(mutedColor).Render("Edit draft values, apply for this session, or save to config file."),
 		"",
 	}
 	for field := configField(0); field < configFieldCount; field++ {
 		prefix := "  "
 		if int(field) == m.cursor {
-			prefix = lipgloss.NewStyle().Foreground(constant.LogoColor).Render("› ")
+			prefix = lipgloss.NewStyle().Foreground(logoColor).Render("› ")
 		}
 		value := m.fieldValue(field)
 		line := fmt.Sprintf("%s%-18s %s", prefix, m.fieldLabel(field)+":", value)
@@ -144,11 +143,11 @@ func (m configModel) View() string {
 		rows = append(rows, "New value:", m.input.View())
 	}
 	if strings.TrimSpace(m.status) != "" {
-		rows = append(rows, "", lipgloss.NewStyle().Foreground(constant.MutedColor).Render(m.status))
+		rows = append(rows, "", lipgloss.NewStyle().Foreground(mutedColor).Render(m.status))
 	}
 
 	inner := lipgloss.NewStyle().Width(contentWidth).Height(contentHeight).Padding(0, 1).Render(strings.Join(rows, "\n"))
-	return lipgloss.NewStyle().Width(contentWidth).Height(contentHeight).Border(lipgloss.RoundedBorder()).BorderForeground(constant.OuterBorderColor).Render(inner)
+	return lipgloss.NewStyle().Width(contentWidth).Height(contentHeight).Border(lipgloss.RoundedBorder()).BorderForeground(outerBorderColor).Render(inner)
 }
 
 func (m configModel) HelpKeys(global keyMap) help.KeyMap {

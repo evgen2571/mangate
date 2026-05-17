@@ -9,12 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/project"
 )
 
 const (
 	envConfigPath         = "MANGATE_CONFIG"
 	defaultConfigFileName = "config.json"
+
+	DownloadTypePlain = "plain"
+	DownloadTypeCBZ   = "cbz"
+	DownloadTypeZIP   = "zip"
 )
 
 type Config struct {
@@ -122,7 +126,7 @@ func DefaultConfig() Config {
 		},
 		Download: DownloadConfig{
 			Dir:  defaultDownloadDir(),
-			Type: "plain",
+			Type: DownloadTypePlain,
 		},
 		Concurrency: ConcurrencyConfig{
 			PageDownloads:    8,
@@ -186,10 +190,10 @@ func DefaultConfigPath() string {
 
 	root, err := os.UserConfigDir()
 	if err != nil {
-		return filepath.Join(".", "."+constant.ProjectName, defaultConfigFileName)
+		return filepath.Join(".", "."+project.Name, defaultConfigFileName)
 	}
 
-	return filepath.Join(root, constant.ProjectName, defaultConfigFileName)
+	return filepath.Join(root, project.Name, defaultConfigFileName)
 }
 
 func Load() (Config, string, error) {
@@ -378,7 +382,7 @@ func defaultDownloadDir() string {
 		return "./downloads"
 	}
 
-	return filepath.Join(root, "downloads", constant.ProjectName)
+	return filepath.Join(root, "downloads", project.Name)
 }
 
 func defaultCacheDir() string {
@@ -386,9 +390,9 @@ func defaultCacheDir() string {
 	if err != nil {
 		return "./.cache"
 	}
-	return filepath.Join(root, constant.ProjectName)
+	return filepath.Join(root, project.Name)
 }
 
 func defaultTempDir() string {
-	return filepath.Join(os.TempDir(), constant.ProjectName)
+	return filepath.Join(os.TempDir(), project.Name)
 }

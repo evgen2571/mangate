@@ -5,14 +5,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/evgen2571/mangate/internal/app"
-	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/project"
 	"github.com/evgen2571/mangate/internal/tui"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 func NewRootCmd(a *app.App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           constant.ProjectName,
+		Use:           project.Name,
 		Short:         "Download manga from providers",
 		SilenceUsage:  true,
 		SilenceErrors: true,

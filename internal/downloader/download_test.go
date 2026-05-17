@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
@@ -31,7 +30,7 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.PageDownloads = 1
 
 	d := New(cfg, server.Client())
@@ -71,7 +70,7 @@ func TestDownloadMangaWithPageLoaderLoadsMissingPages(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.PageDownloads = 1
 	cfg.Concurrency.ChapterDownloads = 1
 
@@ -123,7 +122,7 @@ func TestDownloadMangaReportsChaptersActiveBeforeLazyPageLoadingCompletes(t *tes
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.ChapterDownloads = 5
 
 	d := New(cfg, server.Client())
@@ -218,7 +217,7 @@ func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.PageDownloads = 1
 	cfg.Concurrency.ChapterDownloads = 4
 
@@ -254,7 +253,7 @@ func TestDownloadMangaDisambiguatesDuplicateChapterDirectoryNames(t *testing.T) 
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.PageDownloads = 2
 	cfg.Concurrency.ChapterDownloads = 2
 
@@ -302,7 +301,7 @@ func TestDownloadMangaRefreshesLazyPagesAfterForbiddenImage(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.PageDownloads = 1
 	cfg.Concurrency.ChapterDownloads = 1
 
@@ -359,7 +358,7 @@ func TestDownloadPageRetriesTooManyRequests(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
 	cfg.Dirs.Temp = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 	cfg.Concurrency.PageDownloads = 1
 
 	d := New(cfg, server.Client())

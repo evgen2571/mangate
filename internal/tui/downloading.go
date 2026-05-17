@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/constant"
 )
 
 type chapterProgressView struct {
@@ -95,17 +94,17 @@ func (m downloadingModel) View() string {
 	title := lipgloss.NewStyle().
 		Width(contentWidth).
 		Bold(true).
-		Foreground(constant.LogoColor).
+		Foreground(logoColor).
 		Render(truncateText(m.title, contentWidth))
 
 	detail := lipgloss.NewStyle().
 		Width(contentWidth).
-		Foreground(constant.TextColor).
+		Foreground(textColor).
 		Render(truncateText(m.detail, contentWidth))
 
 	status := lipgloss.NewStyle().
 		Width(contentWidth).
-		Foreground(constant.MutedColor).
+		Foreground(mutedColor).
 		Render(truncateText(m.progressText(), contentWidth))
 
 	bar := lipgloss.NewStyle().
@@ -116,7 +115,7 @@ func (m downloadingModel) View() string {
 	chapterList := lipgloss.NewStyle().
 		Width(contentWidth).
 		Height(chapterListHeight).
-		Foreground(constant.TextColor).
+		Foreground(textColor).
 		Render(m.chapterProgressList(contentWidth, chapterListHeight))
 
 	inner := lipgloss.JoinVertical(
@@ -136,7 +135,7 @@ func (m downloadingModel) View() string {
 		Height(contentHeight).
 		Padding(1, 3).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.OuterBorderColor).
+		BorderForeground(outerBorderColor).
 		Render(inner)
 
 	if m.width == 0 || m.height == 0 {
@@ -186,19 +185,19 @@ func (m downloadingModel) chapterProgressList(width, height int) string {
 	lines := make([]string, 0, len(visible)+1)
 
 	for _, chapter := range visible {
-		markerStyle := lipgloss.NewStyle().Foreground(constant.MutedColor)
-		nameStyle := lipgloss.NewStyle().Foreground(constant.TextColor)
+		markerStyle := lipgloss.NewStyle().Foreground(mutedColor)
+		nameStyle := lipgloss.NewStyle().Foreground(textColor)
 
 		markerSymbol := "○"
 		switch {
 		case chapter.Completed:
 			markerSymbol = "✓"
-			markerStyle = lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true)
-			nameStyle = lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true)
+			markerStyle = lipgloss.NewStyle().Foreground(logoColor).Bold(true)
+			nameStyle = lipgloss.NewStyle().Foreground(logoColor).Bold(true)
 		case chapter.Active:
 			markerSymbol = "●"
-			markerStyle = lipgloss.NewStyle().Foreground(constant.InputBorderColor).Bold(true)
-			nameStyle = lipgloss.NewStyle().Foreground(constant.InputBorderColor).Bold(true)
+			markerStyle = lipgloss.NewStyle().Foreground(inputBorderColor).Bold(true)
+			nameStyle = lipgloss.NewStyle().Foreground(inputBorderColor).Bold(true)
 		}
 
 		progressText := fmt.Sprintf("(%d/%d)", chapter.CompletedPages, chapter.TotalPages)
@@ -212,14 +211,14 @@ func (m downloadingModel) chapterProgressList(width, height int) string {
 			" ",
 			nameStyle.Render(name),
 			" ",
-			lipgloss.NewStyle().Foreground(constant.MutedColor).Render(progressText),
+			lipgloss.NewStyle().Foreground(mutedColor).Render(progressText),
 		)
 		lines = append(lines, line)
 	}
 
 	hidden := len(m.chapters) - len(visible)
 	if hidden > 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(constant.MutedColor).Render(fmt.Sprintf("... and %d more chapter(s)", hidden)))
+		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf("... and %d more chapter(s)", hidden)))
 	}
 
 	body := strings.Join(lines, "\n")

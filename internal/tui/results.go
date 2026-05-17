@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -84,7 +83,7 @@ func newResultsModel(query string, results []tuiapp.SearchResult) resultsModel {
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(constant.LogoColor)
+	s.Style = lipgloss.NewStyle().Foreground(logoColor)
 
 	return resultsModel{
 		query:        query,
@@ -227,7 +226,7 @@ func (m resultsModel) View() string {
 	footer := lipgloss.NewStyle().
 		Width(l.leftContentWidth).
 		Padding(0, 1).
-		Foreground(constant.MutedColor).
+		Foreground(mutedColor).
 		Render(fmt.Sprintf("Results for %q", m.query))
 
 	footerHeight := lipgloss.Height(footer)
@@ -248,21 +247,21 @@ func (m resultsModel) View() string {
 		Width(l.leftContentWidth).
 		Height(l.leftContentHeight).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.OuterBorderColor).
+		BorderForeground(outerBorderColor).
 		Render(leftInner)
 
 	coverPanel := lipgloss.NewStyle().
 		Width(l.rightContentWidth).
 		Height(l.topContentHeight).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.InputBorderColor).
+		BorderForeground(inputBorderColor).
 		Render(m.coverView())
 
 	metadataPanel := lipgloss.NewStyle().
 		Width(l.rightContentWidth).
 		Height(l.bottomContentHeight).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.InputBorderColor).
+		BorderForeground(inputBorderColor).
 		Render(m.metadataView())
 
 	rightColumn := lipgloss.JoinVertical(
@@ -291,7 +290,7 @@ func (m resultsModel) coverView() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Padding(0, 1).
-		Foreground(constant.LogoColor).
+		Foreground(logoColor).
 		Render("Cover")
 
 	bodyWidth, bodyHeight := m.coverBodySize()
@@ -334,11 +333,11 @@ func (m resultsModel) metadataView() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Padding(0, 1).
-		Foreground(constant.LogoColor).
+		Foreground(logoColor).
 		Render("Metadata")
 
 	body := lipgloss.NewStyle().
-		Foreground(constant.TextColor).
+		Foreground(textColor).
 		Render(m.metadata.View())
 
 	return lipgloss.JoinVertical(
@@ -426,7 +425,7 @@ func (m *resultsModel) setCoverLoading(mangaID string) {
 
 	m.coverSpinner = spinner.New()
 	m.coverSpinner.Spinner = spinner.Dot
-	m.coverSpinner.Style = lipgloss.NewStyle().Foreground(constant.LogoColor)
+	m.coverSpinner.Style = lipgloss.NewStyle().Foreground(logoColor)
 }
 
 func (m *resultsModel) setCoverLoaded(mangaID, path, render string) {
@@ -462,6 +461,6 @@ func (m resultsModel) coverLoadingView(width, height int) string {
 		Width(width).
 		Height(height).
 		Align(lipgloss.Center, lipgloss.Center).
-		Foreground(constant.TextColor).
+		Foreground(textColor).
 		Render(body)
 }

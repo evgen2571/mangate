@@ -12,13 +12,12 @@ import (
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/constant"
 )
 
 func TestConvertChapterPlainKeepsProviderFileTypes(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 
 	sourceDir := filepath.Join(t.TempDir(), "source")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -51,7 +50,7 @@ func TestConvertChapterPlainKeepsProviderFileTypes(t *testing.T) {
 func TestConvertChapterCBZWritesArchive(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
-	cfg.Download.Type = constant.FormatCBZ
+	cfg.Download.Type = config.DownloadTypeCBZ
 
 	sourceDir := filepath.Join(t.TempDir(), "source")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -81,7 +80,7 @@ func TestConvertChapterCBZWritesArchive(t *testing.T) {
 func TestConvertChapterPlainKeepsExistingOutputOnFailure(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()
-	cfg.Download.Type = constant.FormatPlain
+	cfg.Download.Type = config.DownloadTypePlain
 
 	targetDir := filepath.Join(cfg.Download.Dir, "My Manga", "001-Intro")
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {

@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/constant"
 )
 
 type searchModel struct {
@@ -27,11 +26,11 @@ func newSearchModel(history []string) searchModel {
 	in := textinput.New()
 	in.Placeholder = "Search manga..."
 	in.Focus()
-	in.CharLimit = constant.CharLimit
-	in.Width = constant.InputWidth
-	in.PromptStyle = lipgloss.NewStyle().Foreground(constant.LogoColor)
-	in.TextStyle = lipgloss.NewStyle().Foreground(constant.TextColor)
-	in.PlaceholderStyle = lipgloss.NewStyle().Foreground(constant.MutedColor)
+	in.CharLimit = charLimit
+	in.Width = inputWidth
+	in.PromptStyle = lipgloss.NewStyle().Foreground(logoColor)
+	in.TextStyle = lipgloss.NewStyle().Foreground(textColor)
+	in.PlaceholderStyle = lipgloss.NewStyle().Foreground(mutedColor)
 
 	return searchModel{
 		input:           in,
@@ -100,14 +99,14 @@ func (m searchModel) Update(msg tea.Msg) (searchModel, tea.Cmd) {
 func (m searchModel) View() string {
 	logo := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(constant.LogoColor).
-		Render(constant.AsciiLogo)
+		Foreground(logoColor).
+		Render(asciiLogo)
 
 	inputBox := lipgloss.NewStyle().
-		Width(constant.InputWidth).
+		Width(inputWidth).
 		Padding(0, 1).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.InputBorderColor).
+		BorderForeground(inputBorderColor).
 		Render(m.input.View())
 
 	lines := []string{
@@ -118,11 +117,11 @@ func (m searchModel) View() string {
 
 	if suggestion := m.virtualSuggestionText(); suggestion != "" {
 		suggestionText := lipgloss.NewStyle().
-			Foreground(constant.MutedColor).
+			Foreground(mutedColor).
 			Render(fmt.Sprintf("Search '%s'?", suggestion))
 
 		acceptHint := lipgloss.NewStyle().
-			Foreground(constant.MutedColor).
+			Foreground(mutedColor).
 			Render("Press tab to accept")
 
 		lines = append(lines,
@@ -133,7 +132,7 @@ func (m searchModel) View() string {
 
 	if strings.TrimSpace(m.status) != "" {
 		statusText := lipgloss.NewStyle().
-			Foreground(constant.MutedColor).
+			Foreground(mutedColor).
 			Render(m.status)
 		lines = append(lines, "", statusText)
 	}
@@ -146,7 +145,7 @@ func (m searchModel) View() string {
 	panel := lipgloss.NewStyle().
 		Padding(5, 7).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(constant.OuterBorderColor).
+		BorderForeground(outerBorderColor).
 		Render(inner)
 
 	if m.width == 0 || m.height == 0 {

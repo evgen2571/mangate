@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/util"
 )
 
@@ -43,9 +42,9 @@ func (c *Converter) ConvertChapter(sourceDir, mangaDirName, chapterName string) 
 	}
 
 	switch c.cfg.Download.Type {
-	case constant.FormatPlain:
+	case config.DownloadTypePlain:
 		err = c.convertPlainChapter(sourceDir, mangaDirName, chapterName, files)
-	case constant.FormatCBZ, constant.FormatZIP:
+	case config.DownloadTypeCBZ, config.DownloadTypeZIP:
 		err = c.convertArchiveChapter(sourceDir, mangaDirName, chapterName, files)
 	default:
 		err = fmt.Errorf("convert chapter %q: unsupported download type %q", chapterName, c.cfg.Download.Type)

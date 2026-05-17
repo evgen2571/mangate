@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/constant"
 )
 
 func renderCoverText(path string, width, height int) (string, error) {
@@ -73,6 +72,6 @@ func renderCoverPlaceholder(width, height int, text string) string {
 		Width(width).
 		Height(height).
 		Align(lipgloss.Center, lipgloss.Center).
-		Foreground(constant.MutedColor).
+		Foreground(mutedColor).
 		Render(text)
 }
