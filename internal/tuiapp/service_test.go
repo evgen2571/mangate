@@ -153,6 +153,54 @@ func TestServiceLoadChaptersMapsChapterItems(t *testing.T) {
 	}
 }
 
+func TestServiceLoadCoverMapsRequestAndResponse(t *testing.T) {
+	runtime := &fakeRuntime{
+		cfg: config.DefaultConfig(),
+		coverFn: func(_ context.Context, manga *source.Manga) (string, error) {
+			if manga.ID != "manga-1" || manga.Title != "Dandadan" || manga.URL != "https://example.com/manga-1" {
+				t.Fatalf("cover manga = %#v, want mapped selected manga", manga)
+			}
+			return "/tmp/cover.png", nil
+		},
+	}
+
+	svc := service{runtime: runtime}
+	selected := SearchResult{
+		ID:    "manga-1",
+		Title: "Dandadan",
+		URL:   "https://example.com/manga-1",
+	}
+
+	got, err := svc.LoadCover(context.Background(), selected)
+	if err != nil {
+		t.Fatalf("LoadCover() error = %v", err)
+	}
+
+	want := CoverResult{
+		MangaID: "manga-1",
+		Path:    "/tmp/cover.png",
+	}
+	if got != want {
+		t.Fatalf("LoadCover() = %#v, want %#v", got, want)
+	}
+}
+
+func TestServiceLoadCoverReturnsRuntimeError(t *testing.T) {
+	wantErr := errors.New("cover failed")
+	runtime := &fakeRuntime{
+		cfg: config.DefaultConfig(),
+		coverFn: func(context.Context, *source.Manga) (string, error) {
+			return "", wantErr
+		},
+	}
+
+	svc := service{runtime: runtime}
+	_, err := svc.LoadCover(context.Background(), SearchResult{ID: "manga-1"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("LoadCover() error = %v, want %v", err, wantErr)
+	}
+}
+
 func TestServiceDownloadMapsRequestAndProgress(t *testing.T) {
 	runtime := &fakeRuntime{
 		cfg: config.DefaultConfig(),
