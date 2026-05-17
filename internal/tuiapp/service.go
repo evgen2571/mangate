@@ -85,7 +85,7 @@ func (s service) LoadChapters(ctx context.Context, selected SearchResult) (Manga
 	}, items, nil
 }
 
-func (s service) LoadCover(ctx context.Context, selected SearchResult, _ CoverSize) (CoverResult, error) {
+func (s service) LoadCover(ctx context.Context, selected SearchResult) (CoverResult, error) {
 	path, err := s.runtime.coverPath(ctx, &source.Manga{
 		ID:    selected.ID,
 		Title: selected.Title,
@@ -206,7 +206,7 @@ func mapConfigState(cfg config.Config) ConfigState {
 }
 
 func toConfig(state ConfigState, base config.Config) config.Config {
-	next := base.Clone()
+	next := base
 	next.Provider = state.Provider
 	next.Language = state.Language
 	next.HTTP.Timeout = state.HTTPTimeout

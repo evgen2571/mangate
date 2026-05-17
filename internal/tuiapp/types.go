@@ -29,11 +29,6 @@ type ChapterItem struct {
 	URL         string
 }
 
-type CoverSize struct {
-	Width  int
-	Height int
-}
-
 type CoverResult struct {
 	MangaID string
 	Path    string
@@ -80,7 +75,7 @@ type Service interface {
 	Search(context.Context, string) ([]SearchResult, error)
 	SearchHistory(context.Context) ([]string, error)
 	LoadChapters(context.Context, SearchResult) (MangaDetails, []ChapterItem, error)
-	LoadCover(context.Context, SearchResult, CoverSize) (CoverResult, error)
+	LoadCover(context.Context, SearchResult) (CoverResult, error)
 	Download(context.Context, DownloadRequest, func(DownloadProgress)) error
 	Config() ConfigState
 	ApplyConfig(context.Context, ConfigState) (ConfigState, error)

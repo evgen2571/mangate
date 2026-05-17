@@ -142,10 +142,6 @@ func DefaultConfig() Config {
 	}
 }
 
-func (c Config) Clone() Config {
-	return c
-}
-
 func (c Config) Validate() error {
 	switch {
 	case strings.TrimSpace(c.Provider) == "":

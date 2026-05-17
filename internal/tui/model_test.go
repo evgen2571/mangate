@@ -204,7 +204,7 @@ func (f fakeTUIService) LoadChapters(ctx context.Context, result tuiapp.SearchRe
 	return tuiapp.MangaDetails{}, nil, nil
 }
 
-func (f fakeTUIService) LoadCover(context.Context, tuiapp.SearchResult, tuiapp.CoverSize) (tuiapp.CoverResult, error) {
+func (f fakeTUIService) LoadCover(context.Context, tuiapp.SearchResult) (tuiapp.CoverResult, error) {
 	return tuiapp.CoverResult{}, nil
 }
 

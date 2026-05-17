@@ -17,10 +17,3 @@ type mangaDexPageResponse struct {
 		DataSaver []string `json:"dataSaver"`
 	} `json:"chapter"`
 }
-
-type mangaDexCoverResponse struct {
-	ID         string `json:"id"`
-	Attributes struct {
-		Filename string `json:"filename"`
-	} `json:"attributes"`
-}

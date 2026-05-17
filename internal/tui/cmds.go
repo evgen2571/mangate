@@ -65,7 +65,7 @@ func (m model) loadCoverCmd(result tuiapp.SearchResult, width, height int) tea.C
 			return nil
 		}
 
-		cover, err := m.svc.LoadCover(nil, result, tuiapp.CoverSize{Width: width, Height: height})
+		cover, err := m.svc.LoadCover(nil, result)
 		if err != nil {
 			return coverFailedMsg{MangaID: result.ID, Err: err}
 		}

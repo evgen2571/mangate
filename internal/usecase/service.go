@@ -153,7 +153,6 @@ func buildDownloadManga(manga *source.Manga, chapters []*source.Chapter) (*sourc
 		ID:       manga.ID,
 		URL:      manga.URL,
 		Title:    manga.Title,
-		Cover:    manga.Cover,
 		Metadata: manga.Metadata,
 		Chapters: make([]*source.Chapter, 0, len(chapters)),
 	}
