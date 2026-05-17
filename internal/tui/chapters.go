@@ -335,6 +335,31 @@ func (m *chaptersModel) syncListItems() {
 	m.list.SetItems(items)
 }
 
+func downloadDetailText(chapters []tuiapp.ChapterItem) string {
+	count := len(chapters)
+	if count == 1 {
+		chapter := chapters[0]
+		for _, text := range []string{chapter.DisplayText, chapter.Title, chapter.Index, chapter.ID} {
+			if text != "" {
+				return text
+			}
+		}
+		return "1 chapter selected"
+	}
+	return fmt.Sprintf("%d chapters selected", count)
+}
+
+func nonNilChapters(chapters []tuiapp.ChapterItem) []tuiapp.ChapterItem {
+	result := make([]tuiapp.ChapterItem, 0, len(chapters))
+	for _, chapter := range chapters {
+		if !isChapterItemSet(chapter) {
+			continue
+		}
+		result = append(result, chapter)
+	}
+	return result
+}
+
 func chapterSelectionKey(chapter tuiapp.ChapterItem, idx int) string {
 	if strings.TrimSpace(chapter.ID) != "" {
 		return chapter.ID

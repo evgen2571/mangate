@@ -1,12 +1,9 @@
 package tui
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -164,31 +161,6 @@ func (m model) reloadSelectedCoverCmd() tea.Cmd {
 	)
 }
 
-func downloadDetailText(chapters []tuiapp.ChapterItem) string {
-	count := len(chapters)
-	if count == 1 {
-		chapter := chapters[0]
-		for _, text := range []string{chapter.DisplayText, chapter.Title, chapter.Index, chapter.ID} {
-			if text != "" {
-				return text
-			}
-		}
-		return "1 chapter selected"
-	}
-	return fmt.Sprintf("%d chapters selected", count)
-}
-
-func nonNilChapters(chapters []tuiapp.ChapterItem) []tuiapp.ChapterItem {
-	result := make([]tuiapp.ChapterItem, 0, len(chapters))
-	for _, chapter := range chapters {
-		if !isChapterItemSet(chapter) {
-			continue
-		}
-		result = append(result, chapter)
-	}
-	return result
-}
-
 func mangaDetailsFromSearchResult(result tuiapp.SearchResult) tuiapp.MangaDetails {
 	return tuiapp.MangaDetails{
 		ID:           result.ID,
@@ -197,11 +169,4 @@ func mangaDetailsFromSearchResult(result tuiapp.SearchResult) tuiapp.MangaDetail
 		SummaryMD:    result.SummaryMD,
 		ChapterCount: result.ChapterCount,
 	}
-}
-
-func currentConfigState(svc tuiapp.Service) tuiapp.ConfigState {
-	if svc == nil {
-		return configStateFromConfig(config.DefaultConfig())
-	}
-	return svc.Config()
 }

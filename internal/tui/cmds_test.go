@@ -7,7 +7,7 @@ import (
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
-func TestSearchMangaCmdUsesTUIAppServiceResultsAndHistory(t *testing.T) {
+func TestSearchSubmittedUsesTUIAppServiceResultsAndHistory(t *testing.T) {
 	svc := fakeTUIService{
 		searchResults: []tuiapp.SearchResult{{
 			ID:           "manga-a",

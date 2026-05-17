@@ -287,6 +287,13 @@ func (m *configModel) loadFromState(state tuiapp.ConfigState) {
 	m.syncInput()
 }
 
+func currentConfigState(svc tuiapp.Service) tuiapp.ConfigState {
+	if svc == nil {
+		return configStateFromConfig(config.DefaultConfig())
+	}
+	return svc.Config()
+}
+
 func configStateFromConfig(cfg config.Config) tuiapp.ConfigState {
 	return tuiapp.ConfigState{
 		Provider:           cfg.Provider,
