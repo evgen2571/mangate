@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// PageLoader fills chapter pages on demand when they are not already present.
 type PageLoader func(context.Context, *source.Chapter) ([]*source.Page, error)
 
 const (
@@ -33,10 +34,6 @@ type pageStatusError struct {
 
 func (e pageStatusError) Error() string {
 	return fmt.Sprintf("unexpected status code %d for %q", e.statusCode, e.url)
-}
-
-func (d *Downloader) DownloadChapter(c *source.Chapter) error {
-	return d.downloadChapter(context.Background(), c, chapterDirBaseName(c), nil, nil)
 }
 
 func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
@@ -138,15 +135,9 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 	return nil
 }
 
-func (d *Downloader) DownloadManga(m *source.Manga) error {
-	return d.downloadManga(context.Background(), m, nil, nil)
-}
-
-func (d *Downloader) DownloadMangaWithProgress(m *source.Manga, notify func(DownloadProgress)) error {
-	return d.downloadManga(context.Background(), m, newProgressReporter(m, notify), nil)
-}
-
-func (d *Downloader) DownloadMangaWithProgressAndPageLoader(ctx context.Context, m *source.Manga, pageLoader PageLoader, notify func(DownloadProgress)) error {
+// DownloadManga downloads all chapters for a manga, optionally loading pages lazily
+// through pageLoader and reporting progress through notify.
+func (d *Downloader) DownloadManga(ctx context.Context, m *source.Manga, pageLoader PageLoader, notify func(DownloadProgress)) error {
 	return d.downloadManga(ctx, m, newProgressReporter(m, notify), pageLoader)
 }
 

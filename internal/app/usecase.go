@@ -58,7 +58,7 @@ func (d mangaDownloader) DownloadManga(ctx context.Context, manga *source.Manga,
 		return fmt.Errorf("download chapters: downloader is not configured")
 	}
 
-	return d.downloader.DownloadMangaWithProgressAndPageLoader(
+	return d.downloader.DownloadManga(
 		ctx,
 		manga,
 		downloader.PageLoader(pageLoader),

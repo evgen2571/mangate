@@ -43,8 +43,8 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 		Pages: []*source.Page{{URL: server.URL + "/page?token=abc"}},
 	}
 
-	if err := d.DownloadChapter(chapter); err != nil {
-		t.Fatalf("DownloadChapter() error = %v", err)
+	if err := d.downloadChapter(context.Background(), chapter, "", nil, nil); err != nil {
+		t.Fatalf("downloadChapter() error = %v", err)
 	}
 
 	pagePath := filepath.Join(cfg.Download.Dir, "My-Manga", "Chapter-1-Intro", "0001.png")
@@ -89,10 +89,10 @@ func TestDownloadMangaWithPageLoaderLoadsMissingPages(t *testing.T) {
 	}
 
 	var finalProgress DownloadProgress
-	if err := d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, func(progress DownloadProgress) {
+	if err := d.DownloadManga(context.Background(), manga, loader, func(progress DownloadProgress) {
 		finalProgress = progress
 	}); err != nil {
-		t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+		t.Fatalf("DownloadManga() error = %v", err)
 	}
 
 	if !reflect.DeepEqual(loaded, []string{"chapter-1", "chapter-2"}) {
@@ -148,7 +148,7 @@ func TestDownloadMangaReportsChaptersActiveBeforeLazyPageLoadingCompletes(t *tes
 	progressCh := make(chan DownloadProgress, 32)
 	done := make(chan error, 1)
 	go func() {
-		done <- d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, func(progress DownloadProgress) {
+		done <- d.DownloadManga(context.Background(), manga, loader, func(progress DownloadProgress) {
 			progressCh <- progress
 		})
 	}()
@@ -186,7 +186,7 @@ func TestDownloadMangaReportsChaptersActiveBeforeLazyPageLoadingCompletes(t *tes
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+			t.Fatalf("DownloadManga() error = %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for download to finish")
@@ -233,7 +233,7 @@ func TestDownloadMangaUsesGlobalPageDownloadLimit(t *testing.T) {
 		manga.Chapters = append(manga.Chapters, chapter)
 	}
 
-	if err := d.DownloadManga(manga); err != nil {
+	if err := d.DownloadManga(context.Background(), manga, nil, nil); err != nil {
 		t.Fatalf("DownloadManga() error = %v", err)
 	}
 
@@ -265,7 +265,7 @@ func TestDownloadMangaDisambiguatesDuplicateChapterDirectoryNames(t *testing.T) 
 		{ID: "chapter-b", Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/b.png"}}},
 	}
 
-	if err := d.DownloadManga(manga); err != nil {
+	if err := d.DownloadManga(context.Background(), manga, nil, nil); err != nil {
 		t.Fatalf("DownloadManga() error = %v", err)
 	}
 
@@ -319,8 +319,8 @@ func TestDownloadMangaRefreshesLazyPagesAfterForbiddenImage(t *testing.T) {
 		return []*source.Page{{URL: server.URL + "/fresh.png"}}, nil
 	}
 
-	if err := d.DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, nil); err != nil {
-		t.Fatalf("DownloadMangaWithProgressAndPageLoader() error = %v", err)
+	if err := d.DownloadManga(context.Background(), manga, loader, nil); err != nil {
+		t.Fatalf("DownloadManga() error = %v", err)
 	}
 
 	if got := loads.Load(); got != 2 {
@@ -370,8 +370,8 @@ func TestDownloadPageRetriesTooManyRequests(t *testing.T) {
 		Pages: []*source.Page{{URL: server.URL + "/page.png"}},
 	}
 
-	if err := d.DownloadChapter(chapter); err != nil {
-		t.Fatalf("DownloadChapter() error = %v", err)
+	if err := d.downloadChapter(context.Background(), chapter, "", nil, nil); err != nil {
+		t.Fatalf("downloadChapter() error = %v", err)
 	}
 
 	if got := attempts.Load(); got != 2 {
