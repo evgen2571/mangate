@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/tuiapp"
-	"github.com/evgen2571/mangate/internal/usecase"
 )
 
 func TestSearchMangaCmdUsesTUIAppServiceResultsAndHistory(t *testing.T) {
@@ -94,13 +93,13 @@ func TestProgressSummaryDetailUsesChapterProgressViews(t *testing.T) {
 	}
 }
 
-func TestDownloadProgressMsgFromUsecaseConvertsToTUIViewData(t *testing.T) {
-	progress := usecase.DownloadProgress{
+func TestDownloadProgressMsgFromTUIAppConvertsToTUIViewData(t *testing.T) {
+	progress := tuiapp.DownloadProgress{
 		CompletedChapters: 1,
 		TotalChapters:     2,
 		CompletedPages:    3,
 		TotalPages:        10,
-		Chapters: []usecase.ChapterDownloadProgress{
+		Chapters: []tuiapp.ChapterProgress{
 			{
 				Name:           "Chapter 1",
 				CompletedPages: 3,
@@ -114,7 +113,7 @@ func TestDownloadProgressMsgFromUsecaseConvertsToTUIViewData(t *testing.T) {
 		},
 	}
 
-	msg := downloadProgressMsgFromUsecase(progress)
+	msg := downloadProgressMsgFromTUIApp(progress)
 
 	if msg.Title != "Downloading pages" {
 		t.Fatalf("Title = %q, want %q", msg.Title, "Downloading pages")

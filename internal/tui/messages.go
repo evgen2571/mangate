@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -29,18 +27,18 @@ type fullMangaDownloadRequestedMsg struct {
 }
 
 type chaptersLoadedMsg struct {
-	Manga    *source.Manga
-	Chapters []*source.Chapter
+	Manga    tuiapp.MangaDetails
+	Chapters []tuiapp.ChapterItem
 }
 
 type chaptersFailedMsg struct {
-	Manga *source.Manga
-	Err   error
+	MangaID string
+	Err     error
 }
 
 type downloadRequestedMsg struct {
-	Manga    *source.Manga
-	Chapters []*source.Chapter
+	Manga    tuiapp.MangaDetails
+	Chapters []tuiapp.ChapterItem
 }
 
 type downloadProgressMsg struct {
@@ -53,13 +51,13 @@ type downloadProgressMsg struct {
 }
 
 type downloadSucceededMsg struct {
-	Manga    *source.Manga
-	Chapters []*source.Chapter
+	Manga    tuiapp.MangaDetails
+	Chapters []tuiapp.ChapterItem
 }
 
 type downloadFailedMsg struct {
-	Manga    *source.Manga
-	Chapters []*source.Chapter
+	Manga    tuiapp.MangaDetails
+	Chapters []tuiapp.ChapterItem
 	Err      error
 }
 
@@ -81,9 +79,9 @@ type coverFailedMsg struct {
 type goBackMsg struct{}
 
 type configApplyRequestedMsg struct {
-	Config config.Config
+	Config tuiapp.ConfigState
 }
 
 type configSaveRequestedMsg struct {
-	Config config.Config
+	Config tuiapp.ConfigState
 }

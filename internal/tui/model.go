@@ -7,9 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
@@ -25,12 +23,11 @@ const (
 )
 
 type model struct {
-	app *app.App
 	svc tuiapp.Service
 
 	state                    state
 	previousState            state
-	pendingFullMangaDownload string
+	pendingFullMangaDownload tuiapp.MangaDetails
 	width                    int
 	height                   int
 
@@ -45,11 +42,11 @@ type model struct {
 	config      configModel
 }
 
-func New(a *app.App) tea.Model {
-	return newModel(a, tuiapp.New(a))
+func New(svc tuiapp.Service) tea.Model {
+	return newModel(svc)
 }
 
-func newModel(a *app.App, svc tuiapp.Service) tea.Model {
+func newModel(svc tuiapp.Service) tea.Model {
 	h := help.New()
 	h.ShowAll = false
 
@@ -59,13 +56,9 @@ func newModel(a *app.App, svc tuiapp.Service) tea.Model {
 			searchHistory = history
 		}
 	}
-	configDraft := config.DefaultConfig()
-	if a != nil {
-		configDraft = a.Cfg
-	}
+	configDraft := currentConfigState(svc)
 
 	return &model{
-		app:    a,
 		svc:    svc,
 		state:  stateSearch,
 		keys:   newKeyMap(),
@@ -154,7 +147,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Result.ID == "" {
 			return m, nil
 		}
-		m.pendingFullMangaDownload = ""
+		m.pendingFullMangaDownload = tuiapp.MangaDetails{}
 
 		m.loading = newLoadingModel("Loading chapters", msg.Result.Title)
 		m.state = stateLoading
@@ -165,7 +158,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Result.ID == "" {
 			return m, nil
 		}
-		m.pendingFullMangaDownload = msg.Result.ID
+		m.pendingFullMangaDownload = mangaDetailsFromSearchResult(msg.Result)
 
 		m.loading = newLoadingModel("Loading chapters", msg.Result.Title)
 		m.state = stateLoading
@@ -173,15 +166,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Result))
 
 	case chaptersLoadedMsg:
-		if msg.Manga != nil {
-			msg.Manga.Chapters = msg.Chapters
-			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
-		}
 		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
-		if msg.Manga != nil && m.pendingFullMangaDownload != "" && m.pendingFullMangaDownload == msg.Manga.ID {
-			m.pendingFullMangaDownload = ""
+		if m.pendingFullMangaDownload.ID != "" && m.pendingFullMangaDownload.ID == msg.Manga.ID {
+			m.pendingFullMangaDownload = tuiapp.MangaDetails{}
 			chapters := nonNilChapters(msg.Chapters)
-			if msg.Manga != nil && len(chapters) > 0 {
+			if len(chapters) > 0 {
 				progressCh := make(chan tea.Msg, 1024)
 				m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(chapters), progressCh)
 				m.state = stateDownloading
@@ -195,15 +184,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case chaptersFailedMsg:
-		if msg.Manga != nil && m.pendingFullMangaDownload == msg.Manga.ID {
-			m.pendingFullMangaDownload = ""
+		if m.pendingFullMangaDownload.ID != "" && m.pendingFullMangaDownload.ID == msg.MangaID {
+			m.pendingFullMangaDownload = tuiapp.MangaDetails{}
 		}
 		m.state = stateResults
 		m.resizeActiveModel()
 		return m, nil
 
 	case downloadRequestedMsg:
-		if msg.Manga == nil || len(msg.Chapters) == 0 {
+		if msg.Manga.ID == "" || len(msg.Chapters) == 0 {
 			return m, nil
 		}
 
@@ -236,24 +225,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case configApplyRequestedMsg:
-		if err := m.app.ApplyConfig(msg.Config); err != nil {
-			m.config.setStatus(fmt.Sprintf("apply failed: %v", err))
-			return m, nil
-		}
-		m.config.draft = m.app.Cfg.Clone()
-		m.config.syncInput()
-		m.config.setStatus("applied for this session")
-		return m, nil
+		return m.applyConfig(msg.Config)
 
 	case configSaveRequestedMsg:
-		if err := m.app.ApplyAndSaveConfig(msg.Config); err != nil {
-			m.config.setStatus(err.Error())
-			return m, nil
-		}
-		m.config.draft = m.app.Cfg.Clone()
-		m.config.syncInput()
-		m.config.setStatus("saved and applied")
-		return m, nil
+		return m.saveConfig(msg.Config)
 
 	case tea.ResumeMsg:
 		if m.state == stateResults {
@@ -269,7 +244,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Suspend
 		case key.Matches(msg, m.keys.Config) && m.state != stateConfig && m.state != stateDownloading && m.state != stateLoading:
 			m.previousState = m.state
-			m.config = newConfigModel(m.app.Cfg)
+			m.config = newConfigModel(currentConfigState(m.svc))
 			m.state = stateConfig
 			m.resizeActiveModel()
 			return m, nil
@@ -315,6 +290,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	return m, nil
+}
+
+func (m model) applyConfig(state tuiapp.ConfigState) (tea.Model, tea.Cmd) {
+	next, err := m.svc.ApplyConfig(nil, state)
+	if err != nil {
+		m.config.setStatus(fmt.Sprintf("apply failed: %v", err))
+		return m, nil
+	}
+	m.config.loadFromState(next)
+	m.config.setStatus("applied for this session")
+	return m, nil
+}
+
+func (m model) saveConfig(state tuiapp.ConfigState) (tea.Model, tea.Cmd) {
+	next, err := m.svc.SaveConfig(nil, state)
+	if err != nil {
+		m.config.setStatus(err.Error())
+		return m, nil
+	}
+	m.config.loadFromState(next)
+	m.config.setStatus("saved and applied")
 	return m, nil
 }
 
@@ -411,21 +408,44 @@ func (m model) reloadSelectedCoverCmd() tea.Cmd {
 	)
 }
 
-func downloadDetailText(chapters []*source.Chapter) string {
+func downloadDetailText(chapters []tuiapp.ChapterItem) string {
 	count := len(chapters)
 	if count == 1 {
-		return chapters[0].LogName()
+		chapter := chapters[0]
+		for _, text := range []string{chapter.DisplayText, chapter.Title, chapter.Index, chapter.ID} {
+			if text != "" {
+				return text
+			}
+		}
+		return "1 chapter selected"
 	}
 	return fmt.Sprintf("%d chapters selected", count)
 }
 
-func nonNilChapters(chapters []*source.Chapter) []*source.Chapter {
-	result := make([]*source.Chapter, 0, len(chapters))
+func nonNilChapters(chapters []tuiapp.ChapterItem) []tuiapp.ChapterItem {
+	result := make([]tuiapp.ChapterItem, 0, len(chapters))
 	for _, chapter := range chapters {
-		if chapter == nil {
+		if !isChapterItemSet(chapter) {
 			continue
 		}
 		result = append(result, chapter)
 	}
 	return result
+}
+
+func mangaDetailsFromSearchResult(result tuiapp.SearchResult) tuiapp.MangaDetails {
+	return tuiapp.MangaDetails{
+		ID:           result.ID,
+		Title:        result.Title,
+		URL:          result.URL,
+		SummaryMD:    result.SummaryMD,
+		ChapterCount: result.ChapterCount,
+	}
+}
+
+func currentConfigState(svc tuiapp.Service) tuiapp.ConfigState {
+	if svc == nil {
+		return configStateFromConfig(config.DefaultConfig())
+	}
+	return svc.Config()
 }

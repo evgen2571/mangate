@@ -1,11 +1,11 @@
 package tui
 
-import "github.com/evgen2571/mangate/internal/source"
+import "github.com/evgen2571/mangate/internal/tuiapp"
 
-func nonNilChapterCount(chapters []*source.Chapter) int {
+func nonNilChapterCount(chapters []tuiapp.ChapterItem) int {
 	count := 0
 	for _, chapter := range chapters {
-		if chapter != nil {
+		if isChapterItemSet(chapter) {
 			count++
 		}
 	}

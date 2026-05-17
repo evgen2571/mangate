@@ -10,21 +10,33 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/constant"
-	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 type chapterItem struct {
 	idx      int
-	value    *source.Chapter
+	value    tuiapp.ChapterItem
 	selected bool
 }
 
 func (i chapterItem) FilterValue() string {
-	return i.value.DisplayName()
+	if strings.TrimSpace(i.value.DisplayText) != "" {
+		return i.value.DisplayText
+	}
+	if strings.TrimSpace(i.value.Title) != "" {
+		return i.value.Title
+	}
+	return strings.TrimSpace(i.value.Index)
 }
 
 func (i chapterItem) Title() string {
-	text := i.value.DisplayTitle(i.idx)
+	text := strings.TrimSpace(i.value.DisplayText)
+	if text == "" {
+		text = strings.TrimSpace(i.value.Title)
+	}
+	if text == "" {
+		text = fmt.Sprintf("Chapter %d", i.idx+1)
+	}
 
 	if i.selected {
 		marker := lipgloss.NewStyle().Foreground(constant.LogoColor).Bold(true).Render("● ")
@@ -37,7 +49,7 @@ func (i chapterItem) Title() string {
 }
 
 func (i chapterItem) Description() string {
-	if i.value == nil {
+	if !isChapterItemSet(i.value) {
 		return ""
 	}
 
@@ -53,15 +65,15 @@ type chaptersModel struct {
 	width  int
 	height int
 
-	manga    *source.Manga
+	manga    tuiapp.MangaDetails
 	keys     chaptersKeyMap
 	list     list.Model
-	chapters []*source.Chapter
+	chapters []tuiapp.ChapterItem
 	selected map[string]bool
 	status   string
 }
 
-func newChaptersModel(manga *source.Manga, chapters []*source.Chapter) chaptersModel {
+func newChaptersModel(manga tuiapp.MangaDetails, chapters []tuiapp.ChapterItem) chaptersModel {
 	l := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
@@ -179,7 +191,7 @@ func (m chaptersModel) listHeight() int {
 func (m chaptersModel) footerText() string {
 	parts := []string{}
 	chapterCount := m.chapterCount()
-	if m.manga == nil || strings.TrimSpace(m.manga.Title) == "" {
+	if strings.TrimSpace(m.manga.Title) == "" {
 		parts = append(parts, "Chapters")
 	} else {
 		parts = append(parts, fmt.Sprintf("Chapters for %q", strings.TrimSpace(m.manga.Title)))
@@ -225,7 +237,7 @@ func (m *chaptersModel) selectAll() {
 
 	m.selected = make(map[string]bool)
 	for idx, chapter := range m.chapters {
-		if chapter == nil {
+		if !isChapterItemSet(chapter) {
 			continue
 		}
 		m.selected[chapterSelectionKey(chapter, idx)] = true
@@ -240,7 +252,7 @@ func (m *chaptersModel) deselectAll() {
 
 func (m *chaptersModel) toggleSelectionAt(index int) {
 	chapter := m.chapterAt(index)
-	if chapter == nil {
+	if !isChapterItemSet(chapter) {
 		return
 	}
 
@@ -252,18 +264,18 @@ func (m *chaptersModel) toggleSelectionAt(index int) {
 	m.syncListItems()
 }
 
-func (m chaptersModel) chaptersForDownload() []*source.Chapter {
+func (m chaptersModel) chaptersForDownload() []tuiapp.ChapterItem {
 	if m.selectedCount() == 0 {
 		chapter := m.chapterAt(m.list.Index())
-		if chapter == nil {
+		if !isChapterItemSet(chapter) {
 			return nil
 		}
-		return []*source.Chapter{chapter}
+		return []tuiapp.ChapterItem{chapter}
 	}
 
-	chapters := make([]*source.Chapter, 0, len(m.selected))
+	chapters := make([]tuiapp.ChapterItem, 0, len(m.selected))
 	for idx, chapter := range m.chapters {
-		if chapter == nil {
+		if !isChapterItemSet(chapter) {
 			continue
 		}
 		if !m.selected[chapterSelectionKey(chapter, idx)] {
@@ -284,7 +296,7 @@ func (m chaptersModel) allChaptersSelected() bool {
 	}
 
 	for idx, chapter := range m.chapters {
-		if chapter == nil {
+		if !isChapterItemSet(chapter) {
 			continue
 		}
 		if !m.selected[chapterSelectionKey(chapter, idx)] {
@@ -297,16 +309,16 @@ func (m chaptersModel) allChaptersSelected() bool {
 func (m chaptersModel) chapterCount() int {
 	count := 0
 	for _, chapter := range m.chapters {
-		if chapter != nil {
+		if isChapterItemSet(chapter) {
 			count++
 		}
 	}
 	return count
 }
 
-func (m chaptersModel) chapterAt(index int) *source.Chapter {
+func (m chaptersModel) chapterAt(index int) tuiapp.ChapterItem {
 	if index < 0 || index >= len(m.chapters) {
-		return nil
+		return tuiapp.ChapterItem{}
 	}
 	return m.chapters[index]
 }
@@ -323,12 +335,20 @@ func (m *chaptersModel) syncListItems() {
 	m.list.SetItems(items)
 }
 
-func chapterSelectionKey(chapter *source.Chapter, idx int) string {
-	if chapter == nil {
-		return fmt.Sprintf("idx:%d", idx)
-	}
+func chapterSelectionKey(chapter tuiapp.ChapterItem, idx int) string {
 	if strings.TrimSpace(chapter.ID) != "" {
 		return chapter.ID
 	}
+	if strings.TrimSpace(chapter.Index) != "" {
+		return fmt.Sprintf("%s#%d", chapter.Index, idx)
+	}
 	return fmt.Sprintf("idx:%d", idx)
+}
+
+func isChapterItemSet(chapter tuiapp.ChapterItem) bool {
+	return strings.TrimSpace(chapter.ID) != "" ||
+		strings.TrimSpace(chapter.Index) != "" ||
+		strings.TrimSpace(chapter.Title) != "" ||
+		strings.TrimSpace(chapter.DisplayText) != "" ||
+		strings.TrimSpace(chapter.URL) != ""
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 type configField int
@@ -36,14 +37,14 @@ type configModel struct {
 	height int
 
 	keys    configKeyMap
-	draft   config.Config
+	draft   tuiapp.ConfigState
 	input   textinput.Model
 	cursor  int
 	editing bool
 	status  string
 }
 
-func newConfigModel(cfg config.Config) configModel {
+func newConfigModel(state tuiapp.ConfigState) configModel {
 	in := textinput.New()
 	in.CharLimit = 256
 	in.Width = 60
@@ -53,7 +54,7 @@ func newConfigModel(cfg config.Config) configModel {
 
 	m := configModel{
 		keys:  newConfigKeyMap(),
-		draft: cfg.Clone(),
+		draft: state,
 		input: in,
 	}
 	m.syncInput()
@@ -206,21 +207,21 @@ func (m configModel) fieldValue(field configField) string {
 	case configFieldLanguage:
 		return m.draft.Language
 	case configFieldDownloadDir:
-		return m.draft.Download.Dir
+		return m.draft.DownloadDir
 	case configFieldDownloadType:
-		return m.draft.Download.Type
+		return m.draft.DownloadType
 	case configFieldHTTPTimeout:
-		return m.draft.HTTP.Timeout.String()
+		return m.draft.HTTPTimeout.String()
 	case configFieldPageDownloads:
-		return strconv.Itoa(m.draft.Concurrency.PageDownloads)
+		return strconv.Itoa(m.draft.PageDownloads)
 	case configFieldChapterDownloads:
-		return strconv.Itoa(m.draft.Concurrency.ChapterDownloads)
+		return strconv.Itoa(m.draft.ChapterDownloads)
 	case configFieldSearchHistoryMax:
-		return strconv.Itoa(m.draft.Search.HistoryMax)
+		return strconv.Itoa(m.draft.SearchHistoryMax)
 	case configFieldCacheDir:
-		return m.draft.Dirs.Cache
+		return m.draft.CacheDir
 	case configFieldTempDir:
-		return m.draft.Dirs.Temp
+		return m.draft.TempDir
 	default:
 		return ""
 	}
@@ -233,50 +234,91 @@ func (m *configModel) updateDraftFromInput() error {
 		return fmt.Errorf("%s cannot be empty", strings.ToLower(m.fieldLabel(field)))
 	}
 
-	next := m.draft.Clone()
+	next := m.draft
 	switch field {
 	case configFieldProvider:
 		next.Provider = value
 	case configFieldLanguage:
 		next.Language = value
 	case configFieldDownloadDir:
-		next.Download.Dir = value
+		next.DownloadDir = value
 	case configFieldDownloadType:
-		next.Download.Type = value
+		next.DownloadType = value
 	case configFieldHTTPTimeout:
 		d, err := time.ParseDuration(value)
 		if err != nil {
 			return fmt.Errorf("parse http timeout: %w", err)
 		}
-		next.HTTP.Timeout = d
+		next.HTTPTimeout = d
 	case configFieldPageDownloads:
 		n, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("parse page downloads: %w", err)
 		}
-		next.Concurrency.PageDownloads = n
+		next.PageDownloads = n
 	case configFieldChapterDownloads:
 		n, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("parse chapter downloads: %w", err)
 		}
-		next.Concurrency.ChapterDownloads = n
+		next.ChapterDownloads = n
 	case configFieldSearchHistoryMax:
 		n, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("parse search history max: %w", err)
 		}
-		next.Search.HistoryMax = n
+		next.SearchHistoryMax = n
 	case configFieldCacheDir:
-		next.Dirs.Cache = value
+		next.CacheDir = value
 	case configFieldTempDir:
-		next.Dirs.Temp = value
+		next.TempDir = value
 	}
 
-	if err := next.Validate(); err != nil {
+	if err := configFromState(next).Validate(); err != nil {
 		return err
 	}
 	m.draft = next
 	m.syncInput()
 	return nil
+}
+
+func (m *configModel) loadFromState(state tuiapp.ConfigState) {
+	m.draft = state
+	m.syncInput()
+}
+
+func configStateFromConfig(cfg config.Config) tuiapp.ConfigState {
+	return tuiapp.ConfigState{
+		Provider:           cfg.Provider,
+		Language:           cfg.Language,
+		HTTPTimeout:        cfg.HTTP.Timeout,
+		DownloadDir:        cfg.Download.Dir,
+		DownloadType:       cfg.Download.Type,
+		PageDownloads:      cfg.Concurrency.PageDownloads,
+		ChapterDownloads:   cfg.Concurrency.ChapterDownloads,
+		SearchHistoryMax:   cfg.Search.HistoryMax,
+		CacheDir:           cfg.Dirs.Cache,
+		TempDir:            cfg.Dirs.Temp,
+		MangaDexSiteURL:    cfg.Providers.MangaDex.SiteURL,
+		MangaDexBaseURL:    cfg.Providers.MangaDex.BaseURL,
+		MangaDexUploadsURL: cfg.Providers.MangaDex.UploadsURL,
+	}
+}
+
+func configFromState(state tuiapp.ConfigState) config.Config {
+	cfg := config.DefaultConfig()
+	cfg.Provider = state.Provider
+	cfg.Language = state.Language
+	cfg.HTTP.Timeout = state.HTTPTimeout
+	cfg.Download.Dir = state.DownloadDir
+	cfg.Download.Type = state.DownloadType
+	cfg.Concurrency.PageDownloads = state.PageDownloads
+	cfg.Concurrency.ChapterDownloads = state.ChapterDownloads
+	cfg.Search.HistoryMax = state.SearchHistoryMax
+	cfg.Dirs.Cache = state.CacheDir
+	cfg.Dirs.Temp = state.TempDir
+	cfg.Providers.MangaDex.SiteURL = state.MangaDexSiteURL
+	cfg.Providers.MangaDex.BaseURL = state.MangaDexBaseURL
+	cfg.Providers.MangaDex.UploadsURL = state.MangaDexUploadsURL
+	return cfg
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/tui"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 func NewRootCmd(a *app.App) *cobra.Command {
@@ -23,7 +24,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 				return cmd.Help()
 			}
 
-			p := tea.NewProgram(tui.New(a))
+			p := tea.NewProgram(tui.New(tuiapp.New(a)))
 			_, err := p.Run()
 			return err
 		},

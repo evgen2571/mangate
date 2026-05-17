@@ -34,6 +34,9 @@ go.work.sum
 # Local agent/Ralph workspace
 .hermes/
 .worktrees/
+.agents/
+skills-lock.json
+superpowers
 
 # Media files
 *.png

@@ -5,17 +5,17 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 func TestChaptersModelSelectAllSelectsEveryNonNilChapterWhenSelectionIsPartial(t *testing.T) {
-	chapters := []*source.Chapter{
-		{ID: "a", Index: "1"},
-		nil,
-		{ID: "c", Index: "3"},
-		{Index: "4"},
+	chapters := []tuiapp.ChapterItem{
+		{ID: "a", Index: "1", DisplayText: "Chapter 1"},
+		{},
+		{ID: "c", Index: "3", DisplayText: "Chapter 3"},
+		{Index: "4", DisplayText: "Chapter 4"},
 	}
-	m := newChaptersModel(&source.Manga{Title: "Test"}, chapters)
+	m := newChaptersModel(tuiapp.MangaDetails{Title: "Test"}, chapters)
 
 	m.selectAll()
 
@@ -32,10 +32,10 @@ func TestChaptersModelSelectAllSelectsEveryNonNilChapterWhenSelectionIsPartial(t
 }
 
 func TestChaptersModelSelectAllClearsSelectionWhenEveryChapterIsSelected(t *testing.T) {
-	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
-		{ID: "a", Index: "1"},
-		nil,
-		{ID: "c", Index: "3"},
+	m := newChaptersModel(tuiapp.MangaDetails{Title: "Test"}, []tuiapp.ChapterItem{
+		{ID: "a", Index: "1", DisplayText: "Chapter 1"},
+		{},
+		{ID: "c", Index: "3", DisplayText: "Chapter 3"},
 	})
 	m.selectAll()
 
@@ -47,9 +47,9 @@ func TestChaptersModelSelectAllClearsSelectionWhenEveryChapterIsSelected(t *test
 }
 
 func TestChaptersModelDeselectAllClearsSelection(t *testing.T) {
-	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
-		{ID: "a", Index: "1"},
-		{ID: "b", Index: "2"},
+	m := newChaptersModel(tuiapp.MangaDetails{Title: "Test"}, []tuiapp.ChapterItem{
+		{ID: "a", Index: "1", DisplayText: "Chapter 1"},
+		{ID: "b", Index: "2", DisplayText: "Chapter 2"},
 	})
 	m.selectAll()
 
@@ -64,9 +64,9 @@ func TestChaptersModelDeselectAllClearsSelection(t *testing.T) {
 }
 
 func TestChaptersModelDeselectAllKeyClearsSelectionAndSetsStatus(t *testing.T) {
-	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
-		{ID: "a", Index: "1"},
-		{ID: "b", Index: "2"},
+	m := newChaptersModel(tuiapp.MangaDetails{Title: "Test"}, []tuiapp.ChapterItem{
+		{ID: "a", Index: "1", DisplayText: "Chapter 1"},
+		{ID: "b", Index: "2", DisplayText: "Chapter 2"},
 	})
 	m.selectAll()
 
@@ -84,9 +84,9 @@ func TestChaptersModelDeselectAllKeyClearsSelectionAndSetsStatus(t *testing.T) {
 }
 
 func TestChaptersModelSelectAllKeyClearsSelectionWhenEveryChapterIsSelected(t *testing.T) {
-	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
-		{ID: "a", Index: "1"},
-		{ID: "b", Index: "2"},
+	m := newChaptersModel(tuiapp.MangaDetails{Title: "Test"}, []tuiapp.ChapterItem{
+		{ID: "a", Index: "1", DisplayText: "Chapter 1"},
+		{ID: "b", Index: "2", DisplayText: "Chapter 2"},
 	})
 	m.selectAll()
 
@@ -104,9 +104,9 @@ func TestChaptersModelSelectAllKeyClearsSelectionWhenEveryChapterIsSelected(t *t
 }
 
 func TestChaptersModelFooterShowsTotalChapterCount(t *testing.T) {
-	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
-		{ID: "a", Index: "1"},
-		{ID: "b", Index: "2"},
+	m := newChaptersModel(tuiapp.MangaDetails{Title: "Test"}, []tuiapp.ChapterItem{
+		{ID: "a", Index: "1", DisplayText: "Chapter 1"},
+		{ID: "b", Index: "2", DisplayText: "Chapter 2"},
 	})
 
 	got := m.footerText()

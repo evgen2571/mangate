@@ -4,9 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/tuiapp"
-	"github.com/evgen2571/mangate/internal/usecase"
 )
 
 func (m model) searchMangaCmd(query string) tea.Cmd {
@@ -34,19 +32,19 @@ func (m model) loadChaptersCmd(result tuiapp.SearchResult) tea.Cmd {
 		details, chapters, err := m.svc.LoadChapters(nil, result)
 		if err != nil {
 			return chaptersFailedMsg{
-				Manga: &source.Manga{ID: result.ID, Title: result.Title, URL: result.URL},
-				Err:   err,
+				MangaID: result.ID,
+				Err:     err,
 			}
 		}
 
 		return chaptersLoadedMsg{
-			Manga:    sourceMangaFromDetails(details),
-			Chapters: sourceChaptersFromItems(chapters),
+			Manga:    details,
+			Chapters: chapters,
 		}
 	}
 }
 
-func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapter, progressCh chan tea.Msg) tea.Cmd {
+func (m model) downloadChaptersCmd(manga tuiapp.MangaDetails, chapters []tuiapp.ChapterItem, progressCh chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		go func() {
 			defer close(progressCh)
@@ -59,8 +57,11 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				Total:     0,
 			}
 
-			err := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress usecase.DownloadProgress) {
-				progressCh <- downloadProgressMsgFromUsecase(progress)
+			err := m.svc.Download(nil, tuiapp.DownloadRequest{
+				Manga:    manga,
+				Chapters: chapters,
+			}, func(progress tuiapp.DownloadProgress) {
+				progressCh <- downloadProgressMsgFromTUIApp(progress)
 			})
 			if err != nil {
 				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
@@ -98,31 +99,7 @@ func (m model) loadCoverCmd(result tuiapp.SearchResult, width, height int) tea.C
 	}
 }
 
-func sourceMangaFromDetails(details tuiapp.MangaDetails) *source.Manga {
-	return &source.Manga{
-		ID:    details.ID,
-		Title: details.Title,
-		URL:   details.URL,
-		Metadata: source.MangaMetadata{
-			ChapterCount: details.ChapterCount,
-		},
-	}
-}
-
-func sourceChaptersFromItems(items []tuiapp.ChapterItem) []*source.Chapter {
-	chapters := make([]*source.Chapter, 0, len(items))
-	for _, item := range items {
-		chapters = append(chapters, &source.Chapter{
-			ID:    item.ID,
-			Index: item.Index,
-			Title: item.Title,
-			URL:   item.URL,
-		})
-	}
-	return chapters
-}
-
-func downloadProgressMsgFromUsecase(progress usecase.DownloadProgress) downloadProgressMsg {
+func downloadProgressMsgFromTUIApp(progress tuiapp.DownloadProgress) downloadProgressMsg {
 	chapters := toChapterProgressViews(progress.Chapters)
 	return downloadProgressMsg{
 		Title:     "Downloading pages",
@@ -134,7 +111,7 @@ func downloadProgressMsgFromUsecase(progress usecase.DownloadProgress) downloadP
 	}
 }
 
-func toChapterProgressViews(chapters []usecase.ChapterDownloadProgress) []chapterProgressView {
+func toChapterProgressViews(chapters []tuiapp.ChapterProgress) []chapterProgressView {
 	views := make([]chapterProgressView, 0, len(chapters))
 	for _, chapter := range chapters {
 		views = append(views, chapterProgressView{

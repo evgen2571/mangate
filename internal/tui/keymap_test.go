@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/evgen2571/mangate/internal/tuiapp"
 )
 
 func TestChaptersShortHelpIsReadableAndShowsSelectionCommands(t *testing.T) {
-	m := newChaptersModel(nil, nil)
+	m := newChaptersModel(tuiapp.MangaDetails{}, nil)
 	bindings := m.HelpKeys(newKeyMap()).ShortHelp()
 
 	if got, max := len(bindings), 9; got > max {
