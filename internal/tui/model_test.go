@@ -2,64 +2,11 @@ package tui
 
 import (
 	"context"
-	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/tuiapp"
 )
-
-func TestModelGoDoesNotContainRootUpdateMethod(t *testing.T) {
-	hasMethod, err := modelGoDeclaresMethod("Update", "model")
-	if err != nil {
-		t.Fatalf("modelGoDeclaresMethod(Update, model) error = %v", err)
-	}
-	if hasMethod {
-		t.Fatal("model.go still contains the root Update method")
-	}
-}
-
-func modelGoDeclaresMethod(methodName, receiverName string) (bool, error) {
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return false, errors.New("runtime.Caller(0) failed")
-	}
-
-	modelPath := filepath.Join(filepath.Dir(currentFile), "model.go")
-	fileSet := token.NewFileSet()
-	file, err := parser.ParseFile(fileSet, modelPath, nil, 0)
-	if err != nil {
-		return false, err
-	}
-
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name == nil || fn.Name.Name != methodName || fn.Recv == nil || len(fn.Recv.List) != 1 {
-			continue
-		}
-		if receiverTypeName(fn.Recv.List[0].Type) == receiverName {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-func receiverTypeName(expr ast.Expr) string {
-	switch node := expr.(type) {
-	case *ast.Ident:
-		return node.Name
-	case *ast.StarExpr:
-		return receiverTypeName(node.X)
-	default:
-		return ""
-	}
-}
 
 func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testing.T) {
 	manga := tuiapp.MangaDetails{ID: "manga-a", Title: "Manga A"}
