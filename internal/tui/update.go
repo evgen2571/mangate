@@ -265,7 +265,7 @@ func (m model) routeActiveModelUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) applyConfig(state tuiapp.ConfigState) (tea.Model, tea.Cmd) {
-	next, err := m.svc.ApplyConfig(nil, state)
+	next, err := m.svc.ApplyConfig(context.TODO(), state)
 	if err != nil {
 		m.config.setStatus(fmt.Sprintf("apply failed: %v", err))
 		return m, nil
@@ -276,7 +276,7 @@ func (m model) applyConfig(state tuiapp.ConfigState) (tea.Model, tea.Cmd) {
 }
 
 func (m model) saveConfig(state tuiapp.ConfigState) (tea.Model, tea.Cmd) {
-	next, err := m.svc.SaveConfig(nil, state)
+	next, err := m.svc.SaveConfig(context.TODO(), state)
 	if err != nil {
 		m.config.setStatus(err.Error())
 		return m, nil
