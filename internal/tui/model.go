@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -48,7 +50,7 @@ func newModel(svc tuiapp.Service) tea.Model {
 
 	searchHistory := []string(nil)
 	if svc != nil {
-		if history, err := svc.SearchHistory(nil); err == nil {
+		if history, err := svc.SearchHistory(context.TODO()); err == nil {
 			searchHistory = history
 		}
 	}

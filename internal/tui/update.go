@@ -217,12 +217,12 @@ func (m model) handleSearchSubmitted(msg searchSubmittedMsg) (tea.Model, tea.Cmd
 	return m, tea.Batch(
 		m.loading.spinner.Tick,
 		func() tea.Msg {
-			results, err := m.svc.Search(nil, msg.Query)
+			results, err := m.svc.Search(context.TODO(), msg.Query)
 			if err != nil {
 				return searchFailedMsg{Err: err}
 			}
 
-			history, _ := m.svc.SearchHistory(nil)
+			history, _ := m.svc.SearchHistory(context.TODO())
 			return searchSucceededMsg{
 				Query:   msg.Query,
 				Results: results,
