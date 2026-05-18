@@ -35,7 +35,9 @@ func (pr *Provider) Search(ctx context.Context, title string) ([]*source.Manga, 
 	if err != nil {
 		return nil, fmt.Errorf("execute search request in %q: %w", pr.Name(), err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("search request in %q returned unexpected status: %s", pr.Name(), resp.Status)

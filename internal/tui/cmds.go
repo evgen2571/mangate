@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,7 +14,7 @@ func (m model) loadChaptersCmd(result tuiapp.SearchResult) tea.Cmd {
 			return nil
 		}
 
-		details, chapters, err := m.svc.LoadChapters(nil, result)
+		details, chapters, err := m.svc.LoadChapters(context.TODO(), result)
 		if err != nil {
 			return chaptersFailedMsg{
 				MangaID: result.ID,
@@ -41,7 +42,7 @@ func (m model) downloadChaptersCmd(manga tuiapp.MangaDetails, chapters []tuiapp.
 				Total:     0,
 			}
 
-			err := m.svc.Download(nil, tuiapp.DownloadRequest{
+			err := m.svc.Download(context.TODO(), tuiapp.DownloadRequest{
 				Manga:    manga,
 				Chapters: chapters,
 			}, func(progress tuiapp.DownloadProgress) {
@@ -65,7 +66,7 @@ func (m model) loadCoverCmd(result tuiapp.SearchResult, width, height int) tea.C
 			return nil
 		}
 
-		cover, err := m.svc.LoadCover(nil, result)
+		cover, err := m.svc.LoadCover(context.TODO(), result)
 		if err != nil {
 			return coverFailedMsg{MangaID: result.ID, Err: err}
 		}

@@ -76,7 +76,9 @@ func (c *Cache) saveSearchHistory(queries []string) error {
 		return fmt.Errorf("create temporary search history file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()

@@ -24,7 +24,7 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request) (*http.Response, err
 		}
 
 		wait := retryAfterDelay(resp.Header.Get("Retry-After"), attempt)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if err := sleepWithContext(currentReq.Context(), wait); err != nil {
 			return nil, fmt.Errorf("wait for rate limit reset: %w", err)

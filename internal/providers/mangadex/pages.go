@@ -27,7 +27,9 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 	if err != nil {
 		return nil, fmt.Errorf("execute pages request in %q: %w", pr.Name(), err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("pages request in %q returned unexpected status: %s", pr.Name(), resp.Status)

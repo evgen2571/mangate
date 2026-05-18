@@ -49,7 +49,9 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 
 		var mangaDexResponse mangaDexResponse[mangaDexChapter]
 		decodeErr := func() error {
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("chapters request in %q returned unexpected status: %s", pr.Name(), resp.Status)
@@ -94,7 +96,7 @@ func (mdc *mangaDexChapter) getTitle() string {
 }
 
 func (mdc *mangaDexChapter) getIndex() string {
-	var index string = "0"
+	index := "0"
 
 	if mdc.Attributes.Chapter != "" {
 		index = mdc.Attributes.Chapter

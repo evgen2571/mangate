@@ -253,7 +253,9 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 	if err != nil {
 		return "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", pageStatusError{url: p.URL, statusCode: resp.StatusCode}
@@ -291,7 +293,7 @@ func (d *Downloader) getPageResponseWithRetry(rawURL string) (*http.Response, er
 		}
 
 		wait := pageRetryAfterDelay(resp.Header.Get("Retry-After"), attempt)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		time.Sleep(wait)
 	}
 }

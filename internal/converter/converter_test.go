@@ -138,7 +138,9 @@ func writePNG(t *testing.T, path string, fill color.Color) {
 	if err != nil {
 		t.Fatalf("Create(%q) error = %v", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	for y := 0; y < 2; y++ {
@@ -159,7 +161,9 @@ func assertPNG(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("Open(%q) error = %v", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if _, err := png.Decode(f); err != nil {
 		t.Fatalf("png.Decode(%q) error = %v", path, err)
@@ -189,7 +193,9 @@ func zipEntries(t *testing.T, path string) []string {
 	if err != nil {
 		t.Fatalf("zip.OpenReader(%q) error = %v", path, err)
 	}
-	defer zr.Close()
+	defer func() {
+		_ = zr.Close()
+	}()
 
 	out := make([]string, 0, len(zr.File))
 	for _, file := range zr.File {

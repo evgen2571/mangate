@@ -100,7 +100,9 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		downloadErr = fmt.Errorf("download cover: %w", err)
 		return "", downloadErr
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		downloadErr = fmt.Errorf("download cover: unexpected status %s", resp.Status)

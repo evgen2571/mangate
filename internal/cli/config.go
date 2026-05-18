@@ -15,38 +15,39 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := a.Cfg
 
-			fmt.Fprintf(cmd.OutOrStdout(), "ConfigPath: %s\n", a.ConfigPath)
-			fmt.Fprintf(cmd.OutOrStdout(), "Provider: %s\n", cfg.Provider)
-			fmt.Fprintf(cmd.OutOrStdout(), "Language: %s\n", cfg.Language)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			out := cmd.OutOrStdout()
+			writef(out, "ConfigPath: %s\n", a.ConfigPath)
+			writef(out, "Provider: %s\n", cfg.Provider)
+			writef(out, "Language: %s\n", cfg.Language)
+			writef(out, "\n")
 
-			fmt.Fprintf(cmd.OutOrStdout(), "MangaDex:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  SiteURL:    %s\n", cfg.Providers.MangaDex.SiteURL)
-			fmt.Fprintf(cmd.OutOrStdout(), "  BaseURL:    %s\n", cfg.Providers.MangaDex.BaseURL)
-			fmt.Fprintf(cmd.OutOrStdout(), "  UploadsURL: %s\n", cfg.Providers.MangaDex.UploadsURL)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			writef(out, "MangaDex:\n")
+			writef(out, "  SiteURL:    %s\n", cfg.Providers.MangaDex.SiteURL)
+			writef(out, "  BaseURL:    %s\n", cfg.Providers.MangaDex.BaseURL)
+			writef(out, "  UploadsURL: %s\n", cfg.Providers.MangaDex.UploadsURL)
+			writef(out, "\n")
 
-			fmt.Fprintf(cmd.OutOrStdout(), "HTTP:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  Timeout: %s\n", cfg.HTTP.Timeout)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			writef(out, "HTTP:\n")
+			writef(out, "  Timeout: %s\n", cfg.HTTP.Timeout)
+			writef(out, "\n")
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Download:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  Dir:  %s\n", cfg.Download.Dir)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Type: %s\n", cfg.Download.Type)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			writef(out, "Download:\n")
+			writef(out, "  Dir:  %s\n", cfg.Download.Dir)
+			writef(out, "  Type: %s\n", cfg.Download.Type)
+			writef(out, "\n")
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Concurrency:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  PageDownloads:    %d\n", cfg.Concurrency.PageDownloads)
-			fmt.Fprintf(cmd.OutOrStdout(), "  ChapterDownloads: %d\n", cfg.Concurrency.ChapterDownloads)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			writef(out, "Concurrency:\n")
+			writef(out, "  PageDownloads:    %d\n", cfg.Concurrency.PageDownloads)
+			writef(out, "  ChapterDownloads: %d\n", cfg.Concurrency.ChapterDownloads)
+			writef(out, "\n")
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Search:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  HistoryMax: %d\n", cfg.Search.HistoryMax)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			writef(out, "Search:\n")
+			writef(out, "  HistoryMax: %d\n", cfg.Search.HistoryMax)
+			writef(out, "\n")
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Dirs:\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  Cache: %s\n", cfg.Dirs.Cache)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Temp:  %s\n", cfg.Dirs.Temp)
+			writef(out, "Dirs:\n")
+			writef(out, "  Cache: %s\n", cfg.Dirs.Cache)
+			writef(out, "  Temp:  %s\n", cfg.Dirs.Temp)
 
 			return nil
 		},

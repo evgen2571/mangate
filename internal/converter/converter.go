@@ -70,7 +70,9 @@ func (c *Converter) convertPlainChapter(sourceDir, mangaDirName, chapterName str
 	if err != nil {
 		return fmt.Errorf("create staging chapter directory for %q: %w", chapterName, err)
 	}
-	defer os.RemoveAll(stagingDir)
+	defer func() {
+		_ = os.RemoveAll(stagingDir)
+	}()
 
 	for _, file := range files {
 		sourcePath := filepath.Join(sourceDir, file.Name())
@@ -105,36 +107,36 @@ func (c *Converter) convertArchiveChapter(sourceDir, mangaDirName, chapterName s
 		sourcePath := filepath.Join(sourceDir, file.Name())
 		entry, err := zw.Create(file.Name())
 		if err != nil {
-			zw.Close()
-			tempFile.Close()
+			_ = zw.Close()
+			_ = tempFile.Close()
 			_ = os.Remove(tempPath)
 			return fmt.Errorf("create archive entry %q: %w", file.Name(), err)
 		}
 
 		in, err := os.Open(sourcePath)
 		if err != nil {
-			zw.Close()
-			tempFile.Close()
+			_ = zw.Close()
+			_ = tempFile.Close()
 			_ = os.Remove(tempPath)
 			return fmt.Errorf("open source file %q: %w", sourcePath, err)
 		}
 		if _, err := io.Copy(entry, in); err != nil {
-			in.Close()
-			zw.Close()
-			tempFile.Close()
+			_ = in.Close()
+			_ = zw.Close()
+			_ = tempFile.Close()
 			_ = os.Remove(tempPath)
 			return fmt.Errorf("write archive entry %q: %w", file.Name(), err)
 		}
 		if err := in.Close(); err != nil {
-			zw.Close()
-			tempFile.Close()
+			_ = zw.Close()
+			_ = tempFile.Close()
 			_ = os.Remove(tempPath)
 			return fmt.Errorf("close source file %q: %w", sourcePath, err)
 		}
 	}
 
 	if err := zw.Close(); err != nil {
-		tempFile.Close()
+		_ = tempFile.Close()
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("close archive %q: %w", tempPath, err)
 	}
@@ -172,14 +174,16 @@ func copyFileAtomic(sourcePath, targetPath string) error {
 	if err != nil {
 		return fmt.Errorf("open source file %q: %w", sourcePath, err)
 	}
-	defer in.Close()
+	defer func() {
+		_ = in.Close()
+	}()
 
 	out, tempPath, err := createTempFile(targetPath)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("copy %q to %q: %w", sourcePath, targetPath, err)
 	}

@@ -185,11 +185,11 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 			})...)
 
 		case key.Matches(msg, m.keys.MetaUp):
-			m.metadata.LineUp(5)
+			m.metadata.ScrollUp(5)
 			return m, tea.Batch(cmds...)
 
 		case key.Matches(msg, m.keys.MetaDown):
-			m.metadata.LineDown(5)
+			m.metadata.ScrollDown(5)
 			return m, tea.Batch(cmds...)
 		}
 	}

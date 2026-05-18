@@ -28,7 +28,9 @@ func (pr *Provider) Cover(ctx context.Context, manga *source.Manga) (string, err
 	if err != nil {
 		return "", fmt.Errorf("execute cover request in %q: %w", pr.Name(), err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("cover request in %q returned unexpected status: %s", pr.Name(), resp.Status)

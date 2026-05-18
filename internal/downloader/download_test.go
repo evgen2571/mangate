@@ -52,7 +52,9 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(%q) error = %v", pagePath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if _, err := png.Decode(f); err != nil {
 		t.Fatalf("png.Decode(%q) error = %v", pagePath, err)
@@ -424,10 +426,12 @@ func mustPNGBytes(t *testing.T, fill color.Color) []byte {
 		t.Fatalf("CreateTemp() error = %v", err)
 	}
 	path := file.Name()
-	defer os.Remove(path)
+	defer func() {
+		_ = os.Remove(path)
+	}()
 
 	if err := png.Encode(file, img); err != nil {
-		file.Close()
+		_ = file.Close()
 		t.Fatalf("png.Encode() error = %v", err)
 	}
 	if err := file.Close(); err != nil {

@@ -27,27 +27,27 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			if len(chapters) == 0 {
-				fmt.Fprintf(out, "no chapters found for manga %s\n", mangaID)
+				writef(out, "no chapters found for manga %s\n", mangaID)
 				return nil
 			}
 
-			fmt.Fprintf(out, "Chapters for %s\n\n", mangaID)
+			writef(out, "Chapters for %s\n\n", mangaID)
 			for i, chapter := range chapters {
 				if chapter == nil {
 					return fmt.Errorf("chapter #%d is nil", i+1)
 				}
 
-				fmt.Fprintf(out, "%d. %s\n", i+1, chapter.DisplayTitle(i))
+				writef(out, "%d. %s\n", i+1, chapter.DisplayTitle(i))
 				if chapter.ID != "" {
-					fmt.Fprintf(out, "   ID:    %s\n", chapter.ID)
+					writef(out, "   ID:    %s\n", chapter.ID)
 				}
 				if chapter.PageCount > 0 {
-					fmt.Fprintf(out, "   Pages: %d\n", chapter.PageCount)
+					writef(out, "   Pages: %d\n", chapter.PageCount)
 				}
 				if chapter.URL != "" {
-					fmt.Fprintf(out, "   URL:   %s\n", chapter.URL)
+					writef(out, "   URL:   %s\n", chapter.URL)
 				}
-				fmt.Fprintln(out)
+				writeln(out)
 			}
 
 			return nil

@@ -162,11 +162,5 @@ func (m model) reloadSelectedCoverCmd() tea.Cmd {
 }
 
 func mangaDetailsFromSearchResult(result tuiapp.SearchResult) tuiapp.MangaDetails {
-	return tuiapp.MangaDetails{
-		ID:           result.ID,
-		Title:        result.Title,
-		URL:          result.URL,
-		SummaryMD:    result.SummaryMD,
-		ChapterCount: result.ChapterCount,
-	}
+	return tuiapp.MangaDetails(result)
 }

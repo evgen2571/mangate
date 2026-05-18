@@ -24,23 +24,24 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 				return fmt.Errorf("search %q with provider %q: %w", title, a.Cfg.Provider, err)
 			}
 
+			out := cmd.OutOrStdout()
 			if len(results) == 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "no results found for %q\n", title)
+				writef(out, "no results found for %q\n", title)
 				return nil
 			}
 
 			for i, manga := range results {
-				fmt.Fprintf(cmd.OutOrStdout(), "%d. %s\n", i+1, manga.Title)
+				writef(out, "%d. %s\n", i+1, manga.Title)
 
 				if manga.URL != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "   URL: %s\n", manga.URL)
+					writef(out, "   URL: %s\n", manga.URL)
 				}
 
 				if manga.ID != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "   ID:  %s\n", manga.ID)
+					writef(out, "   ID:  %s\n", manga.ID)
 				}
 
-				fmt.Fprintln(cmd.OutOrStdout())
+				writeln(out)
 			}
 
 			return nil
