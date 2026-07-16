@@ -5,9 +5,13 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 project_name="mangate"
 bin_dir="${HOME}/.local/bin"
 install_path="$bin_dir/$project_name"
-config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-config_dir="$config_root/$project_name"
-config_file="$config_dir/config.json"
+if [[ -n "${MANGATE_CONFIG:-}" ]]; then
+  config_file="$MANGATE_CONFIG"
+else
+  config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
+  config_file="$config_root/$project_name/config.json"
+fi
+config_dir="$(dirname -- "$config_file")"
 
 echo "[install] repo: $repo_root"
 echo "[install] binary path: $install_path"
@@ -49,7 +53,10 @@ else
     "timeout": "30s"
   },
   "download": {
-    "dir": "$download_dir"
+    "dir": "$download_dir",
+    "format": "directory",
+    "existingFileMode": "skip",
+    "retainSource": true
   },
   "concurrency": {
     "pageDownloads": 8,
@@ -71,10 +78,6 @@ if [[ ":${PATH}:" != *":$bin_dir:"* ]]; then
   echo "[install] warning: $bin_dir is not in PATH"
   echo "[install] add this to your shell rc if you want to run '$project_name' directly:"
   echo "  export PATH=\"$bin_dir:\$PATH\""
-fi
-
-if ! command -v chafa >/dev/null 2>&1; then
-  echo "[install] note: chafa is not installed. TUI cover rendering will stay unavailable until you install it manually."
 fi
 
 echo "[install] done"
