@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,6 +88,48 @@ func TestCompletionModelReportsArchivePaths(t *testing.T) {
 	completion := newCompletionModel(a, manga, chapters, nil)
 	if !completion.success || len(completion.paths) != 2 || !strings.HasSuffix(completion.paths[0], ".cbz") {
 		t.Fatalf("completion = %#v", completion)
+	}
+}
+
+func TestConfirmationPlanShowsArchivePathsAndExistingOutputs(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Download.ExistingFileMode = "skip"
+	cfg.Download.RetainSource = false
+	manga := &source.Manga{ID: "title", Title: "Example"}
+	chapters := []*source.Chapter{{ID: "one", Index: "1", PageCount: 3}, {ID: "two", Index: "2"}}
+	plan := newConfirmModel(cfg, manga, chapters, "cbz")
+	if len(plan.plannedPaths) != 2 || !strings.HasSuffix(plan.plannedPaths[0], ".cbz") || plan.expectedPages != 3 || plan.unknownPageCounts != 1 {
+		t.Fatalf("confirmation plan = %#v", plan)
+	}
+	if err := os.MkdirAll(filepath.Dir(plan.plannedPaths[0]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plan.plannedPaths[0], []byte("existing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan = newConfirmModel(cfg, manga, chapters, "cbz")
+	if len(plan.existingPaths) != 1 || !strings.Contains(plan.View(), "Source pages: removed") || !strings.Contains(plan.View(), "Existing outputs: 1") {
+		t.Fatalf("confirmation view = %q", plan.View())
+	}
+}
+
+func TestApplyingConfigRefreshesConfirmationPlan(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manga := &source.Manga{ID: "title", Title: "Example"}
+	chapters := []*source.Chapter{{ID: "one", Index: "1"}}
+	m := model{app: a, state: stateConfig, previousState: stateConfirm, format: newFormatModel("cbz"), confirm: newConfirmModel(cfg, manga, chapters, "cbz"), config: newConfigModel(cfg)}
+	updatedCfg := cfg.Clone()
+	updatedCfg.Download.Dir = t.TempDir()
+	updated, _ := m.Update(configApplyRequestedMsg{Config: updatedCfg})
+	got := updated.(model)
+	if got.confirm.output != updatedCfg.Download.Dir || !strings.HasPrefix(got.confirm.plannedPaths[0], updatedCfg.Download.Dir) {
+		t.Fatalf("confirmation plan was not refreshed: %#v", got.confirm)
 	}
 }
 

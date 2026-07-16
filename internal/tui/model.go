@@ -276,6 +276,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.config.draft = m.app.Cfg.Clone()
 		m.config.syncInput()
 		m.config.setStatus("applied for this session")
+		if m.previousState == stateConfirm {
+			m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
+		}
 		return m, nil
 
 	case configSaveRequestedMsg:
@@ -323,7 +326,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.format.move(1)
 				return m, nil
 			case "enter":
-				m.confirm.format = m.format.selected()
+				m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
 				m.state = stateConfirm
 				m.resizeActiveModel()
 				return m, nil
@@ -397,7 +400,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chapter) {
 	m.format = newFormatModel(m.app.Cfg.Download.Format)
 	m.pendingFullMangaDownload = nil
-	m.confirm = confirmModel{manga: manga, chapters: chapters, provider: m.app.Cfg.Provider, output: m.app.Cfg.Download.Dir, existing: m.app.Cfg.Download.ExistingFileMode}
+	m.confirm = newConfirmModel(m.app.Cfg, manga, chapters, m.format.selected())
 	m.state = stateFormat
 }
 
