@@ -79,12 +79,13 @@ type chaptersModel struct {
 	width  int
 	height int
 
-	manga    *source.Manga
-	keys     chaptersKeyMap
-	list     list.Model
-	chapters []*source.Chapter
-	selected map[string]bool
-	status   string
+	manga       *source.Manga
+	keys        chaptersKeyMap
+	list        list.Model
+	chapters    []*source.Chapter
+	selected    map[string]bool
+	rangeAnchor string
+	status      string
 }
 
 func newChaptersModel(manga *source.Manga, chapters []*source.Chapter) chaptersModel {
@@ -123,6 +124,12 @@ func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 			return m, func() tea.Msg { return goBackMsg{} }
 		case key.Matches(msg, m.keys.Toggle):
 			m.toggleSelectedChapter()
+			return m, nil
+		case key.Matches(msg, m.keys.SelectLatest):
+			m.selectLatestVisible()
+			return m, nil
+		case key.Matches(msg, m.keys.SelectRange):
+			m.selectRangeToCurrent()
 			return m, nil
 		case key.Matches(msg, m.keys.SelectAll):
 			if m.allVisibleChaptersSelected() {
@@ -222,7 +229,7 @@ func (m chaptersModel) footerText() string {
 	} else {
 		parts = append(parts, "enter: current")
 	}
-	parts = append(parts, "space: toggle")
+	parts = append(parts, "space: toggle", "l: latest", "r: range")
 
 	if strings.TrimSpace(m.status) != "" {
 		parts = append(parts, m.status)
@@ -268,6 +275,7 @@ func (m *chaptersModel) selectAllVisible() {
 
 func (m *chaptersModel) deselectAll() {
 	m.selected = make(map[string]bool)
+	m.rangeAnchor = ""
 	m.syncListItems()
 }
 
@@ -281,6 +289,8 @@ func (m *chaptersModel) toggleSelectionAt(index int) {
 	m.selected[key] = !m.selected[key]
 	if !m.selected[key] {
 		delete(m.selected, key)
+	} else {
+		m.rangeAnchor = key
 	}
 	m.syncListItems()
 }
@@ -294,8 +304,68 @@ func (m *chaptersModel) toggleSelectedChapter() {
 	m.selected[key] = !m.selected[key]
 	if !m.selected[key] {
 		delete(m.selected, key)
+	} else {
+		m.rangeAnchor = key
 	}
 	m.syncListItems()
+}
+
+func (m *chaptersModel) selectLatestVisible() {
+	visible := m.list.VisibleItems()
+	for index := len(visible) - 1; index >= 0; index-- {
+		item, ok := visible[index].(chapterItem)
+		if !ok || item.value == nil {
+			continue
+		}
+		m.selected = map[string]bool{chapterSelectionKey(item.value, item.idx): true}
+		m.rangeAnchor = chapterSelectionKey(item.value, item.idx)
+		m.syncListItems()
+		m.setStatus("selected latest visible chapter")
+		return
+	}
+	m.setStatus("no visible chapter to select")
+}
+
+func (m *chaptersModel) selectRangeToCurrent() {
+	current, ok := m.list.SelectedItem().(chapterItem)
+	if !ok || current.value == nil {
+		m.setStatus("no chapter selected for range")
+		return
+	}
+	currentKey := chapterSelectionKey(current.value, current.idx)
+	visible := m.list.VisibleItems()
+	anchorIndex, currentIndex := -1, -1
+	for index, value := range visible {
+		item, ok := value.(chapterItem)
+		if !ok || item.value == nil {
+			continue
+		}
+		key := chapterSelectionKey(item.value, item.idx)
+		if key == m.rangeAnchor {
+			anchorIndex = index
+		}
+		if key == currentKey {
+			currentIndex = index
+		}
+	}
+	if anchorIndex == -1 || currentIndex == -1 {
+		m.rangeAnchor = currentKey
+		m.setStatus("range start set; move to another visible chapter and press r")
+		return
+	}
+	if anchorIndex > currentIndex {
+		anchorIndex, currentIndex = currentIndex, anchorIndex
+	}
+	for _, value := range visible[anchorIndex : currentIndex+1] {
+		item, ok := value.(chapterItem)
+		if !ok || item.value == nil {
+			continue
+		}
+		m.selected[chapterSelectionKey(item.value, item.idx)] = true
+	}
+	m.rangeAnchor = currentKey
+	m.syncListItems()
+	m.setStatus(fmt.Sprintf("selected %d visible chapter(s) in range", currentIndex-anchorIndex+1))
 }
 
 func (m chaptersModel) chaptersForDownload() []*source.Chapter {

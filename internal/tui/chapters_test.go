@@ -138,3 +138,41 @@ func TestChaptersModelFiltersByLanguageAndSelectsVisibleChapters(t *testing.T) {
 		t.Fatalf("chaptersForDownload() = %#v, want only russian chapter", selected)
 	}
 }
+
+func TestChaptersModelSelectLatestChoosesLatestVisibleChapter(t *testing.T) {
+	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
+		{ID: "one", Index: "1"},
+		{ID: "two", Index: "2"},
+		{ID: "three", Index: "3"},
+	})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	if cmd != nil {
+		t.Fatalf("Update(l) returned unexpected command")
+	}
+	selected := updated.chaptersForDownload()
+	if len(selected) != 1 || selected[0].ID != "three" || updated.status != "selected latest visible chapter" {
+		t.Fatalf("latest selection = %#v, status = %q", selected, updated.status)
+	}
+}
+
+func TestChaptersModelSelectRangeUsesVisibleFilterOrder(t *testing.T) {
+	m := newChaptersModel(&source.Manga{Title: "Test"}, []*source.Chapter{
+		{ID: "one", Index: "1", Language: "en"},
+		{ID: "two", Index: "2", Language: "ru"},
+		{ID: "three", Index: "3", Language: "ru"},
+		{ID: "four", Index: "4", Language: "ru"},
+		{ID: "five", Index: "5", Language: "en"},
+	})
+	m.list.SetFilterText("ru")
+	m.list.Select(0)
+	m.selectRangeToCurrent()
+	m.list.Select(2)
+	m.selectRangeToCurrent()
+	selected := m.chaptersForDownload()
+	if len(selected) != 3 || selected[0].ID != "two" || selected[1].ID != "three" || selected[2].ID != "four" {
+		t.Fatalf("range selection = %#v", selected)
+	}
+	if !strings.Contains(m.status, "selected 3 visible") {
+		t.Fatalf("range status = %q", m.status)
+	}
+}
