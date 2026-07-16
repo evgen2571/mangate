@@ -132,6 +132,34 @@ func TestSearchCommandRejectsInteractiveJSON(t *testing.T) {
 	}
 }
 
+func TestQuietSuppressesHumanSearchOutput(t *testing.T) {
+	a := newTestApp(t, fakeProvider{searchResults: []*source.Manga{{ID: "manga", Title: "Manga"}}})
+	cmd := NewRootCmd(a)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--quiet", "search", "manga"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("quiet output = %q, want empty", got)
+	}
+}
+
+func TestQuietDoesNotSuppressJSONSearchOutput(t *testing.T) {
+	a := newTestApp(t, fakeProvider{searchResults: []*source.Manga{{ID: "manga", Title: "Manga"}}})
+	cmd := NewRootCmd(a)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--quiet", "--json", "search", "manga"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), `"operation":"search"`) {
+		t.Fatalf("JSON output = %q, want search envelope", out.String())
+	}
+}
+
 func newTestApp(t *testing.T, provider fakeProvider) *app.App {
 	t.Helper()
 

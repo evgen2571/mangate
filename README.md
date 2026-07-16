@@ -56,6 +56,8 @@ mangate archive verify ./library/Example-123/Chapter-1.cbz
 
 Human-readable search results include the provider, alternative title, content rating, publication status, original language, and year when the provider supplies them. Use `--language` to filter by original language and `--content-type` to filter content ratings when supplied by a provider. Add `--interactive` to open matching results in the TUI without repeating the search. Use the displayed `Reference` value with `mangate title`, `mangate chapters`, or `mangate download`; `--json` retains the complete structured metadata.
 
+Use `--quiet` to suppress successful human-readable command output; it does not suppress errors or alter `--json` output.
+
 `--chapter` rejects ambiguous releases. Use `--chapter-id` in that case. Chapters are listed in ascending provider chapter sequence with their stable IDs and languages. `--range`, `--before`, and `--after` currently compare provider chapter labels, so stable chapter IDs are the safe choice for special labels such as `Prologue`. Archive downloads validate and reuse matching existing archives under the default `skip` policy without downloading page content again.
 
 Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead. Pass `--non-interactive` in scripts to refuse TUI entry explicitly. TUI colors follow terminal defaults; use `--no-color` to disable them or `--color` to force them. Those two flags conflict.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -26,7 +27,13 @@ func NewRootCmd(a *app.App) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return a.ApplyConfig(a.Cfg)
+			if err := a.ApplyConfig(a.Cfg); err != nil {
+				return err
+			}
+			if isQuiet(cmd) && !wantsJSON(cmd) {
+				cmd.SetOut(io.Discard)
+			}
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if interactiveTerminal() && !wantsJSON(cmd) && !isNonInteractive(cmd) {
