@@ -160,7 +160,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, nil
 	case tea.KeyMsg:
-		if msg.String() == "?" && m.screen != workingScreen {
+		inputFocused := m.textInputFocused()
+		if msg.String() == "?" && m.screen != workingScreen && !inputFocused {
 			m.showHelp = !m.showHelp
 			return m, nil
 		}
@@ -168,7 +169,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = false
 			return m, nil
 		}
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
+		if msg.String() == "ctrl+c" || (msg.String() == "q" && !inputFocused) {
 			if m.screen == workingScreen && m.cancel != nil {
 				m.cancel()
 				m.status = "cancelling"
@@ -179,7 +180,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width > 0 && (m.width < minWidth || m.height < minHeight) {
 			return m, nil
 		}
-		if msg.String() == "ctrl+g" && m.screen != workingScreen {
+		if msg.String() == "ctrl+g" && m.screen != workingScreen && !inputFocused {
 			m.previous, m.screen, m.draft, m.configCursor, m.configEditing = m.screen, configScreen, m.app.Cfg.Clone(), 0, false
 			return m, nil
 		}
@@ -218,6 +219,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) textInputFocused() bool {
+	return m.screen == searchScreen || m.screen == outputScreen ||
+		(m.screen == chaptersScreen && m.filtering) ||
+		(m.screen == configScreen && m.configEditing)
+}
+
 func (m *model) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "enter" {
 		q := strings.TrimSpace(m.input.Value())
@@ -246,13 +253,10 @@ func (m *model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch key.String() {
-	case "j", "down":
-		m.resultsList.CursorDown()
-	case "k", "up":
-		m.resultsList.CursorUp()
 	case "esc", "backspace":
 		m.screen = searchScreen
 		m.resetInput("Search: ", m.query)
+		return m, nil
 	case "enter", "f":
 		item, ok := m.resultsList.SelectedItem().(resultItem)
 		if !ok || item.manga == nil {
@@ -294,7 +298,7 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chapterCursor = move(m.chapterCursor, 1, len(visible))
 	case "k", "up":
 		m.chapterCursor = move(m.chapterCursor, -1, len(visible))
-	case "space":
+	case "space", " ":
 		if len(visible) > 0 {
 			i := visible[m.chapterCursor]
 			m.selected[i] = !m.selected[i]
@@ -348,7 +352,8 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if len(m.selected) == 0 {
-			m.selected[visible[m.chapterCursor]] = true
+			m.status = "Select at least one chapter"
+			return m, nil
 		}
 		m.openFormat()
 	}
@@ -493,7 +498,7 @@ func (m *model) resetInput(prompt, value string) {
 	m.input.SetValue(value)
 	m.input.CursorEnd()
 	m.input.Focus()
-	m.input.Width = max(16, m.width-12)
+	m.input.Width = m.inputContentWidth()
 }
 func move(value, delta, length int) int {
 	if length <= 0 {

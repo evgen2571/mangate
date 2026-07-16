@@ -33,11 +33,16 @@ func (m *model) mainHeight() int {
 
 func (m *model) resize() {
 	w := m.contentWidth()
-	m.input.Width = max(12, w-6)
+	m.input.Width = m.inputContentWidth()
 	m.resultsList.SetSize(w, m.mainHeight())
 	m.doneViewport.Width, m.doneViewport.Height = w-2, m.mainHeight()
 	m.progressBar.Width = max(12, min(52, w-8))
 }
+
+// inputContentWidth is the stable inner width shared by every framed input.
+// The border and its horizontal padding are deliberately excluded so typing
+// never changes the outer field dimensions.
+func (m *model) inputContentWidth() int { return max(12, m.contentWidth()-6) }
 
 func (m *model) frame(header, body string) string {
 	if m.width > 0 && (m.width < minWidth || m.height < minHeight) {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
@@ -100,8 +101,125 @@ func TestChaptersRemainScrollableAndSelected(t *testing.T) {
 	if strings.Count(view, "pages") >= len(m.chapters) {
 		t.Fatal("chapter list was not constrained to the frame")
 	}
-	if !strings.Contains(view, "[x]") {
+	if !strings.Contains(view, "●") {
 		t.Fatal("selected chapter was not rendered")
+	}
+}
+
+func TestResultNavigationMovesExactlyOneItem(t *testing.T) {
+	m := testModel(t)
+	m.results = []*source.Manga{{Title: "One"}, {Title: "Two"}, {Title: "Three"}}
+	m.newResultsList(m.results)
+	m.screen = resultsScreen
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyDown}, {Type: tea.KeyRunes, Runes: []rune("j")}} {
+		before := m.resultsList.Index()
+		m.Update(key)
+		if got := m.resultsList.Index(); got != before+1 {
+			t.Fatalf("%q moved from %d to %d, want one item", key.String(), before, got)
+		}
+	}
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyUp}, {Type: tea.KeyRunes, Runes: []rune("k")}} {
+		before := m.resultsList.Index()
+		m.Update(key)
+		if got := m.resultsList.Index(); got != before-1 {
+			t.Fatalf("%q moved from %d to %d, want one item", key.String(), before, got)
+		}
+	}
+}
+
+func TestChapterSpaceTogglesExactlyOnceWithoutMoving(t *testing.T) {
+	m := testModel(t)
+	m.screen, m.manga = chaptersScreen, &source.Manga{Title: "Test"}
+	m.chapters = []*source.Chapter{{Index: "1", Language: "en"}, {Index: "2", Language: "en"}}
+	m.chapterCursor = 1
+	key := tea.KeyMsg{Type: tea.KeySpace}
+	m.Update(key)
+	if !m.selected[1] || m.chapterCursor != 1 {
+		t.Fatalf("first space selected=%v cursor=%d, want true and 1", m.selected[1], m.chapterCursor)
+	}
+	m.Update(key)
+	if m.selected[1] || m.chapterCursor != 1 {
+		t.Fatalf("second space selected=%v cursor=%d, want false and 1", m.selected[1], m.chapterCursor)
+	}
+}
+
+func TestFocusedInputReceivesGlobalShortcutCharacters(t *testing.T) {
+	m := testModel(t)
+	resize(t, m, 80, 24)
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeyRunes, Runes: []rune("?")}} {
+		next, _ := m.Update(key)
+		if next == nil || m.showHelp {
+			t.Fatalf("focused input key %q was handled globally", key.String())
+		}
+	}
+	if got := m.input.Value(); got != "q?" {
+		t.Fatalf("input value = %q, want q?", got)
+	}
+}
+
+func TestFramedInputHasStableDimensions(t *testing.T) {
+	m := testModel(t)
+	resize(t, m, 80, 24)
+	s := newStyles()
+	for _, value := range []string{"", "d", "ten letters", strings.Repeat("long ", 30), "Привет 漫画 한국어"} {
+		m.input.SetValue(value)
+		field := m.inputView(s)
+		if got, want := lipgloss.Width(field), m.contentWidth(); got != want {
+			t.Fatalf("input width for %q = %d, want %d", value, got, want)
+		}
+		lines := strings.Split(field, "\n")
+		if len(lines) != 3 || lipgloss.Width(lines[0]) != m.contentWidth() || lipgloss.Width(lines[2]) != m.contentWidth() {
+			t.Fatalf("broken input border for %q: %q", value, field)
+		}
+	}
+}
+
+func TestOutputInputSharesStableFrameAfterResize(t *testing.T) {
+	m := testModel(t)
+	m.screen, m.manga = outputScreen, &source.Manga{Title: "Example"}
+	resize(t, m, 80, 24)
+	m.resetInput("Output: ", "/downloads")
+	before := m.inputView(newStyles())
+	m.input.SetValue("/a path with unicode 漫画 and enough text to scroll beyond the visible field")
+	resize(t, m, 100, 30)
+	after := m.inputView(newStyles())
+	if got, want := lipgloss.Width(before), 74; got != want {
+		t.Fatalf("initial output width = %d, want %d", got, want)
+	}
+	if got, want := lipgloss.Width(after), 92; got != want {
+		t.Fatalf("resized output width = %d, want %d", got, want)
+	}
+	if got := m.input.Value(); !strings.Contains(got, "漫画") {
+		t.Fatalf("resize lost output value: %q", got)
+	}
+}
+
+func TestWorkflowIncludesOutputWithOneActiveStep(t *testing.T) {
+	s := newStyles()
+	for _, current := range []screen{chaptersScreen, formatScreen, outputScreen, reviewScreen} {
+		crumb := workflow(current, s)
+		for _, label := range []string{"Search", "Title", "Chapters", "Format", "Output", "Review"} {
+			if !strings.Contains(crumb, label) {
+				t.Fatalf("%v breadcrumb missing %q: %q", current, label, crumb)
+			}
+		}
+	}
+}
+
+func TestReviewCardUsesConnectedFixedWidthBorder(t *testing.T) {
+	m := testModel(t)
+	resize(t, m, 80, 24)
+	m.manga = &source.Manga{Title: strings.Repeat("A wide title 漫画 ", 12)}
+	m.app.Cfg.Download.Dir = "/very/long/output/path/with/a/unicode/漫画/directory"
+	card := m.reviewView()
+	lines := strings.Split(card, "\n")
+	if len(lines) < 3 || !strings.HasPrefix(lines[0], "┌") || !strings.HasPrefix(lines[len(lines)-1], "└") {
+		t.Fatalf("review card has incomplete border: %q", card)
+	}
+	for _, line := range lines {
+		if got, want := lipgloss.Width(line), m.contentWidth(); got != want {
+			t.Fatalf("review line width = %d, want %d: %q", got, want, line)
+		}
 	}
 }
 

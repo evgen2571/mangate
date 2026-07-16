@@ -16,7 +16,7 @@ func newStyles() styles {
 		heading:     lipgloss.NewStyle().Bold(true),
 		accent:      lipgloss.NewStyle().Foreground(accent),
 		muted:       lipgloss.NewStyle().Faint(true),
-		selected:    lipgloss.NewStyle().Bold(true).Foreground(accent),
+		selected:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")),
 		status:      lipgloss.NewStyle().Foreground(lipgloss.Color("14")),
 		success:     lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true),
 		warning:     lipgloss.NewStyle().Foreground(lipgloss.Color("11")),

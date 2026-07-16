@@ -66,7 +66,7 @@ func workflow(current screen, s styles) string {
 	steps := []struct {
 		screen screen
 		label  string
-	}{{searchScreen, "Search"}, {resultsScreen, "Title"}, {chaptersScreen, "Chapters"}, {formatScreen, "Format"}, {reviewScreen, "Review"}}
+	}{{searchScreen, "Search"}, {resultsScreen, "Title"}, {chaptersScreen, "Chapters"}, {formatScreen, "Format"}, {outputScreen, "Output"}, {reviewScreen, "Review"}}
 	parts := make([]string, 0, len(steps))
 	for _, step := range steps {
 		if step.screen == current {
@@ -82,7 +82,13 @@ func (m *model) searchView() string {
 	s := newStyles()
 	m.input.Placeholder = "Search by title"
 	m.input.PromptStyle = s.accent
-	return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render("Search manga and manhwa"), s.muted.Render("Find a title, then choose the chapters you want."), "", s.input.Render(m.input.View()), "", s.muted.Render("Provider: "+m.app.Cfg.Provider+" · Language: "+m.app.Cfg.Language))
+	return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render("Search manga and manhwa"), s.muted.Render("Find a title, then choose the chapters you want."), "", m.inputView(s), "", s.muted.Render("Provider: "+m.app.Cfg.Provider+" · Language: "+m.app.Cfg.Language))
+}
+
+// inputView owns the shared, fixed-width parent border. Bubbles owns only the
+// text and cursor inside it, so the rectangle cannot be resized by its value.
+func (m *model) inputView(s styles) string {
+	return s.input.Width(m.contentWidth() - 2).Render(m.input.View())
 }
 
 func (m *model) loadingView() string {
@@ -106,9 +112,9 @@ func (m *model) chaptersView() string {
 	if m.chapterFilter != "" {
 		summary += " · Filter: " + m.chapterFilter
 	}
-	parts := []string{s.heading.Render(util.SanitizeTerminalText(m.manga.Title)), s.muted.Render(summary)}
+	parts := []string{s.heading.Render(truncate(util.SanitizeTerminalText(m.manga.Title), m.contentWidth())), s.muted.Render(summary)}
 	if m.filtering {
-		parts = append(parts, "", s.input.Render(m.input.View()))
+		parts = append(parts, "", m.inputView(s))
 	}
 	if len(visible) == 0 {
 		return lipgloss.JoinVertical(lipgloss.Left, append(parts, "", s.warning.Render("No chapters match this filter"), s.muted.Render("Edit the filter or press esc, then / to try again."))...)
@@ -122,14 +128,16 @@ func (m *model) chaptersView() string {
 		if position == m.chapterCursor {
 			marker = s.cursor.Render("› ")
 		}
-		check := "[ ]"
+		check := s.muted.Render("○")
 		if m.selected[index] {
-			check = "[x]"
+			check = s.selected.Render("●")
+		} else if position == m.chapterCursor {
+			check = s.accent.Render("●")
 		}
-		label := truncate(m.chapterLabel(index), m.contentWidth()-12)
-		parts = append(parts, marker+check+" "+label)
+		label := truncate(m.chapterLabel(index), m.contentWidth()-5)
+		parts = append(parts, marker+check+"  "+label)
 	}
-	parts = append(parts, "", s.muted.Render("space toggle · a all visible · d clear · l latest · r range"))
+	parts = append(parts, "", s.muted.Render(fmt.Sprintf("%d/%d · space toggle · a all visible · d clear · l latest · r range", start+1, len(visible))))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
@@ -152,7 +160,7 @@ func (m *model) outputView() string {
 	s := newStyles()
 	path := strings.TrimSpace(m.input.Value())
 	preview := filepath.Join(path, downloader.TitleDirectoryName(m.manga))
-	parts := []string{s.heading.Render("Output directory"), s.muted.Render("Files will be created under:"), s.muted.Render(truncate(preview, m.contentWidth())), "", s.input.Render(m.input.View())}
+	parts := []string{s.heading.Render("Output directory"), s.muted.Render("Files will be created under:"), s.muted.Render(truncate(preview, m.contentWidth())), "", m.inputView(s)}
 	if m.status != "" {
 		parts = append(parts, s.danger.Render("Error: "+m.status))
 	}
@@ -165,10 +173,10 @@ func (m *model) reviewView() string {
 	rows := [][2]string{{"Title", util.SanitizeTerminalText(m.manga.Title)}, {"Provider", m.app.Cfg.Provider}, {"Chapters", fmt.Sprintf("%d selected", len(m.selectedChapters()))}, {"Format", string(m.format)}, {"Output", m.app.Cfg.Download.Dir}, {"Existing files", m.app.Cfg.Download.ExistingFileMode}}
 	parts := []string{s.heading.Render("Ready to download")}
 	for _, row := range rows {
-		parts = append(parts, s.muted.Render(fmt.Sprintf("%-16s", row[0]))+truncate(row[1], m.contentWidth()-18))
+		parts = append(parts, s.muted.Render(fmt.Sprintf("%-16s", row[0]))+truncate(row[1], m.contentWidth()-22))
 	}
-	parts = append(parts, "", s.accent.Render("enter Download"))
-	return s.panel.Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	parts = append(parts, "", s.accent.Render("enter download · esc back · q quit · ? help"))
+	return s.panel.Width(m.contentWidth() - 2).Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 }
 
 func (m *model) workingView() string {
@@ -209,7 +217,7 @@ func (m *model) configView() string {
 		parts = append(parts, style.Render(marker+fmt.Sprintf("%-20s", label)+truncate(m.configValueAt(i), m.contentWidth()-24)))
 	}
 	if m.configEditing {
-		parts = append(parts, "", s.input.Render(m.input.View()))
+		parts = append(parts, "", m.inputView(s))
 	}
 	parts = append(parts, "", s.muted.Render("a apply for this session · s save permanently"))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
