@@ -1,0 +1,91 @@
+package cli
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/spf13/cobra"
+)
+
+func NewArchiveCmd(a *app.App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "archive",
+		Short: "Convert, inspect, and verify chapter archives",
+		Long:  "Create CBZ or ZIP archives from local chapter directories, then inspect or verify them without extracting files.",
+	}
+	cmd.AddCommand(newArchiveConvertCmd(a), newArchiveInspectCmd("inspect"), newArchiveInspectCmd("verify"))
+	return cmd
+}
+
+func newArchiveConvertCmd(a *app.App) *cobra.Command {
+	var output string
+	var removeSource bool
+	cmd := &cobra.Command{
+		Use:     "convert <chapter-directory>",
+		Short:   "Create a CBZ or ZIP archive from local chapter pages",
+		Example: "  mangate --format cbz archive convert ./library/Example/Chapter-1\n  mangate --format zip archive convert ./library/Example/Chapter-1 --remove-source",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			format, err := archive.ParseFormat(a.Cfg.Download.Format)
+			if err != nil {
+				return err
+			}
+			if format == archive.FormatDirectory {
+				return fmt.Errorf("archive convert: choose --format cbz or --format zip")
+			}
+			sourceDir := strings.TrimSpace(args[0])
+			if sourceDir == "" {
+				return fmt.Errorf("archive convert: chapter directory cannot be empty")
+			}
+			if output == "" {
+				output = filepath.Clean(sourceDir) + format.Extension()
+			}
+			result, err := archive.CreateFromDirectory(archive.Options{
+				Format:           format,
+				SourceDir:        sourceDir,
+				OutputPath:       output,
+				ExistingFileMode: archive.ExistingFileMode(a.Cfg.Download.ExistingFileMode),
+				RemoveSource:     removeSource,
+			})
+			if wantsJSON(cmd) {
+				if err != nil {
+					return err
+				}
+				return writeJSON(cmd, "archive.convert", result)
+			}
+			if err != nil {
+				return err
+			}
+			writeHuman(cmd.OutOrStdout(), "%s archive: %s\n", result.Status, result.OutputPath)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&output, "output", "", "Destination archive path")
+	cmd.Flags().BoolVar(&removeSource, "remove-source", false, "Remove the source directory after archive validation")
+	return cmd
+}
+
+func newArchiveInspectCmd(name string) *cobra.Command {
+	return &cobra.Command{
+		Use:   name + " <archive-path>",
+		Short: map[string]string{"inspect": "Show archive contents and completion state", "verify": "Check archive structure and completion state"}[name],
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			inspection, err := archive.Inspect(args[0])
+			if wantsJSON(cmd) {
+				if err != nil {
+					return err
+				}
+				return writeJSON(cmd, "archive."+name, inspection)
+			}
+			if err != nil {
+				return err
+			}
+			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nComplete: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.Complete)
+			return nil
+		},
+	}
+}

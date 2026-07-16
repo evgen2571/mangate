@@ -46,6 +46,8 @@ class Client:
         page_downloads: int | None = None,
         chapter_downloads: int | None = None,
         existing_files: str = "skip",
+        output_format: str = "directory",
+        retain_source: bool = True,
     ) -> None:
         self.executable = os.fspath(executable)
         self.provider = provider
@@ -55,7 +57,11 @@ class Client:
         self.chapter_downloads = chapter_downloads
         if existing_files not in {"skip", "replace", "fail"}:
             raise ValueError("existing_files must be skip, replace, or fail")
+        if output_format.lower() not in {"directory", "cbz", "zip"}:
+            raise ValueError("output_format must be directory, cbz, or zip")
         self.existing_files = existing_files
+        self.output_format = output_format.lower()
+        self.retain_source = retain_source
 
     def version(self) -> str:
         return self._text(["--version"]).strip()
@@ -95,6 +101,8 @@ class Client:
         latest: bool = False,
         all_chapters: bool = False,
         language: str | None = None,
+        output_format: str | None = None,
+        retain_source: bool | None = None,
         cancel_event: Event | None = None,
     ) -> dict[str, Any]:
         args = ["--provider", provider or self.provider, "download"]
@@ -112,8 +120,41 @@ class Client:
             args.append("--all")
         if language:
             args.extend(["--chapter-language", language])
+        if output_format is not None:
+            if output_format.lower() not in {"directory", "cbz", "zip"}:
+                raise ValueError("output_format must be directory, cbz, or zip")
+            args.extend(["--format", output_format.lower()])
+        if retain_source is not None:
+            args.append("--retain-source" if retain_source else "--retain-source=false")
         args.append(title_id)
         return self._json(args, cancel_event=cancel_event)["data"]
+
+    def convert(
+        self,
+        chapter_directory: str | os.PathLike[str],
+        *,
+        output_format: str = "cbz",
+        output: str | os.PathLike[str] | None = None,
+        remove_source: bool = False,
+    ) -> dict[str, Any]:
+        """Create a CBZ or ZIP archive from an existing chapter directory."""
+        if output_format.lower() not in {"cbz", "zip"}:
+            raise ValueError("output_format must be cbz or zip")
+        args = ["--format", output_format.lower(), "archive", "convert"]
+        if output is not None:
+            args.extend(["--output", os.fspath(output)])
+        if remove_source:
+            args.append("--remove-source")
+        args.append(os.fspath(chapter_directory))
+        return self._json(args)["data"]
+
+    def inspect_archive(self, archive_path: str | os.PathLike[str]) -> dict[str, Any]:
+        """Return archive entries, metadata state, and page count without extraction."""
+        return self._json(["archive", "inspect", os.fspath(archive_path)])["data"]
+
+    def verify_archive(self, archive_path: str | os.PathLike[str]) -> dict[str, Any]:
+        """Verify archive structure, safe entry paths, and completion metadata."""
+        return self._json(["archive", "verify", os.fspath(archive_path)])["data"]
 
     def _base_args(self) -> list[str]:
         args = [self.executable]
@@ -124,6 +165,9 @@ class Client:
         if self.chapter_downloads is not None:
             args.extend(["--chapter-downloads", str(self.chapter_downloads)])
         args.extend(["--existing-files", self.existing_files])
+        args.extend(["--format", self.output_format])
+        if not self.retain_source:
+            args.append("--retain-source=false")
         return args
 
     def _json(self, args: list[str], *, cancel_event: Event | None = None) -> dict[str, Any]:

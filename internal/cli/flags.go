@@ -21,7 +21,21 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		&cfg.Download.ExistingFileMode,
 		"existing-files",
 		cfg.Download.ExistingFileMode,
-		"Existing page behavior: skip, replace, or fail",
+		"Existing output behavior: skip, replace, or fail",
+	)
+
+	f.StringVar(
+		&cfg.Download.Format,
+		"format",
+		cfg.Download.Format,
+		"Output format: directory, cbz, or zip",
+	)
+
+	f.BoolVar(
+		&cfg.Download.RetainSource,
+		"retain-source",
+		cfg.Download.RetainSource,
+		"Keep page directories after successful archive creation",
 	)
 
 	f.StringVar(
@@ -37,6 +51,13 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"download-dir",
 		cfg.Download.Dir,
 		"Directory where manga will be downloaded",
+	)
+
+	f.StringVar(
+		&cfg.Download.Dir,
+		"output",
+		cfg.Download.Dir,
+		"Output root for downloaded titles and archives",
 	)
 
 	// Concurrency

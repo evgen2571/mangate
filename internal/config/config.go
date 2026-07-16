@@ -45,7 +45,9 @@ type HTTPConfig struct {
 
 type DownloadConfig struct {
 	Dir              string
+	Format           string
 	ExistingFileMode string
+	RetainSource     bool
 }
 
 type ConcurrencyConfig struct {
@@ -88,8 +90,10 @@ type fileHTTPConfig struct {
 
 type fileDownloadConfig struct {
 	Dir              *string `json:"dir,omitempty"`
+	Format           *string `json:"format,omitempty"`
 	Type             *string `json:"type,omitempty"`
 	ExistingFileMode *string `json:"existingFileMode,omitempty"`
+	RetainSource     *bool   `json:"retainSource,omitempty"`
 }
 
 type fileConcurrencyConfig struct {
@@ -121,7 +125,9 @@ func DefaultConfig() Config {
 		},
 		Download: DownloadConfig{
 			Dir:              defaultDownloadDir(),
+			Format:           "directory",
 			ExistingFileMode: "skip",
+			RetainSource:     true,
 		},
 		Concurrency: ConcurrencyConfig{
 			PageDownloads:    8,
@@ -150,6 +156,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("http timeout must be > 0")
 	case strings.TrimSpace(c.Download.Dir) == "":
 		return fmt.Errorf("download dir cannot be empty")
+	case c.Download.Format != "directory" && c.Download.Format != "cbz" && c.Download.Format != "zip":
+		return fmt.Errorf("download format must be directory, cbz, or zip")
 	case c.Download.ExistingFileMode != "skip" && c.Download.ExistingFileMode != "replace" && c.Download.ExistingFileMode != "fail":
 		return fmt.Errorf("existing file mode must be skip, replace, or fail")
 	case c.Concurrency.PageDownloads <= 0:
@@ -281,11 +289,17 @@ func (f fileConfig) applyTo(cfg *Config) error {
 		if f.Download.Dir != nil {
 			cfg.Download.Dir = *f.Download.Dir
 		}
+		if f.Download.Format != nil {
+			cfg.Download.Format = strings.ToLower(strings.TrimSpace(*f.Download.Format))
+		}
 		if f.Download.Type != nil {
-			return fmt.Errorf("download type is no longer configurable; only plain is supported")
+			return fmt.Errorf("download type is no longer configurable; only plain is supported by this legacy field, use download.format")
 		}
 		if f.Download.ExistingFileMode != nil {
 			cfg.Download.ExistingFileMode = *f.Download.ExistingFileMode
+		}
+		if f.Download.RetainSource != nil {
+			cfg.Download.RetainSource = *f.Download.RetainSource
 		}
 	}
 	if f.Concurrency != nil {
@@ -324,7 +338,9 @@ func newFileConfig(cfg Config) fileConfig {
 		},
 		Download: &fileDownloadConfig{
 			Dir:              stringPtr(cfg.Download.Dir),
+			Format:           stringPtr(cfg.Download.Format),
 			ExistingFileMode: stringPtr(cfg.Download.ExistingFileMode),
+			RetainSource:     boolPtr(cfg.Download.RetainSource),
 		},
 		Concurrency: &fileConcurrencyConfig{
 			PageDownloads:    intPtr(cfg.Concurrency.PageDownloads),
@@ -344,6 +360,10 @@ func stringPtr(v string) *string {
 }
 
 func intPtr(v int) *int {
+	return &v
+}
+
+func boolPtr(v bool) *bool {
 	return &v
 }
 
