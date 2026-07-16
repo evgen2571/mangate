@@ -8,6 +8,7 @@ import (
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/util"
 )
 
 type confirmModel struct {
@@ -29,7 +30,7 @@ func (m *confirmModel) SetSize(width, height int) {
 func (m confirmModel) View() string {
 	title := "Unknown title"
 	if m.manga != nil && strings.TrimSpace(m.manga.Title) != "" {
-		title = m.manga.Title
+		title = util.SanitizeTerminalText(m.manga.Title)
 	}
 	labels := make([]string, 0, len(m.chapters))
 	for _, chapter := range m.chapters {
@@ -39,13 +40,13 @@ func (m confirmModel) View() string {
 	}
 	lines := []string{
 		"Review download",
-		fmt.Sprintf("Provider: %s", m.provider),
+		fmt.Sprintf("Provider: %s", util.SanitizeTerminalText(m.provider)),
 		fmt.Sprintf("Title: %s", title),
 		fmt.Sprintf("Chapters: %d", len(labels)),
 		fmt.Sprintf("Selection: %s", strings.Join(labels, ", ")),
 		fmt.Sprintf("Format: %s", m.format),
-		fmt.Sprintf("Output: %s", m.output),
-		fmt.Sprintf("Existing files: %s", m.existing),
+		fmt.Sprintf("Output: %s", util.SanitizeTerminalText(m.output)),
+		fmt.Sprintf("Existing files: %s", util.SanitizeTerminalText(m.existing)),
 		"",
 		"enter: start download  esc: change format",
 	}

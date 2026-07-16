@@ -3,6 +3,8 @@ package source
 import (
 	"fmt"
 	"strings"
+
+	"github.com/evgen2571/mangate/internal/util"
 )
 
 type Chapter struct {
@@ -24,11 +26,11 @@ func (c *Chapter) DisplayTitle(fallbackIndex int) string {
 	index, title := c.trimmedIndexAndTitle()
 	switch {
 	case index != "" && title != "":
-		return fmt.Sprintf("Chapter %s - %s", index, title)
+		return fmt.Sprintf("Chapter %s - %s", util.SanitizeTerminalText(index), util.SanitizeTerminalText(title))
 	case index != "":
-		return fmt.Sprintf("Chapter %s", index)
+		return fmt.Sprintf("Chapter %s", util.SanitizeTerminalText(index))
 	case title != "":
-		return title
+		return util.SanitizeTerminalText(title)
 	default:
 		return fmt.Sprintf("Unknown chapter #%d", fallbackIndex+1)
 	}
@@ -42,11 +44,11 @@ func (c *Chapter) DisplayName() string {
 	index, title := c.trimmedIndexAndTitle()
 	switch {
 	case index != "" && title != "":
-		return fmt.Sprintf("Chapter %s - %s", index, title)
+		return fmt.Sprintf("Chapter %s - %s", util.SanitizeTerminalText(index), util.SanitizeTerminalText(title))
 	case index != "":
-		return fmt.Sprintf("Chapter %s", index)
+		return fmt.Sprintf("Chapter %s", util.SanitizeTerminalText(index))
 	case title != "":
-		return title
+		return util.SanitizeTerminalText(title)
 	default:
 		return "Unknown chapter"
 	}
@@ -60,11 +62,11 @@ func (c *Chapter) LogName() string {
 	index, title := c.trimmedIndexAndTitle()
 	switch {
 	case index != "" && title != "":
-		return fmt.Sprintf("chapter %s (%s)", index, title)
+		return fmt.Sprintf("chapter %s (%s)", util.SanitizeTerminalText(index), util.SanitizeTerminalText(title))
 	case index != "":
-		return fmt.Sprintf("chapter %s", index)
+		return fmt.Sprintf("chapter %s", util.SanitizeTerminalText(index))
 	case title != "":
-		return title
+		return util.SanitizeTerminalText(title)
 	default:
 		return "unknown chapter"
 	}
