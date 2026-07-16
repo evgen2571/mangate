@@ -63,7 +63,7 @@ func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, cha
 			downloadErr := m.app.UseCases().DownloadChapters(ctx, manga, chapters, func(progress usecase.DownloadProgress) {
 				progressCh <- downloadProgressMsgFromUsecase(progress)
 			})
-			cancelled := errors.Is(downloadErr, context.Canceled)
+			cancelled := operationCancelled(downloadErr)
 			var outcomes []chapterOutcome
 			var archiveErr error
 			if cancelled {
@@ -71,6 +71,7 @@ func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, cha
 			} else {
 				outcomes, archiveErr = m.archiveChapters(ctx, manga, chapters)
 			}
+			cancelled = operationCancelled(downloadErr, archiveErr)
 			if operationErr := errors.Join(downloadErr, archiveErr); operationErr != nil {
 				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes, Cancelled: cancelled, Err: operationErr}
 				return
@@ -81,6 +82,15 @@ func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, cha
 
 		return nil
 	}
+}
+
+func operationCancelled(errorsToCheck ...error) bool {
+	for _, err := range errorsToCheck {
+		if errors.Is(err, context.Canceled) {
+			return true
+		}
+	}
+	return false
 }
 
 type chapterOutcome struct {

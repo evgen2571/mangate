@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,5 +161,14 @@ func TestDownloadProgressMsgFromUsecaseConvertsToTUIViewData(t *testing.T) {
 	first := msg.Chapters[0]
 	if first.Name != "Chapter 1" || first.CompletedPages != 3 || first.TotalPages != 5 || !first.Active || first.Completed {
 		t.Fatalf("first chapter view = %+v, want active Chapter 1 with 3/5 pages", first)
+	}
+}
+
+func TestOperationCancelledRecognizesArchiveCancellation(t *testing.T) {
+	if !operationCancelled(nil, context.Canceled) {
+		t.Fatal("operationCancelled() = false, want archive cancellation")
+	}
+	if operationCancelled(errors.New("archive write failed")) {
+		t.Fatal("operationCancelled() = true, want false for ordinary archive failure")
 	}
 }
