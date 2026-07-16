@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/cli"
@@ -14,21 +17,28 @@ func main() {
 	cfg, configPath, err := config.Load()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(3)
 	}
 
 	a, err := app.New(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(3)
 	}
 	a.ConfigPath = configPath
 
 	rootCmd := cli.NewRootCmd(a)
-	execErr := rootCmd.Execute()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	execErr := rootCmd.ExecuteContext(ctx)
 	closeErr := a.Close()
 	if err := errors.Join(execErr, closeErr); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		jsonOutput, _ := rootCmd.Flags().GetBool("json")
+		if jsonOutput {
+			_ = cli.WriteError(os.Stdout, "command", err)
+		} else {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(cli.ExitCode(err.Error()))
 	}
 }

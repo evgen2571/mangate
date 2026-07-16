@@ -93,25 +93,3 @@ func TestChapterLogName(t *testing.T) {
 		})
 	}
 }
-
-func TestChapterDownloadDirName(t *testing.T) {
-	tests := []struct {
-		name    string
-		chapter *Chapter
-		want    string
-	}{
-		{name: "nil chapter", chapter: nil, want: "unknown-chapter"},
-		{name: "index and title", chapter: &Chapter{Index: " 1 ", Title: " Intro "}, want: "Chapter-1-Intro"},
-		{name: "index only", chapter: &Chapter{Index: " 2 "}, want: "Chapter-2"},
-		{name: "title only is prefixed", chapter: &Chapter{Title: " Special "}, want: "Title-Special"},
-		{name: "empty chapter", chapter: &Chapter{}, want: "unknown-chapter"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.chapter.DownloadDirName(); got != tt.want {
-				t.Fatalf("DownloadDirName() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}

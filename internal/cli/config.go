@@ -40,6 +40,10 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "  ChapterDownloads: %d\n", cfg.Concurrency.ChapterDownloads)
 			fmt.Fprintf(cmd.OutOrStdout(), "\n")
 
+			fmt.Fprintf(cmd.OutOrStdout(), "Search:\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  HistoryMax: %d\n", cfg.Search.HistoryMax)
+			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+
 			fmt.Fprintf(cmd.OutOrStdout(), "Dirs:\n")
 			fmt.Fprintf(cmd.OutOrStdout(), "  Cache: %s\n", cfg.Dirs.Cache)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Temp:  %s\n", cfg.Dirs.Temp)

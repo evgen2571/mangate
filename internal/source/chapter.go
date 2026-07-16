@@ -6,13 +6,14 @@ import (
 )
 
 type Chapter struct {
-	URL       string
-	ID        string
-	Index     string
-	Title     string
-	PageCount int
-	Pages     []*Page
-	From      *Manga
+	URL       string  `json:"url,omitempty"`
+	ID        string  `json:"id"`
+	Index     string  `json:"number,omitempty"`
+	Title     string  `json:"title,omitempty"`
+	Language  string  `json:"language,omitempty"`
+	PageCount int     `json:"pageCount,omitempty"`
+	Pages     []*Page `json:"pages,omitempty"`
+	From      *Manga  `json:"-"`
 }
 
 func (c *Chapter) DisplayTitle(fallbackIndex int) string {
@@ -66,24 +67,6 @@ func (c *Chapter) LogName() string {
 		return title
 	default:
 		return "unknown chapter"
-	}
-}
-
-func (c *Chapter) DownloadDirName() string {
-	if c == nil {
-		return "unknown-chapter"
-	}
-
-	index, title := c.trimmedIndexAndTitle()
-	switch {
-	case index != "" && title != "":
-		return "Chapter-" + index + "-" + title
-	case index != "":
-		return "Chapter-" + index
-	case title != "":
-		return "Title-" + title
-	default:
-		return "unknown-chapter"
 	}
 }
 

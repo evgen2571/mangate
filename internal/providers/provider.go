@@ -10,8 +10,10 @@ import (
 
 type Provider interface {
 	Name() string
+	Info() source.ProviderInfo
 
 	Search(context.Context, string) ([]*source.Manga, error)
+	Title(context.Context, string) (*source.Manga, error)
 	Chapters(context.Context, *source.Manga) ([]*source.Chapter, error)
 	Pages(context.Context, *source.Chapter) ([]*source.Page, error)
 	Cover(context.Context, *source.Manga) (string, error)

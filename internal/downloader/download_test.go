@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -57,6 +58,49 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 
 	if _, err := png.Decode(f); err != nil {
 		t.Fatalf("png.Decode(%q) error = %v", pagePath, err)
+	}
+}
+
+func TestDownloadChapterKeepsCompletedPagesAndMarksPartialState(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, G: 255, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/broken.png" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Dirs.Temp = t.TempDir()
+	cfg.Download.Type = constant.FormatPlain
+	cfg.Concurrency.PageDownloads = 1
+	d := New(cfg, server.Client())
+	manga := &source.Manga{ID: "manga-1", Title: "Partial Manga"}
+	chapter := &source.Chapter{ID: "chapter-1", Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/good.png"}, {URL: server.URL + "/broken.png"}}}
+
+	if err := d.DownloadChapter(chapter); err == nil {
+		t.Fatal("DownloadChapter() error = nil, want failed page")
+	}
+	chapterDir := filepath.Join(cfg.Download.Dir, "Partial-Manga-manga-1", "Chapter-1")
+	if _, err := os.Stat(filepath.Join(chapterDir, "0001.png")); err != nil {
+		t.Fatalf("completed page was not preserved: %v", err)
+	}
+	stateData, err := os.ReadFile(filepath.Join(chapterDir, ".mangate.json"))
+	if err != nil {
+		t.Fatalf("read incomplete state: %v", err)
+	}
+	var state struct {
+		Complete bool `json:"complete"`
+	}
+	if err := json.Unmarshal(stateData, &state); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	if state.Complete {
+		t.Fatal("incomplete chapter was marked complete")
 	}
 }
 
@@ -387,24 +431,26 @@ func TestDetectPageExtensionUsesAnyImageContentType(t *testing.T) {
 	}
 }
 
-func TestChapterDirNameUsesConsistentPrefix(t *testing.T) {
-	chapter := &source.Chapter{Index: "1", Title: "Intro"}
-	if got := chapter.DownloadDirName(); got != "Chapter-1-Intro" {
-		t.Fatalf("DownloadDirName() = %q, want %q", got, "Chapter-1-Intro")
+func TestChapterDirBaseName(t *testing.T) {
+	tests := []struct {
+		name    string
+		chapter *source.Chapter
+		want    string
+	}{
+		{name: "nil chapter", chapter: nil, want: "unknown-chapter"},
+		{name: "index and title", chapter: &source.Chapter{Index: " 1 ", Title: " Intro "}, want: "Chapter-1-Intro"},
+		{name: "index only", chapter: &source.Chapter{Index: " 2 "}, want: "Chapter-2"},
+		{name: "title only is prefixed", chapter: &source.Chapter{Title: " Special "}, want: "Title-Special"},
+		{name: "title only avoids indexed chapter collision", chapter: &source.Chapter{Title: "1"}, want: "Title-1"},
+		{name: "empty chapter", chapter: &source.Chapter{}, want: "unknown-chapter"},
 	}
-}
 
-func TestChapterDirNamePrefixesTitleOnlyChapter(t *testing.T) {
-	chapter := &source.Chapter{Title: "Special"}
-	if got := chapter.DownloadDirName(); got != "Title-Special" {
-		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-Special")
-	}
-}
-
-func TestChapterDirNameAvoidsIndexedChapterCollisionForTitleOnlyChapter(t *testing.T) {
-	chapter := &source.Chapter{Title: "1"}
-	if got := chapter.DownloadDirName(); got != "Title-1" {
-		t.Fatalf("DownloadDirName() = %q, want %q", got, "Title-1")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := chapterDirBaseName(tt.chapter); got != tt.want {
+				t.Fatalf("chapterDirBaseName() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

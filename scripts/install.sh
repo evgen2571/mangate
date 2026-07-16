@@ -58,6 +58,9 @@ else
     "pageDownloads": 8,
     "chapterDownloads": 6
   },
+  "search": {
+    "historyMax": 100
+  },
   "dirs": {
     "cache": "$cache_dir",
     "temp": "$temp_dir"

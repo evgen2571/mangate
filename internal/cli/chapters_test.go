@@ -86,16 +86,15 @@ func newTestApp(t *testing.T, provider fakeProvider) *app.App {
 	cfg := config.DefaultConfig()
 	cfg.Provider = "fake"
 
-	a, err := app.New(cfg)
-	if err != nil {
-		t.Fatalf("app.New() error = %v", err)
-	}
-
 	registry := providers.NewRegistry()
 	registry.Register("fake", func(cfg config.Config, client *http.Client) (providers.Provider, error) {
 		return provider, nil
 	})
-	a.Registry = registry
+
+	a, err := app.New(cfg, app.WithRegistry(registry))
+	if err != nil {
+		t.Fatalf("app.New() error = %v", err)
+	}
 
 	return a
 }
@@ -105,6 +104,14 @@ type fakeProvider struct {
 }
 
 func (p fakeProvider) Name() string { return "fake" }
+
+func (p fakeProvider) Info() source.ProviderInfo {
+	return source.ProviderInfo{ID: "fake", Name: "Fake", Availability: "available"}
+}
+
+func (p fakeProvider) Title(_ context.Context, id string) (*source.Manga, error) {
+	return &source.Manga{ID: id, Title: id}, nil
+}
 
 func (p fakeProvider) Search(context.Context, string) ([]*source.Manga, error) {
 	return nil, nil
