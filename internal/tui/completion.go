@@ -50,6 +50,13 @@ func (m completionModel) View() string {
 			lines = append(lines, fmt.Sprintf("  [%s] %s", util.SanitizeTerminalText(status), util.SanitizeTerminalText(path)))
 		}
 	}
+	if m.cancelled {
+		lines = append(lines, "", "Next: return to chapters to retry when ready.")
+	} else if !m.success {
+		lines = append(lines, "", "Next: return to chapters to retry incomplete selections.")
+	} else {
+		lines = append(lines, "", "Next: return to chapters to download more releases.")
+	}
 	lines = append(lines, "", "enter or esc: return to chapters   q: exit")
 	return lipgloss.NewStyle().
 		Width(max(1, m.width-2)).

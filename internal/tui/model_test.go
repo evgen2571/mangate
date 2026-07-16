@@ -141,7 +141,7 @@ func TestCompletionModelReportsPerChapterOutcomes(t *testing.T) {
 		paths: []string{"one.cbz", "two.cbz", "three", "four.cbz"},
 	}
 	view := completion.View()
-	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 2", "Archive failures: 1", "[incomplete] three", "[archive_failed] four.cbz"} {
+	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 2", "Archive failures: 1", "[incomplete] three", "[archive_failed] four.cbz", "retry incomplete selections"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("completion view = %q, want %q", view, want)
 		}
