@@ -17,9 +17,10 @@ type providerRecord struct {
 
 func NewProvidersCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "providers",
-		Short: "List registered providers and their capabilities",
-		Args:  cobra.NoArgs,
+		Use:     "providers",
+		Short:   "List registered providers and their capabilities",
+		Example: "  mangate providers\n  mangate --json providers",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			records := providerRecords(a)
 			if wantsJSON(cmd) {
@@ -38,9 +39,10 @@ func NewProvidersCmd(a *app.App) *cobra.Command {
 
 func NewProviderCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "provider <provider-id>",
-		Short: "Inspect one provider",
-		Args:  cobra.ExactArgs(1),
+		Use:     "provider <provider-id>",
+		Short:   "Inspect one provider",
+		Example: "  mangate provider mangadex\n  mangate --json provider mangadex",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := strings.TrimSpace(args[0])
 			provider, err := a.Registry.New(name, a.Cfg, a.Client)

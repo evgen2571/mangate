@@ -51,9 +51,10 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "download <title-id>",
-		Short: "Download selected chapters that you are authorized to save",
-		Args:  requireOneArgument("a stable <title-id> from `mangate search`", "mangate download <title-id> --latest"),
+		Use:     "download <title-id>",
+		Short:   "Download selected chapters that you are authorized to save",
+		Example: "  mangate download <title-id> --chapter-id <chapter-id>\n  mangate download <title-id> --range 1-10\n  mangate --format cbz download <title-id> --latest\n  mangate --json download <title-id> --chapter 1",
+		Args:    requireOneArgument("a stable <title-id> from `mangate search`", "mangate download <title-id> --latest"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format, err := archive.ParseFormat(a.Cfg.Download.Format)
 			if err != nil {

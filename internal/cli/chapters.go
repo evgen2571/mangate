@@ -13,8 +13,9 @@ import (
 func NewChaptersCmd(a *app.App) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
-		Use:   "chapters <manga-id>",
-		Short: "List chapters for a manga using the default provider",
+		Use:     "chapters <manga-id>",
+		Short:   "List chapters for a manga using the default provider",
+		Example: "  mangate chapters <title-id>\n  mangate --json chapters <title-id> --limit 20",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 && strings.TrimSpace(args[0]) == "" {
 				return fmt.Errorf("manga id cannot be empty")

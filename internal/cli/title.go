@@ -16,9 +16,10 @@ type titleRecord struct {
 
 func NewTitleCmd(a *app.App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "title <title-id>",
-		Short: "Show title metadata",
-		Args:  requireOneArgument("a stable <title-id> from `mangate search`", "mangate title <title-id>"),
+		Use:     "title <title-id>",
+		Short:   "Show title metadata",
+		Example: "  mangate title <title-id>\n  mangate --json title <title-id>",
+		Args:    requireOneArgument("a stable <title-id> from `mangate search`", "mangate title <title-id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := strings.TrimSpace(args[0])
 			if id == "" {

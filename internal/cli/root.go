@@ -64,6 +64,7 @@ func NewInteractiveCmd(a *app.App) *cobra.Command {
 		Use:     "tui",
 		Aliases: []string{"interactive"},
 		Short:   "Open the interactive terminal interface",
+		Example: "  mangate tui",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInteractive(cmd, a)
 		},
