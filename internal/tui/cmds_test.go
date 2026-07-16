@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -87,7 +88,7 @@ func TestArchiveChaptersFinalizesCompletedDirectoriesAfterPartialDownload(t *tes
 	writeChapterStateForTUI(t, filepath.Join(titleDir, names[1]), 2, false)
 
 	m := model{app: a}
-	outcomes, err := m.archiveChapters(manga, chapters)
+	outcomes, err := m.archiveChapters(context.Background(), manga, chapters)
 	if err != nil {
 		t.Fatalf("archiveChapters() error = %v", err)
 	}

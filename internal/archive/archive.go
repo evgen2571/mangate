@@ -3,6 +3,7 @@ package archive
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -132,6 +133,18 @@ type pageFile struct {
 }
 
 func CreateFromDirectory(options Options) (Result, error) {
+	return CreateFromDirectoryContext(context.Background(), options)
+}
+
+// CreateFromDirectoryContext creates an archive while honouring cancellation.
+// Cancellation leaves any prior final archive and the source directory intact.
+func CreateFromDirectoryContext(ctx context.Context, options Options) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("create archive: %w", err)
+	}
 	if options.Format != FormatCBZ && options.Format != FormatZIP {
 		return Result{}, fmt.Errorf("create archive: format must be cbz or zip")
 	}
@@ -144,6 +157,9 @@ func CreateFromDirectory(options Options) (Result, error) {
 	pages, state, err := sourcePages(options.SourceDir)
 	if err != nil {
 		return Result{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
 	if state != nil {
 		if !state.Complete || state.ExpectedPages != len(pages) {
@@ -188,12 +204,15 @@ func CreateFromDirectory(options Options) (Result, error) {
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := writeArchive(temporary, pages, options.Format, options.Metadata); err != nil {
+	if err := writeArchiveContext(ctx, temporary, pages, options.Format, options.Metadata); err != nil {
 		_ = temporary.Close()
 		return Result{}, err
 	}
 	if err := temporary.Close(); err != nil {
 		return Result{}, fmt.Errorf("create archive: close temporary file: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
 	inspection, err := Inspect(temporaryPath)
 	if err != nil || !inspection.Complete || inspection.PageCount != len(pages) {
@@ -361,13 +380,20 @@ func imageExtension(header []byte) string {
 }
 
 func writeArchive(destination io.Writer, pages []pageFile, format Format, metadata Metadata) error {
+	return writeArchiveContext(context.Background(), destination, pages, format, metadata)
+}
+
+func writeArchiveContext(ctx context.Context, destination io.Writer, pages []pageFile, format Format, metadata Metadata) error {
 	writer := zip.NewWriter(destination)
 	defer writer.Close()
 	for _, page := range pages {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("create archive: %w", err)
+		}
 		if !isSafeEntry(page.name) {
 			return fmt.Errorf("create archive: unsafe page filename %q", page.name)
 		}
-		if err := copyEntry(writer, page.name, page.path); err != nil {
+		if err := copyEntryContext(ctx, writer, page.name, page.path); err != nil {
 			return err
 		}
 	}
@@ -397,6 +423,10 @@ func writeArchive(destination io.Writer, pages []pageFile, format Format, metada
 }
 
 func copyEntry(writer *zip.Writer, name, path string) error {
+	return copyEntryContext(context.Background(), writer, name, path)
+}
+
+func copyEntryContext(ctx context.Context, writer *zip.Writer, name, path string) error {
 	in, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("create archive: open page %q: %w", path, err)
@@ -406,8 +436,23 @@ func copyEntry(writer *zip.Writer, name, path string) error {
 	if err != nil {
 		return fmt.Errorf("create archive: create entry %q: %w", name, err)
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		return fmt.Errorf("create archive: write entry %q: %w", name, err)
+	buffer := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("create archive: %w", err)
+		}
+		count, readErr := in.Read(buffer)
+		if count > 0 {
+			if _, err := out.Write(buffer[:count]); err != nil {
+				return fmt.Errorf("create archive: write entry %q: %w", name, err)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return fmt.Errorf("create archive: read entry %q: %w", name, readErr)
+		}
 	}
 	return nil
 }

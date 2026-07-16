@@ -61,7 +61,7 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 			if requirement := archiveConversionConfirmationRequirement(removeSource, a.Cfg.Download.ExistingFileMode); requirement != "" && !assumeYes {
 				return fmt.Errorf("archive convert: %s; review with --dry-run, then rerun with --yes to continue", requirement)
 			}
-			result, err := archive.CreateFromDirectory(archive.Options{
+			result, err := archive.CreateFromDirectoryContext(cmd.Context(), archive.Options{
 				Format:           format,
 				SourceDir:        sourceDir,
 				OutputPath:       output,

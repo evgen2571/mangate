@@ -69,7 +69,7 @@ func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, cha
 			if cancelled {
 				outcomes = m.directoryChapterOutcomes(manga, chapters)
 			} else {
-				outcomes, archiveErr = m.archiveChapters(manga, chapters)
+				outcomes, archiveErr = m.archiveChapters(ctx, manga, chapters)
 			}
 			if operationErr := errors.Join(downloadErr, archiveErr); operationErr != nil {
 				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes, Cancelled: cancelled, Err: operationErr}
@@ -90,7 +90,7 @@ type chapterOutcome struct {
 	Error  string
 }
 
-func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) ([]chapterOutcome, error) {
+func (m model) archiveChapters(ctx context.Context, manga *source.Manga, chapters []*source.Chapter) ([]chapterOutcome, error) {
 	format, err := archive.ParseFormat(m.app.Cfg.Download.Format)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) 
 		}
 		sourceDir := outcomes[index].Path
 		archivePath := sourceDir + format.Extension()
-		result, err := archive.CreateFromDirectory(archive.Options{
+		result, err := archive.CreateFromDirectoryContext(ctx, archive.Options{
 			Format:           format,
 			SourceDir:        sourceDir,
 			OutputPath:       archivePath,

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -149,14 +150,14 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				record.Error = err.Error()
 				if format != archive.FormatDirectory {
-					if archiveErr := finalizeArchives(record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); archiveErr != nil {
+					if archiveErr := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); archiveErr != nil {
 						record.Error = errors.Join(err, archiveErr).Error()
 					}
 				}
 				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
 			}
 			if format != archive.FormatDirectory {
-				if err := finalizeArchives(record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); err != nil {
+				if err := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); err != nil {
 					record.Error = err.Error()
 					return reportDownloadResult(cmd, &record, err)
 				}
@@ -497,14 +498,14 @@ func chapterDirectoryNames(chapters []*source.Chapter) []string {
 	return names
 }
 
-func finalizeArchives(record downloadRecord, title *source.Manga, chapters []*source.Chapter, format archive.Format, existingMode string, removeSource bool) error {
+func finalizeArchives(ctx context.Context, record downloadRecord, title *source.Manga, chapters []*source.Chapter, format archive.Format, existingMode string, removeSource bool) error {
 	var failures []error
 	for index, chapter := range chapters {
 		chapterRecord := &record.Chapters[index]
 		if chapterRecord.Status != "complete" {
 			continue
 		}
-		result, err := archive.CreateFromDirectory(archive.Options{
+		result, err := archive.CreateFromDirectoryContext(ctx, archive.Options{
 			Format:           format,
 			SourceDir:        chapterRecord.OutputPath,
 			OutputPath:       chapterRecord.ArchivePath,
