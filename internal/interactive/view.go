@@ -122,22 +122,12 @@ func (m *model) chaptersView() string {
 	available := max(3, m.mainHeight()-len(parts)-2)
 	start := max(0, min(m.chapterCursor-available/2, len(visible)-available))
 	end := min(len(visible), start+available)
+	columns := m.calculateChapterColumns(visible)
 	for position := start; position < end; position++ {
 		index := visible[position]
-		marker := "  "
-		if position == m.chapterCursor {
-			marker = s.cursor.Render("› ")
-		}
-		check := s.muted.Render("○")
-		if m.selected[index] {
-			check = s.selected.Render("●")
-		} else if position == m.chapterCursor {
-			check = s.accent.Render("●")
-		}
-		label := truncate(m.chapterLabel(index), m.contentWidth()-5)
-		parts = append(parts, marker+check+"  "+label)
+		parts = append(parts, m.chapterRow(index, position == m.chapterCursor, columns, s))
 	}
-	parts = append(parts, "", s.muted.Render(fmt.Sprintf("%d/%d · space toggle · a all visible · d clear · l latest · r range", start+1, len(visible))))
+	parts = append(parts, "", s.muted.Render(fmt.Sprintf("%d/%d · space toggle · a all visible · d clear · r range", start+1, len(visible))))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 

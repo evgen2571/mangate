@@ -3,7 +3,7 @@ package interactive
 import "github.com/charmbracelet/bubbles/key"
 
 type keymap struct {
-	up, down, confirm, back, quit, help, filter, toggle, selectAll, clear, latest, rangeSelect key.Binding
+	up, down, confirm, back, quit, help, filter, toggle, selectAll, clear, rangeSelect key.Binding
 }
 
 func newKeymap() keymap {
@@ -18,7 +18,6 @@ func newKeymap() keymap {
 		toggle:      key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
 		selectAll:   key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all visible")),
 		clear:       key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "clear")),
-		latest:      key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "latest")),
 		rangeSelect: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "select range")),
 	}
 }

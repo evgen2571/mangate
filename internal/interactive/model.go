@@ -315,12 +315,6 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		m.selected = map[int]bool{}
-	case "l":
-		m.selected = map[int]bool{}
-		if len(visible) > 0 {
-			m.selected[visible[len(visible)-1]] = true
-			m.rangeAnchor = visible[len(visible)-1]
-		}
 	case "r":
 		if len(visible) > 0 {
 			current := visible[m.chapterCursor]
@@ -528,10 +522,6 @@ func (m *model) visibleChapters() []int {
 		m.chapterCursor = max(0, len(out)-1)
 	}
 	return out
-}
-func (m *model) chapterLabel(index int) string {
-	c := m.chapters[index]
-	return util.SanitizeTerminalText(fmt.Sprintf("%s  %s  %d pages", c.DisplayName(), c.Language, c.PageCount))
 }
 func (m *model) selectedChapters() []*source.Chapter {
 	out := []*source.Chapter{}

@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
@@ -140,6 +142,60 @@ func TestChapterSpaceTogglesExactlyOnceWithoutMoving(t *testing.T) {
 	m.Update(key)
 	if m.selected[1] || m.chapterCursor != 1 {
 		t.Fatalf("second space selected=%v cursor=%d, want false and 1", m.selected[1], m.chapterCursor)
+	}
+}
+
+func TestChapterRowsKeepFixedColumnsAcrossCursorAndSelectionStates(t *testing.T) {
+	m := testModel(t)
+	resize(t, m, 80, 24)
+	m.chapters = []*source.Chapter{
+		{Index: "1", Language: "en", PageCount: 39},
+		{Index: "2.1", Language: "en", PageCount: 13},
+		{Index: "2.2", Language: "en", PageCount: 17},
+		{Index: "2.3", Language: "en", PageCount: 14},
+		{Index: "3.1", Language: "en", PageCount: 18},
+	}
+	m.selected[1], m.selected[2], m.selected[3], m.selected[4] = true, true, true, true
+	columns := m.calculateChapterColumns([]int{0, 1, 2, 3, 4})
+	rows := make([]string, len(m.chapters))
+	for i := range m.chapters {
+		rows[i] = ansi.Strip(m.chapterRow(i, i == 3, columns, newStyles()))
+		if got, want := lipgloss.Width(rows[i]), m.contentWidth(); got != want {
+			t.Fatalf("row %d width = %d, want %d: %q", i, got, want, rows[i])
+		}
+	}
+	for _, row := range rows {
+		if got := cellIndex(row, "Chapter"); got != chapterCursorColumnWidth+chapterSelectionColumnWidth {
+			t.Fatalf("chapter label starts at %d, want %d: %q", got, chapterCursorColumnWidth+chapterSelectionColumnWidth, row)
+		}
+		if got := cellIndex(row, "en"); got != chapterCursorColumnWidth+chapterSelectionColumnWidth+columns.labelWidth+chapterColumnGapWidth {
+			t.Fatalf("language starts at %d, want %d: %q", got, chapterCursorColumnWidth+chapterSelectionColumnWidth+columns.labelWidth+chapterColumnGapWidth, row)
+		}
+		if got := cellIndex(row, " pages") - 2; got != chapterCursorColumnWidth+chapterSelectionColumnWidth+columns.labelWidth+chapterColumnGapWidth+columns.languageWidth+chapterColumnGapWidth {
+			t.Fatalf("page count starts at %d: %q", got, row)
+		}
+	}
+}
+
+func cellIndex(value, needle string) int {
+	index := strings.Index(value, needle)
+	if index < 0 {
+		return -1
+	}
+	return lipgloss.Width(value[:index])
+}
+
+func TestLatestKeyHasNoChapterSelectionEffect(t *testing.T) {
+	m := testModel(t)
+	m.screen, m.manga = chaptersScreen, &source.Manga{Title: "Test"}
+	m.chapters = []*source.Chapter{{Index: "1"}, {Index: "2"}}
+	m.selected[0] = true
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	if len(m.selected) != 1 || !m.selected[0] || m.selected[1] {
+		t.Fatalf("l changed chapter selection: %#v", m.selected)
+	}
+	if strings.Contains(m.chaptersView(), "latest") || strings.Contains(m.help.FullHelpView([][]key.Binding{m.bindings()}), "latest") {
+		t.Fatal("latest action still appears in chapter help")
 	}
 }
 
