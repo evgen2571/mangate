@@ -10,6 +10,7 @@ import (
 type Chapter struct {
 	URL       string  `json:"url,omitempty"`
 	ID        string  `json:"id"`
+	Volume    string  `json:"volume,omitempty"`
 	Index     string  `json:"number,omitempty"`
 	Title     string  `json:"title,omitempty"`
 	Language  string  `json:"language,omitempty"`

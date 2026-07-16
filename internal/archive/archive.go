@@ -64,6 +64,7 @@ type Metadata struct {
 	TitleID       string `json:"titleId,omitempty"`
 	Title         string `json:"title,omitempty"`
 	ChapterID     string `json:"chapterId,omitempty"`
+	Volume        string `json:"volume,omitempty"`
 	ChapterNumber string `json:"chapterNumber,omitempty"`
 	ChapterTitle  string `json:"chapterTitle,omitempty"`
 	Language      string `json:"language,omitempty"`
@@ -386,13 +387,14 @@ type comicInfo struct {
 	Title       string   `xml:"Title,omitempty"`
 	Series      string   `xml:"Series,omitempty"`
 	Number      string   `xml:"Number,omitempty"`
+	Volume      string   `xml:"Volume,omitempty"`
 	LanguageISO string   `xml:"LanguageISO,omitempty"`
 	PageCount   int      `xml:"PageCount,omitempty"`
 	Publisher   string   `xml:"Publisher,omitempty"`
 }
 
 func comicInfoXML(metadata Metadata) ([]byte, error) {
-	return xml.MarshalIndent(comicInfo{Title: metadata.ChapterTitle, Series: metadata.Title, Number: metadata.ChapterNumber, LanguageISO: metadata.Language, PageCount: metadata.ExpectedPages, Publisher: metadata.Provider}, "", "  ")
+	return xml.MarshalIndent(comicInfo{Title: metadata.ChapterTitle, Series: metadata.Title, Number: metadata.ChapterNumber, Volume: metadata.Volume, LanguageISO: metadata.Language, PageCount: metadata.ExpectedPages, Publisher: metadata.Provider}, "", "  ")
 }
 
 func Inspect(path string) (Inspection, error) {

@@ -116,9 +116,9 @@ func TestChaptersModelFooterShowsTotalChapterCount(t *testing.T) {
 }
 
 func TestChapterItemDescriptionShowsLanguagePagesAndStableID(t *testing.T) {
-	item := chapterItem{value: &source.Chapter{ID: "chapter-id", Language: "en", PageCount: 12}}
+	item := chapterItem{value: &source.Chapter{ID: "chapter-id", Volume: "3", Language: "en", PageCount: 12}}
 	description := item.Description()
-	for _, want := range []string{"Language: en", "Pages: 12", "ID: chapter-id"} {
+	for _, want := range []string{"Volume: 3", "Language: en", "Pages: 12", "ID: chapter-id"} {
 		if !strings.Contains(description, want) {
 			t.Fatalf("Description() = %q, want %q", description, want)
 		}

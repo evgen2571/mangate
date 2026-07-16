@@ -3,8 +3,10 @@ package archive
 import (
 	"archive/zip"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -20,7 +22,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 		Format:     FormatCBZ,
 		SourceDir:  source,
 		OutputPath: output,
-		Metadata:   Metadata{Provider: "example", TitleID: "title-id", Title: "Example", ChapterID: "chapter-id", ChapterNumber: "10"},
+		Metadata:   Metadata{Provider: "example", TitleID: "title-id", Title: "Example", ChapterID: "chapter-id", Volume: "2", ChapterNumber: "10"},
 	})
 	if err != nil {
 		t.Fatalf("CreateFromDirectory() error = %v", err)
@@ -45,6 +47,25 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	for index := range want {
 		if got[index] != want[index] {
 			t.Fatalf("entries = %v, want %v", got, want)
+		}
+	}
+	for _, file := range reader.File {
+		if file.Name != "ComicInfo.xml" {
+			continue
+		}
+		in, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "<Volume>2</Volume>") {
+			t.Fatalf("ComicInfo.xml = %s, want volume", data)
 		}
 	}
 

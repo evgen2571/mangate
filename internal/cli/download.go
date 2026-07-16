@@ -440,6 +440,7 @@ func finalizeArchives(record downloadRecord, title *source.Manga, chapters []*so
 				TitleID:       title.ID,
 				Title:         title.Title,
 				ChapterID:     chapter.ID,
+				Volume:        chapter.Volume,
 				ChapterNumber: chapter.Index,
 				ChapterTitle:  chapter.Title,
 				Language:      chapter.Language,

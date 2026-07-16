@@ -77,7 +77,7 @@ func TestProviderChaptersFetchesAllPages(t *testing.T) {
 func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeMangaDexChaptersResponse(t, w, 0, 500, 1, []testMangaDexChapter{
-			{ID: "chapter-1", Chapter: "1", Title: "First", Language: "en", Pages: 23},
+			{ID: "chapter-1", Volume: "2", Chapter: "1", Title: "First", Language: "en", Pages: 23},
 		})
 	}))
 	defer server.Close()
@@ -95,6 +95,9 @@ func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	}
 	if chapters[0].Language != "en" {
 		t.Fatalf("chapter Language = %q, want en", chapters[0].Language)
+	}
+	if chapters[0].Volume != "2" {
+		t.Fatalf("chapter Volume = %q, want 2", chapters[0].Volume)
 	}
 }
 
@@ -116,6 +119,7 @@ func newTestProvider(t *testing.T, baseURL, language string) *Provider {
 
 type testMangaDexChapter struct {
 	ID       string
+	Volume   string
 	Chapter  string
 	Title    string
 	Language string
@@ -130,6 +134,7 @@ func writeMangaDexChaptersResponse(t *testing.T, w http.ResponseWriter, offset, 
 		data = append(data, map[string]any{
 			"id": chapter.ID,
 			"attributes": map[string]any{
+				"volume":             chapter.Volume,
 				"chapter":            chapter.Chapter,
 				"title":              chapter.Title,
 				"pages":              chapter.Pages,

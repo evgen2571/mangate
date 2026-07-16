@@ -49,6 +49,9 @@ func (i chapterItem) Description() string {
 	}
 
 	parts := make([]string, 0, 3)
+	if volume := strings.TrimSpace(i.value.Volume); volume != "" {
+		parts = append(parts, "Volume: "+util.SanitizeTerminalText(volume))
+	}
 	if language := strings.TrimSpace(i.value.Language); language != "" {
 		parts = append(parts, "Language: "+util.SanitizeTerminalText(language))
 	}

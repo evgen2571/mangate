@@ -107,6 +107,7 @@ func (mdc *mangaDexChapter) toSource() *source.Chapter {
 	return &source.Chapter{
 		ID:        mdc.ID,
 		URL:       mdc.URL,
+		Volume:    mdc.Attributes.Volume,
 		Index:     mdc.getIndex(),
 		Title:     mdc.getTitle(),
 		Language:  mdc.Attributes.Language,
