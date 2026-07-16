@@ -15,8 +15,8 @@ import (
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/interactive"
 	"github.com/evgen2571/mangate/internal/source"
-	"github.com/evgen2571/mangate/internal/tui"
 )
 
 func NewRootCmd(a *app.App) *cobra.Command {
@@ -80,11 +80,11 @@ func NewInteractiveCmd(a *app.App) *cobra.Command {
 }
 
 func runInteractive(cmd *cobra.Command, a *app.App) error {
-	return runTUI(cmd, tui.NewWithContext(a, cmd.Context()))
+	return runTUI(cmd, interactive.NewWithContext(a, cmd.Context()))
 }
 
 func runInteractiveSearchResults(cmd *cobra.Command, a *app.App, query string, results []*source.Manga) error {
-	return runTUI(cmd, tui.NewWithSearchResults(a, cmd.Context(), query, results))
+	return runTUI(cmd, interactive.NewWithSearchResults(a, cmd.Context(), query, results))
 }
 
 func runTUI(cmd *cobra.Command, ui tea.Model) error {
