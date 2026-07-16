@@ -13,7 +13,7 @@ import (
 
 func TestArchiveConvertJSONCreatesCBZWithoutProvider(t *testing.T) {
 	source := t.TempDir()
-	if err := os.WriteFile(filepath.Join(source, "0001.jpg"), []byte("page"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(source, "0001.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	application, err := app.New(config.DefaultConfig())

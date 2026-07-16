@@ -10,9 +10,9 @@ import (
 
 func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	source := t.TempDir()
-	writePage(t, source, "0001.jpg", "first")
-	writePage(t, source, "0010.png", "tenth")
-	writePage(t, source, "0100.gif", "hundredth")
+	writePage(t, source, "0001.jpg", jpegPage())
+	writePage(t, source, "0010.png", pngPage())
+	writePage(t, source, "0100.gif", gifPage())
 	writeState(t, source, "title-id", "chapter-id", 3, true)
 
 	output := filepath.Join(t.TempDir(), "chapter.cbz")
@@ -59,7 +59,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 
 func TestCreateFromDirectoryRejectsIncompleteSourceAndLeavesNoFinalArchive(t *testing.T) {
 	source := t.TempDir()
-	writePage(t, source, "0001.jpg", "page")
+	writePage(t, source, "0001.jpg", jpegPage())
 	writeState(t, source, "title-id", "chapter-id", 2, false)
 	output := filepath.Join(t.TempDir(), "chapter.zip")
 
@@ -74,7 +74,7 @@ func TestCreateFromDirectoryRejectsIncompleteSourceAndLeavesNoFinalArchive(t *te
 
 func TestCreateFromDirectoryExistingArchivePolicies(t *testing.T) {
 	source := t.TempDir()
-	writePage(t, source, "0001.webp", "page")
+	writePage(t, source, "0001.webp", webpPage())
 	writeState(t, source, "title-id", "chapter-id", 1, true)
 	output := filepath.Join(t.TempDir(), "chapter.zip")
 	options := Options{Format: FormatZIP, SourceDir: source, OutputPath: output, Metadata: Metadata{TitleID: "title-id", ChapterID: "chapter-id"}}
@@ -122,12 +122,57 @@ func TestInspectRejectsUnsafeAndDuplicateEntries(t *testing.T) {
 	}
 }
 
-func writePage(t *testing.T, directory, name, body string) {
+func TestCreateFromDirectoryRejectsNonImagePageBytes(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.jpg", []byte("not an image"))
+	output := filepath.Join(t.TempDir(), "chapter.zip")
+
+	_, err := CreateFromDirectory(Options{Format: FormatZIP, SourceDir: source, OutputPath: output})
+	if err == nil {
+		t.Fatal("CreateFromDirectory() error = nil, want invalid image error")
+	}
+	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
+		t.Fatalf("final archive exists after invalid source: %v", statErr)
+	}
+}
+
+func TestCreateFromDirectoryNormalizesNumericPageNamesForLexicographicOrder(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "1.jpg", jpegPage())
+	writePage(t, source, "10.jpg", jpegPage())
+	writePage(t, source, "2.jpg", jpegPage())
+	output := filepath.Join(t.TempDir(), "chapter.zip")
+	if _, err := CreateFromDirectory(Options{Format: FormatZIP, SourceDir: source, OutputPath: output}); err != nil {
+		t.Fatalf("CreateFromDirectory() error = %v", err)
+	}
+	reader, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	got := []string{reader.File[0].Name, reader.File[1].Name, reader.File[2].Name}
+	want := []string{"0001.jpg", "0002.jpg", "0010.jpg"}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("entries = %v, want %v", got, want)
+		}
+	}
+}
+
+func writePage(t *testing.T, directory, name string, body []byte) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, name), body, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
+
+func jpegPage() []byte { return []byte{0xff, 0xd8, 0xff, 0xd9} }
+
+func pngPage() []byte { return []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'} }
+
+func gifPage() []byte { return []byte("GIF89a") }
+
+func webpPage() []byte { return []byte("RIFF\x00\x00\x00\x00WEBP") }
 
 func writeState(t *testing.T, directory, titleID, chapterID string, expectedPages int, complete bool) {
 	t.Helper()

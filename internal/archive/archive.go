@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -116,6 +117,12 @@ type chapterState struct {
 	Complete      bool   `json:"complete"`
 }
 
+type pageFile struct {
+	path  string
+	name  string
+	index int
+}
+
 func CreateFromDirectory(options Options) (Result, error) {
 	if options.Format != FormatCBZ && options.Format != FormatZIP {
 		return Result{}, fmt.Errorf("create archive: format must be cbz or zip")
@@ -196,12 +203,12 @@ func CreateFromDirectory(options Options) (Result, error) {
 	return result, nil
 }
 
-func sourcePages(directory string) ([]string, *chapterState, error) {
+func sourcePages(directory string) ([]pageFile, *chapterState, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create archive: read source directory: %w", err)
 	}
-	pages := make([]string, 0, len(entries))
+	pages := make([]pageFile, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") || !isPageName(entry.Name()) {
 			continue
@@ -210,11 +217,30 @@ func sourcePages(directory string) ([]string, *chapterState, error) {
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 			return nil, nil, fmt.Errorf("create archive: unreadable page %q", entry.Name())
 		}
-		pages = append(pages, filepath.Join(directory, entry.Name()))
+		if err := validateImageFile(filepath.Join(directory, entry.Name()), entry.Name()); err != nil {
+			return nil, nil, err
+		}
+		index, err := pageNumber(entry.Name())
+		if err != nil {
+			return nil, nil, err
+		}
+		pages = append(pages, pageFile{path: filepath.Join(directory, entry.Name()), name: entry.Name(), index: index})
 	}
-	sort.Strings(pages)
+	sort.Slice(pages, func(left, right int) bool { return pages[left].index < pages[right].index })
 	if len(pages) == 0 {
 		return nil, nil, fmt.Errorf("create archive: source directory has no page files")
+	}
+	for index := 1; index < len(pages); index++ {
+		if pages[index-1].index == pages[index].index {
+			return nil, nil, fmt.Errorf("create archive: source has duplicate page position %d", pages[index].index)
+		}
+	}
+	width := 4
+	for _, page := range pages {
+		width = max(width, len(strconv.Itoa(page.index)))
+	}
+	for index := range pages {
+		pages[index].name = fmt.Sprintf("%0*d%s", width, pages[index].index, strings.ToLower(filepath.Ext(pages[index].name)))
 	}
 	statePath := filepath.Join(directory, ".mangate.json")
 	data, err := os.ReadFile(statePath)
@@ -231,15 +257,71 @@ func sourcePages(directory string) ([]string, *chapterState, error) {
 	return pages, &state, nil
 }
 
-func writeArchive(destination io.Writer, pages []string, format Format, metadata Metadata) error {
+func pageNumber(name string) (int, error) {
+	label := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	if label == "" {
+		return 0, fmt.Errorf("create archive: page %q has no numeric order", name)
+	}
+	for _, character := range label {
+		if character < '0' || character > '9' {
+			return 0, fmt.Errorf("create archive: page %q has no numeric order", name)
+		}
+	}
+	value, err := strconv.Atoi(label)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("create archive: page %q has invalid numeric order", name)
+	}
+	return value, nil
+}
+
+func validateImageFile(path, name string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("create archive: open page %q: %w", name, err)
+	}
+	defer file.Close()
+	header := make([]byte, 32)
+	count, err := io.ReadFull(file, header)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return fmt.Errorf("create archive: read page %q: %w", name, err)
+	}
+	header = header[:count]
+	if !matchesImageSignature(header, strings.ToLower(filepath.Ext(name))) {
+		return fmt.Errorf("create archive: page %q does not contain a valid image matching its extension", name)
+	}
+	return nil
+}
+
+func matchesImageSignature(header []byte, extension string) bool {
+	hasPrefix := func(signature []byte) bool {
+		return len(header) >= len(signature) && string(header[:len(signature)]) == string(signature)
+	}
+	switch extension {
+	case ".jpg", ".jpeg":
+		return hasPrefix([]byte{0xff, 0xd8, 0xff})
+	case ".png":
+		return hasPrefix([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	case ".gif":
+		return hasPrefix([]byte("GIF87a")) || hasPrefix([]byte("GIF89a"))
+	case ".webp":
+		return len(header) >= 12 && string(header[:4]) == "RIFF" && string(header[8:12]) == "WEBP"
+	case ".avif":
+		return len(header) >= 12 && string(header[4:8]) == "ftyp" && (string(header[8:12]) == "avif" || string(header[8:12]) == "avis")
+	case ".bmp":
+		return hasPrefix([]byte("BM"))
+	default:
+		return false
+	}
+}
+
+func writeArchive(destination io.Writer, pages []pageFile, format Format, metadata Metadata) error {
 	writer := zip.NewWriter(destination)
 	defer writer.Close()
-	for _, path := range pages {
-		name := filepath.Base(path)
-		if !isSafeEntry(name) {
-			return fmt.Errorf("create archive: unsafe page filename %q", name)
+	for _, page := range pages {
+		if !isSafeEntry(page.name) {
+			return fmt.Errorf("create archive: unsafe page filename %q", page.name)
 		}
-		if err := copyEntry(writer, name, path); err != nil {
+		if err := copyEntry(writer, page.name, page.path); err != nil {
 			return err
 		}
 	}
