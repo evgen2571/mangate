@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -11,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
@@ -207,6 +209,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
 		}
 		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
+		if m.app != nil {
+			m.chapters.setLocalStatuses(localChapterStatuses(m.app.Cfg, msg.Manga, msg.Chapters))
+		}
 		if m.pendingFullMangaDownload == msg.Manga {
 			m.pendingFullMangaDownload = nil
 			chapters := nonNilChapters(msg.Chapters)
@@ -620,4 +625,41 @@ func nonNilChapters(chapters []*source.Chapter) []*source.Chapter {
 		result = append(result, chapter)
 	}
 	return result
+}
+
+func localChapterStatuses(cfg config.Config, manga *source.Manga, chapters []*source.Chapter) map[string]string {
+	statuses := make(map[string]string, len(chapters))
+	if manga == nil {
+		return statuses
+	}
+	format, err := archive.ParseFormat(cfg.Download.Format)
+	if err != nil {
+		format = archive.FormatDirectory
+	}
+	names := downloader.ChapterDirectoryNames(chapters)
+	titleDir := filepath.Join(cfg.Download.Dir, downloader.TitleDirectoryName(manga))
+	for index, chapter := range chapters {
+		key := chapterSelectionKey(chapter, index)
+		if chapter == nil {
+			statuses[key] = "missing"
+			continue
+		}
+		directory := filepath.Join(titleDir, names[index])
+		if format != archive.FormatDirectory {
+			if info, statErr := os.Stat(directory + format.Extension()); statErr == nil && !info.IsDir() && info.Size() > 0 {
+				statuses[key] = "archive"
+				continue
+			}
+		}
+		if chapterDirectoryComplete(directory) {
+			statuses[key] = "complete"
+			continue
+		}
+		if _, statErr := os.Stat(filepath.Join(directory, ".mangate.json")); statErr == nil {
+			statuses[key] = "incomplete"
+			continue
+		}
+		statuses[key] = "missing"
+	}
+	return statuses
 }

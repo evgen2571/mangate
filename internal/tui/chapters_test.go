@@ -176,3 +176,18 @@ func TestChaptersModelSelectRangeUsesVisibleFilterOrder(t *testing.T) {
 		t.Fatalf("range status = %q", m.status)
 	}
 }
+
+func TestChaptersModelFiltersAndDisplaysLocalStatus(t *testing.T) {
+	chapters := []*source.Chapter{{ID: "complete", Index: "1"}, {ID: "missing", Index: "2"}}
+	m := newChaptersModel(&source.Manga{Title: "Test"}, chapters)
+	m.setLocalStatuses(map[string]string{"complete": "complete", "missing": "missing"})
+	m.list.SetFilterText("local:complete")
+	visible := m.list.VisibleItems()
+	if len(visible) != 1 {
+		t.Fatalf("visible items = %#v, want one complete chapter", visible)
+	}
+	item := visible[0].(chapterItem)
+	if item.value.ID != "complete" || !strings.Contains(item.Description(), "Local: complete pages") {
+		t.Fatalf("local chapter item = %#v, description = %q", item, item.Description())
+	}
+}

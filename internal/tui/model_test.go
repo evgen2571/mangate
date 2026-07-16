@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 )
 
@@ -139,6 +140,27 @@ func TestNewWithContextKeepsCallerLifecycleContext(t *testing.T) {
 	m, ok := created.(*model)
 	if !ok || m.baseContext != ctx {
 		t.Fatalf("NewWithContext() = %#v, want model with caller context", created)
+	}
+}
+
+func TestLocalChapterStatusesRecognizesCompleteDirectoriesAndArchives(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	manga := &source.Manga{ID: "title", Title: "Example"}
+	chapters := []*source.Chapter{{ID: "directory", Index: "1"}, {ID: "archive", Index: "2"}, {ID: "missing", Index: "3"}}
+	names := downloader.ChapterDirectoryNames(chapters)
+	titleDir := filepath.Join(cfg.Download.Dir, downloader.TitleDirectoryName(manga))
+	writeChapterStateForTUI(t, filepath.Join(titleDir, names[0]), 1, true)
+	cfg.Download.Format = "cbz"
+	if err := os.MkdirAll(titleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(titleDir, names[1]+".cbz"), []byte("archive"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	statuses := localChapterStatuses(cfg, manga, chapters)
+	if statuses["directory"] != "complete" || statuses["archive"] != "archive" || statuses["missing"] != "missing" {
+		t.Fatalf("local statuses = %#v", statuses)
 	}
 }
 

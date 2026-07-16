@@ -15,16 +15,17 @@ import (
 )
 
 type chapterItem struct {
-	idx      int
-	value    *source.Chapter
-	selected bool
+	idx         int
+	value       *source.Chapter
+	selected    bool
+	localStatus string
 }
 
 func (i chapterItem) FilterValue() string {
 	if i.value == nil {
 		return ""
 	}
-	return strings.Join([]string{i.value.DisplayName(), i.value.Language, i.value.ID}, " ")
+	return strings.Join([]string{i.value.DisplayName(), i.value.Language, i.value.ID, "local:" + i.localStatus}, " ")
 }
 
 func (i chapterItem) Title() string {
@@ -67,6 +68,9 @@ func (i chapterItem) Description() string {
 	if id := strings.TrimSpace(i.value.ID); id != "" {
 		parts = append(parts, "ID: "+util.SanitizeTerminalText(id))
 	}
+	if i.localStatus != "" {
+		parts = append(parts, "Local: "+localStatusLabel(i.localStatus))
+	}
 	description := strings.Join(parts, "  •  ")
 	if i.selected {
 		return lipgloss.NewStyle().Foreground(constant.InputBorderColor).Render(description)
@@ -84,6 +88,7 @@ type chaptersModel struct {
 	list        list.Model
 	chapters    []*source.Chapter
 	selected    map[string]bool
+	localStatus map[string]string
 	rangeAnchor string
 	status      string
 }
@@ -97,11 +102,12 @@ func newChaptersModel(manga *source.Manga, chapters []*source.Chapter) chaptersM
 	l.SetShowPagination(true)
 
 	m := chaptersModel{
-		manga:    manga,
-		keys:     newChaptersKeyMap(),
-		list:     l,
-		chapters: chapters,
-		selected: make(map[string]bool),
+		manga:       manga,
+		keys:        newChaptersKeyMap(),
+		list:        l,
+		chapters:    chapters,
+		selected:    make(map[string]bool),
+		localStatus: make(map[string]string),
 	}
 	m.syncListItems()
 	return m
@@ -247,6 +253,11 @@ func (m chaptersModel) HelpKeys(global keyMap) help.KeyMap {
 
 func (m *chaptersModel) setStatus(status string) {
 	m.status = strings.TrimSpace(status)
+}
+
+func (m *chaptersModel) setLocalStatuses(statuses map[string]string) {
+	m.localStatus = statuses
+	m.syncListItems()
 }
 
 func (m *chaptersModel) clearSelection() {
@@ -433,12 +444,28 @@ func (m *chaptersModel) syncListItems() {
 	items := make([]list.Item, 0, len(m.chapters))
 	for i, chapter := range m.chapters {
 		items = append(items, chapterItem{
-			idx:      i,
-			value:    chapter,
-			selected: m.selected[chapterSelectionKey(chapter, i)],
+			idx:         i,
+			value:       chapter,
+			selected:    m.selected[chapterSelectionKey(chapter, i)],
+			localStatus: m.localStatus[chapterSelectionKey(chapter, i)],
 		})
 	}
 	m.list.SetItems(items)
+}
+
+func localStatusLabel(status string) string {
+	switch status {
+	case "archive":
+		return "archive present"
+	case "complete":
+		return "complete pages"
+	case "incomplete":
+		return "incomplete pages"
+	case "missing":
+		return "not downloaded"
+	default:
+		return status
+	}
 }
 
 func chapterSelectionKey(chapter *source.Chapter, idx int) string {
