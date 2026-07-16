@@ -124,6 +124,14 @@ func TestSearchCommandFiltersLanguageAndContentType(t *testing.T) {
 	}
 }
 
+func TestSearchContentTypeHelpExplainsRepeatedValueSemantics(t *testing.T) {
+	cmd := NewSearchCmd(newTestApp(t, fakeProvider{}))
+	flag := cmd.Flags().Lookup("content-type")
+	if flag == nil || !strings.Contains(flag.Usage, "any value matches") || !strings.Contains(flag.Usage, "duplicates ignored") {
+		t.Fatalf("content-type help = %#v, want repeated-value semantics", flag)
+	}
+}
+
 func TestSearchCommandRejectsInteractiveJSON(t *testing.T) {
 	cmd := NewRootCmd(newTestApp(t, fakeProvider{}))
 	cmd.SetArgs([]string{"--json", "search", "wanted", "--interactive"})

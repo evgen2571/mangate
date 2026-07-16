@@ -90,7 +90,7 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of results")
-	cmd.Flags().StringSliceVar(&contentTypes, "content-type", nil, "Filter by content type (repeatable)")
+	cmd.Flags().StringSliceVar(&contentTypes, "content-type", nil, "Filter by content type (repeatable; any value matches, duplicates ignored)")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Open the matching results in the terminal interface")
 	return cmd
 }

@@ -54,7 +54,7 @@ mangate archive inspect ./library/Example-123/Chapter-1.cbz
 mangate archive verify ./library/Example-123/Chapter-1.cbz
 ```
 
-Human-readable search results include the provider, alternative title, content rating, publication status, original language, and year when the provider supplies them. Use `--language` to filter by original language and `--content-type` to filter content ratings when supplied by a provider. Add `--interactive` to open matching results in the TUI without repeating the search. Use the displayed `Reference` value with `mangate title`, `mangate chapters`, or `mangate download`; `--json` retains the complete structured metadata.
+Human-readable search results include the provider, alternative title, content rating, publication status, original language, and year when the provider supplies them. Use `--language` to filter by original language and `--content-type` to filter content ratings when supplied by a provider. Repeat `--content-type` to match any supplied value; duplicates are ignored and their order does not matter. Add `--interactive` to open matching results in the TUI without repeating the search. Use the displayed `Reference` value with `mangate title`, `mangate chapters`, or `mangate download`; `--json` retains the complete structured metadata.
 
 Use `--quiet` to suppress successful human-readable command output; it does not suppress errors or alter `--json` output. Use `--verbose` to add a safe error category and exit-code diagnostic on failure.
 
