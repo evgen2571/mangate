@@ -78,6 +78,8 @@ Archive downloads retain the page directory by default. Use `--retain-source=fal
 
 `archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, and completion state without extracting anything.
 
+Run `mangate config` to inspect the effective provider, output root, format, existing-file policy, and source-retention setting after configuration and command flags are merged.
+
 ## JSON output and exit status
 
 Every core command accepts `--json`. Standard output then contains exactly one JSON object with `formatVersion`, `operation`, `status`, and `data`. Error output uses the same envelope and carries a stable category such as `invalid_input`, `unknown_provider`, `not_found`, `unsupported_capability`, `timeout`, `filesystem`, or `cancelled`.
