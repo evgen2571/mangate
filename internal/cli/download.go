@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -125,7 +126,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 					return writeJSON(cmd, "download", record)
 				}
 				if !isQuiet(cmd) {
-					writeHuman(cmd.OutOrStdout(), "Reused %d existing %s archive(s)\n", len(selection), format)
+					writeDownloadSummary(cmd.OutOrStdout(), record)
 				}
 				return nil
 			}
@@ -153,7 +154,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			}
 			if !isQuiet(cmd) {
 				writeHuman(cmd.ErrOrStderr(), "\n")
-				writeHuman(cmd.OutOrStdout(), "Downloaded %d chapter(s) as %s to %s\n", len(selection), format, a.Cfg.Download.Dir)
+				writeDownloadSummary(cmd.OutOrStdout(), record)
 			}
 			return nil
 		},
@@ -192,8 +193,41 @@ func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause erro
 		if err := writeJSONStatus(cmd, "download", record.Status, record); err != nil {
 			return err
 		}
+	} else if !isQuiet(cmd) {
+		writeDownloadSummary(cmd.OutOrStdout(), *record)
 	}
 	return &ReportedError{Cause: cause, Code: code}
+}
+
+func writeDownloadSummary(out io.Writer, record downloadRecord) {
+	completed, skipped, failed, archiveFailed, expectedPages, reusedPages := 0, 0, 0, 0, 0, 0
+	for _, chapter := range record.Chapters {
+		expectedPages += chapter.ExpectedPages
+		switch chapter.Status {
+		case "complete":
+			completed++
+		case "skipped":
+			skipped++
+			reusedPages += chapter.ExpectedPages
+		case "archive_failed":
+			archiveFailed++
+			failed++
+		default:
+			failed++
+		}
+	}
+	writeHuman(out, "Download summary\nCompleted: %d\nSkipped/reused: %d\nFailed or incomplete: %d\nArchive failures: %d\nExpected pages: %d\nReused pages: %d\n", completed, skipped, failed, archiveFailed, expectedPages, reusedPages)
+	if len(record.Chapters) == 0 {
+		return
+	}
+	writeHuman(out, "Outputs:\n")
+	for _, chapter := range record.Chapters {
+		path := chapter.OutputPath
+		if chapter.ArchivePath != "" {
+			path = chapter.ArchivePath
+		}
+		writeHuman(out, "  [%s] %s\n", chapter.Status, path)
+	}
 }
 
 func updateChapterRecordStates(record *downloadRecord) {

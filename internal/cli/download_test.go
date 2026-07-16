@@ -69,6 +69,20 @@ func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.
 	}
 }
 
+func TestWriteDownloadSummaryDistinguishesOutcomesAndPaths(t *testing.T) {
+	var output bytes.Buffer
+	writeDownloadSummary(&output, downloadRecord{Chapters: []chapterDownload{
+		{ID: "completed", Status: "complete", OutputPath: "pages", ExpectedPages: 2},
+		{ID: "reused", Status: "skipped", OutputPath: "source", ArchivePath: "archive.cbz", ExpectedPages: 3},
+		{ID: "failed", Status: "archive_failed", OutputPath: "failed-pages", ArchivePath: "failed.cbz", ExpectedPages: 4},
+	}})
+	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 1", "Archive failures: 1", "Expected pages: 9", "Reused pages: 3", "[skipped] archive.cbz", "[archive_failed] failed.cbz"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("summary = %q, want %q", output.String(), want)
+		}
+	}
+}
+
 func TestReusableArchiveSelectionSkipsValidatedMatchingArchives(t *testing.T) {
 	directory := t.TempDir()
 	archivePath := filepath.Join(directory, "chapter.cbz")
