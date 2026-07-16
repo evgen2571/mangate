@@ -57,7 +57,7 @@ func New(a *app.App) tea.Model {
 		}
 	}
 
-	return &model{
+	model := &model{
 		app:    a,
 		state:  stateSearch,
 		keys:   newKeyMap(),
@@ -65,6 +65,8 @@ func New(a *app.App) tea.Model {
 		search: newSearchModel(searchHistory),
 		config: newConfigModel(a.Cfg),
 	}
+	model.search.SetProvider(a.Cfg.Provider)
+	return model
 }
 
 func (m model) Init() tea.Cmd {
@@ -112,6 +114,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.results.coverSpinner.Tick,
 			m.loadCoverCmd(selected, w, h),
 		)
+
+	case searchFailedMsg:
+		m.search.SetStatus(fmt.Sprintf("Search failed: %v. Edit the query and try again.", msg.Err))
+		m.state = stateSearch
+		m.resizeActiveModel()
+		return m, nil
 
 	case coverLoadRequestedMsg:
 		selected := m.results.selectedManga()
@@ -199,6 +207,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingFullMangaDownload = nil
 		}
 		m.state = stateResults
+		if msg.Err != nil {
+			m.results.setStatus(fmt.Sprintf("Could not load chapters: %v", msg.Err))
+		}
 		m.resizeActiveModel()
 		return m, nil
 

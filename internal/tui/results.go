@@ -60,6 +60,11 @@ type resultsModel struct {
 	coverSpinner spinner.Model
 	covers       map[string]coverState
 	results      []*source.Manga
+	status       string
+}
+
+func (m *resultsModel) setStatus(status string) {
+	m.status = strings.TrimSpace(status)
 }
 
 type resultsLayout struct {
@@ -230,11 +235,15 @@ func (m resultsModel) View() string {
 
 	l := m.layout()
 
+	footerText := fmt.Sprintf("Results for %q", m.query)
+	if m.status != "" {
+		footerText += " • " + m.status
+	}
 	footer := lipgloss.NewStyle().
 		Width(l.leftContentWidth).
 		Padding(0, 1).
 		Foreground(constant.MutedColor).
-		Render(fmt.Sprintf("Results for %q", m.query))
+		Render(footerText)
 
 	footerHeight := lipgloss.Height(footer)
 	listHeight := max(1, l.leftContentHeight-footerHeight)

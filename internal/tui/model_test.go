@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -43,6 +44,21 @@ func TestModelFullMangaDownloadOpensFormatSelectionAfterMatchingChaptersLoad(t *
 	}
 	if len(got.confirm.chapters) != 2 {
 		t.Fatalf("confirmation chapters = %#v", got.confirm.chapters)
+	}
+}
+
+func TestModelSearchFailureReturnsToEditableSearch(t *testing.T) {
+	m := model{state: stateLoading, search: newSearchModel(nil)}
+	updated, cmd := m.Update(searchFailedMsg{Err: errors.New("provider unavailable")})
+	got, ok := updated.(model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want model", updated)
+	}
+	if got.state != stateSearch || cmd != nil {
+		t.Fatalf("state = %v, command = %v", got.state, cmd)
+	}
+	if got.search.status == "" || got.search.input.Focused() == false {
+		t.Fatalf("search = %#v, want visible editable error", got.search)
 	}
 }
 
