@@ -91,6 +91,26 @@ func TestCompletionModelReportsArchivePaths(t *testing.T) {
 	}
 }
 
+func TestCompletionModelReportsPerChapterOutcomes(t *testing.T) {
+	completion := completionModel{
+		success: false,
+		summary: "Download finished: 1 completed, 1 skipped/reused, 2 failed or incomplete.",
+		outcomes: []chapterOutcome{
+			{Name: "One", Status: "complete", Path: "one.cbz"},
+			{Name: "Two", Status: "skipped", Path: "two.cbz"},
+			{Name: "Three", Status: "incomplete", Path: "three"},
+			{Name: "Four", Status: "archive_failed", Path: "four.cbz"},
+		},
+		paths: []string{"one.cbz", "two.cbz", "three", "four.cbz"},
+	}
+	view := completion.View()
+	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 2", "Archive failures: 1", "[incomplete] three", "[archive_failed] four.cbz"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("completion view = %q, want %q", view, want)
+		}
+	}
+}
+
 func TestConfirmationPlanShowsArchivePathsAndExistingOutputs(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()

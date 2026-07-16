@@ -58,11 +58,13 @@ type downloadProgressMsg struct {
 type downloadSucceededMsg struct {
 	Manga    *source.Manga
 	Chapters []*source.Chapter
+	Outcomes []chapterOutcome
 }
 
 type downloadFailedMsg struct {
 	Manga    *source.Manga
 	Chapters []*source.Chapter
+	Outcomes []chapterOutcome
 	Err      error
 }
 

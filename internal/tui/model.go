@@ -256,14 +256,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadSucceededMsg:
 		m.chapters.clearSelection()
 		m.chapters.setStatus(fmt.Sprintf("downloaded %d chapter(s)", len(msg.Chapters)))
-		m.completion = newCompletionModel(m.app, msg.Manga, msg.Chapters, nil)
+		m.completion = newCompletionModelWithOutcomes(m.app, msg.Manga, msg.Chapters, msg.Outcomes, nil)
 		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
 
 	case downloadFailedMsg:
 		m.chapters.setStatus(fmt.Sprintf("download failed: %v", msg.Err))
-		m.completion = newCompletionModel(m.app, msg.Manga, msg.Chapters, msg.Err)
+		m.completion = newCompletionModelWithOutcomes(m.app, msg.Manga, msg.Chapters, msg.Outcomes, msg.Err)
 		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
@@ -405,6 +405,10 @@ func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chap
 }
 
 func newCompletionModel(application *app.App, manga *source.Manga, chapters []*source.Chapter, operationErr error) completionModel {
+	return newCompletionModelWithOutcomes(application, manga, chapters, nil, operationErr)
+}
+
+func newCompletionModelWithOutcomes(application *app.App, manga *source.Manga, chapters []*source.Chapter, outcomes []chapterOutcome, operationErr error) completionModel {
 	completion := completionModel{success: operationErr == nil}
 	if application == nil {
 		completion.summary = "Download finished."
@@ -414,24 +418,45 @@ func newCompletionModel(application *app.App, manga *source.Manga, chapters []*s
 	if err != nil {
 		format = archive.FormatDirectory
 	}
-	completion.summary = completionSummary(len(chapters), string(format))
-	if operationErr != nil {
-		completion.summary = fmt.Sprintf("Download finished with failures across %d selected chapter(s).", len(chapters))
-		completion.error = operationErr.Error()
-		return completion
-	}
 	if manga == nil {
+		if operationErr != nil {
+			completion.error = operationErr.Error()
+		}
+		completion.summary = "Download finished."
 		return completion
 	}
 	names := downloader.ChapterDirectoryNames(chapters)
 	root := filepath.Join(application.Cfg.Download.Dir, downloader.TitleDirectoryName(manga))
-	for index := range chapters {
-		path := filepath.Join(root, names[index])
-		if format != archive.FormatDirectory {
-			path += format.Extension()
+	if len(outcomes) == 0 {
+		outcomes = make([]chapterOutcome, len(chapters))
+		for index, chapter := range chapters {
+			path := filepath.Join(root, names[index])
+			if format != archive.FormatDirectory {
+				path += format.Extension()
+			}
+			name := "Unknown chapter"
+			if chapter != nil {
+				name = chapter.DisplayName()
+			}
+			outcomes[index] = chapterOutcome{Name: name, Status: "complete", Path: path}
 		}
-		completion.paths = append(completion.paths, path)
 	}
+	completion.outcomes = outcomes
+	for _, outcome := range outcomes {
+		if outcome.Path != "" {
+			completion.paths = append(completion.paths, outcome.Path)
+		}
+	}
+	completed, skipped, incomplete, archiveFailures := completionCounts(outcomes)
+	if operationErr != nil {
+		completion.summary = fmt.Sprintf("Download finished: %d completed, %d skipped/reused, %d failed or incomplete.", completed, skipped, incomplete)
+		if archiveFailures > 0 {
+			completion.summary += fmt.Sprintf(" %d archive failure(s).", archiveFailures)
+		}
+		completion.error = operationErr.Error()
+		return completion
+	}
+	completion.summary = completionSummary(completed+skipped, string(format))
 	return completion
 }
 

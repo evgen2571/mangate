@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -56,41 +59,67 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				Total:     0,
 			}
 
-			err := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress usecase.DownloadProgress) {
+			downloadErr := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress usecase.DownloadProgress) {
 				progressCh <- downloadProgressMsgFromUsecase(progress)
 			})
-			if err != nil {
-				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
-				return
-			}
-			if err := m.archiveChapters(manga, chapters); err != nil {
-				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
+			outcomes, archiveErr := m.archiveChapters(manga, chapters)
+			if operationErr := errors.Join(downloadErr, archiveErr); operationErr != nil {
+				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes, Err: operationErr}
 				return
 			}
 
-			progressCh <- downloadSucceededMsg{Manga: manga, Chapters: chapters}
+			progressCh <- downloadSucceededMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes}
 		}()
 
 		return nil
 	}
 }
 
-func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) error {
+type chapterOutcome struct {
+	Name   string
+	Status string
+	Path   string
+	Error  string
+}
+
+func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) ([]chapterOutcome, error) {
 	format, err := archive.ParseFormat(m.app.Cfg.Download.Format)
-	if err != nil || format == archive.FormatDirectory {
-		return err
+	if err != nil {
+		return nil, err
 	}
 	names := downloader.ChapterDirectoryNames(chapters)
 	titleDir := downloader.TitleDirectoryName(manga)
+	outcomes := make([]chapterOutcome, len(chapters))
 	for index, chapter := range chapters {
-		if chapter == nil {
-			return fmt.Errorf("archive chapter: selected chapter is nil")
+		path := filepath.Join(m.app.Cfg.Download.Dir, titleDir, names[index])
+		name := "Unknown chapter"
+		if chapter != nil {
+			name = chapter.DisplayName()
 		}
-		sourceDir := filepath.Join(m.app.Cfg.Download.Dir, titleDir, names[index])
-		_, err := archive.CreateFromDirectory(archive.Options{
+		outcomes[index] = chapterOutcome{Name: name, Status: "incomplete", Path: path}
+		if chapter == nil {
+			outcomes[index].Error = "selected chapter is nil"
+			continue
+		}
+		if chapterDirectoryComplete(path) {
+			outcomes[index].Status = "complete"
+		}
+	}
+	if format == archive.FormatDirectory {
+		return outcomes, nil
+	}
+
+	var failures []error
+	for index, chapter := range chapters {
+		if chapter == nil || outcomes[index].Status != "complete" {
+			continue
+		}
+		sourceDir := outcomes[index].Path
+		archivePath := sourceDir + format.Extension()
+		result, err := archive.CreateFromDirectory(archive.Options{
 			Format:           format,
 			SourceDir:        sourceDir,
-			OutputPath:       sourceDir + format.Extension(),
+			OutputPath:       archivePath,
 			ExistingFileMode: archive.ExistingFileMode(m.app.Cfg.Download.ExistingFileMode),
 			RemoveSource:     !m.app.Cfg.Download.RetainSource,
 			Metadata: archive.Metadata{
@@ -108,10 +137,29 @@ func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) 
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("create %s for %s: %w", format, chapter.LogName(), err)
+			outcomes[index].Status = "archive_failed"
+			outcomes[index].Error = err.Error()
+			outcomes[index].Path = archivePath
+			failures = append(failures, fmt.Errorf("create %s for %s: %w", format, chapter.LogName(), err))
+			continue
+		}
+		outcomes[index].Path = archivePath
+		if result.Status == archive.StatusSkipped {
+			outcomes[index].Status = "skipped"
 		}
 	}
-	return nil
+	return outcomes, errors.Join(failures...)
+}
+
+func chapterDirectoryComplete(path string) bool {
+	data, err := os.ReadFile(filepath.Join(path, ".mangate.json"))
+	if err != nil {
+		return false
+	}
+	var state struct {
+		Complete bool `json:"complete"`
+	}
+	return json.Unmarshal(data, &state) == nil && state.Complete
 }
 
 func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {
