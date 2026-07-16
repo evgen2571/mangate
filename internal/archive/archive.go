@@ -109,6 +109,7 @@ type Result struct {
 
 type Inspection struct {
 	Validation
+	State             string    `json:"state"`
 	Path              string    `json:"path"`
 	EntryCount        int       `json:"entryCount"`
 	Entries           []string  `json:"entries,omitempty"`
@@ -484,7 +485,7 @@ func comicInfoXML(metadata Metadata) ([]byte, error) {
 }
 
 func Inspect(path string) (Inspection, error) {
-	inspection := Inspection{Path: path, Validation: Validation{Format: formatFromPath(path)}}
+	inspection := Inspection{Path: path, State: "structurally_invalid", Validation: Validation{Format: formatFromPath(path)}}
 	if inspection.Format == "" {
 		inspection.Message = "archive extension must be .cbz or .zip"
 		return inspection, errors.New(inspection.Message)
@@ -551,6 +552,16 @@ func Inspect(path string) (Inspection, error) {
 	}
 	inspection.Valid = true
 	inspection.Complete = metadata.Completion == "complete" && (metadata.ExpectedPages == 0 || metadata.ExpectedPages == inspection.PageCount)
+	switch {
+	case !inspection.MetadataFound:
+		inspection.State = "metadata_incomplete"
+	case !inspection.IdentityConfirmed:
+		inspection.State = "identity_unconfirmed"
+	case inspection.Complete:
+		inspection.State = "complete"
+	default:
+		inspection.State = "incomplete"
+	}
 	if !inspection.Complete {
 		inspection.Message = "archive metadata does not confirm completion"
 	}

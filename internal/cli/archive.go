@@ -142,7 +142,7 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nComplete: %t\nIdentity confirmed: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.Complete, inspection.IdentityConfirmed)
+			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nState: %s\nComplete: %t\nIdentity confirmed: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.State, inspection.Complete, inspection.IdentityConfirmed)
 			if len(inspection.UnexpectedEntries) > 0 {
 				writeHuman(cmd.OutOrStdout(), "Unexpected entries: %s\n", strings.Join(inspection.UnexpectedEntries, ", "))
 			}

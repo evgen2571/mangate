@@ -127,6 +127,9 @@ func TestCreateFromDirectoryWarnsWhenLocalIdentityIsUnavailable(t *testing.T) {
 	if err != nil || inspection.IdentityConfirmed {
 		t.Fatalf("inspection = %#v, error = %v", inspection, err)
 	}
+	if inspection.State != "identity_unconfirmed" {
+		t.Fatalf("inspection state = %q, want identity_unconfirmed", inspection.State)
+	}
 }
 
 func TestInspectReportsUnexpectedNonPageEntries(t *testing.T) {
