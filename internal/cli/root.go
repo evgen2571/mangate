@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/constant"
+	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/tui"
 )
 
@@ -25,7 +27,13 @@ func NewRootCmd(a *app.App) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return a.ApplyConfig(a.Cfg)
+			if err := a.ApplyConfig(a.Cfg); err != nil {
+				return err
+			}
+			if isQuiet(cmd) && !wantsJSON(cmd) {
+				cmd.SetOut(io.Discard)
+			}
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if interactiveTerminal() && !wantsJSON(cmd) && !isNonInteractive(cmd) {
@@ -72,6 +80,14 @@ func NewInteractiveCmd(a *app.App) *cobra.Command {
 }
 
 func runInteractive(cmd *cobra.Command, a *app.App) error {
+	return runTUI(cmd, tui.NewWithContext(a, cmd.Context()))
+}
+
+func runInteractiveSearchResults(cmd *cobra.Command, a *app.App, query string, results []*source.Manga) error {
+	return runTUI(cmd, tui.NewWithSearchResults(a, cmd.Context(), query, results))
+}
+
+func runTUI(cmd *cobra.Command, ui tea.Model) error {
 	if isNonInteractive(cmd) {
 		return fmt.Errorf("tui cannot run with --non-interactive")
 	}
@@ -81,7 +97,7 @@ func runInteractive(cmd *cobra.Command, a *app.App) error {
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
-	p := tea.NewProgram(tui.NewWithContext(a, cmd.Context()))
+	p := tea.NewProgram(ui)
 	_, err := p.Run()
 	return err
 }

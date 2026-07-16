@@ -26,6 +26,7 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 	var output string
 	var removeSource bool
 	var dryRun bool
+	var assumeYes bool
 	cmd := &cobra.Command{
 		Use:     "convert <chapter-directory>",
 		Short:   "Create a CBZ or ZIP archive from local chapter pages",
@@ -57,7 +58,10 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 				writeHuman(cmd.OutOrStdout(), "Source: %s\nFormat: %s\nOutput: %s\nDestination exists: %t\nRemove source after validation: %t\nDry run: no files will be changed\n", plan.SourceDir, plan.Format, plan.OutputPath, plan.DestinationExists, plan.RemoveSource)
 				return nil
 			}
-			result, err := archive.CreateFromDirectory(archive.Options{
+			if requirement := archiveConversionConfirmationRequirement(removeSource, a.Cfg.Download.ExistingFileMode); requirement != "" && !assumeYes {
+				return fmt.Errorf("archive convert: %s; review with --dry-run, then rerun with --yes to continue", requirement)
+			}
+			result, err := archive.CreateFromDirectoryContext(cmd.Context(), archive.Options{
 				Format:           format,
 				SourceDir:        sourceDir,
 				OutputPath:       output,
@@ -74,13 +78,28 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 				return err
 			}
 			writeHuman(cmd.OutOrStdout(), "%s archive: %s\n", result.Status, result.OutputPath)
+			for _, warning := range result.Warnings {
+				writeHuman(cmd.OutOrStdout(), "Warning: %s\n", warning)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&output, "output", "", "Destination archive path")
 	cmd.Flags().BoolVar(&removeSource, "remove-source", false, "Remove the source directory after archive validation")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the conversion plan without writing an archive")
+	cmd.Flags().BoolVar(&assumeYes, "yes", false, "Confirm source deletion or output replacement without prompting")
 	return cmd
+}
+
+func archiveConversionConfirmationRequirement(removeSource bool, existingFileMode string) string {
+	switch {
+	case existingFileMode == string(archive.ExistingReplace):
+		return "replacing an existing archive may discard data"
+	case removeSource:
+		return "removing the source directory changes local files"
+	default:
+		return ""
+	}
 }
 
 type archiveConversionPlan struct {
@@ -111,7 +130,7 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 	return &cobra.Command{
 		Use:   name + " <archive-path>",
 		Short: map[string]string{"inspect": "Show archive contents and completion state", "verify": "Check archive structure and completion state"}[name],
-		Args:  requireOneArgument("a local <chapter-directory>", "mangate --format cbz archive convert ./library/Example/Chapter-1"),
+		Args:  requireOneArgument("a local <archive-path>", "mangate archive "+name+" ./library/Example-123/Chapter-1.cbz"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			inspection, err := archive.Inspect(args[0])
 			if wantsJSON(cmd) {
@@ -123,7 +142,7 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nComplete: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.Complete)
+			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nState: %s\nComplete: %t\nIdentity confirmed: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.State, inspection.Complete, inspection.IdentityConfirmed)
 			if len(inspection.UnexpectedEntries) > 0 {
 				writeHuman(cmd.OutOrStdout(), "Unexpected entries: %s\n", strings.Join(inspection.UnexpectedEntries, ", "))
 			}

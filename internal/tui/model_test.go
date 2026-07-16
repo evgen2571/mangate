@@ -67,6 +67,52 @@ func TestModelSearchFailureReturnsToEditableSearch(t *testing.T) {
 	}
 }
 
+func TestNewWithSearchResultsStartsAtResolvedResults(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := []*source.Manga{{ID: "manga-a", Title: "Manga A"}}
+	created := NewWithSearchResults(a, context.Background(), "manga", results)
+	m, ok := created.(*model)
+	if !ok {
+		t.Fatalf("NewWithSearchResults() = %T, want *model", created)
+	}
+	if m.state != stateResults || m.results.query != "manga" || m.results.selectedManga() != results[0] {
+		t.Fatalf("model = %#v, want resolved result state", m)
+	}
+}
+
+func TestEmptyResultsBackReturnsToEditableQuery(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := NewWithSearchResults(a, context.Background(), "missing", nil)
+	m := created.(*model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("Update(Esc) returned nil command")
+	}
+	updated, _ = updated.Update(cmd())
+	got := updated.(model)
+	if got.state != stateSearch || got.search.input.Value() != "missing" {
+		t.Fatalf("state = %v, query = %q; want editable preserved search", got.state, got.search.input.Value())
+	}
+}
+
+func TestNarrowTerminalShowsResizeMessageWithoutChangingState(t *testing.T) {
+	m := model{state: stateChapters, chapters: newChaptersModel(nil, nil)}
+	updated, cmd := m.Update(tea.WindowSizeMsg{Width: 20, Height: 8})
+	got := updated.(model)
+	if cmd != nil || got.state != stateChapters {
+		t.Fatalf("state = %v, command = %v; want preserved chapter selection", got.state, cmd)
+	}
+	if !strings.Contains(got.View(), "Terminal is too small") {
+		t.Fatalf("view = %q, want resize message", got.View())
+	}
+}
+
 func TestTUISanitizationDoesNotChangeProviderIdentifiers(t *testing.T) {
 	manga := &source.Manga{ID: "id\x1b[2J", Title: "title\nnext", Metadata: source.MangaMetadata{Description: map[string]string{"en": "body\ttext"}}}
 	chapter := &source.Chapter{ID: "chapter\x1b[2J", Title: "part\nnext"}
@@ -107,7 +153,7 @@ func TestCompletionModelReportsPerChapterOutcomes(t *testing.T) {
 		paths: []string{"one.cbz", "two.cbz", "three", "four.cbz"},
 	}
 	view := completion.View()
-	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 2", "Archive failures: 1", "[incomplete] three", "[archive_failed] four.cbz"} {
+	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 2", "Archive failures: 1", "[incomplete] three", "[archive_failed] four.cbz", "retry incomplete selections"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("completion view = %q, want %q", view, want)
 		}

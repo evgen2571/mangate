@@ -47,8 +47,9 @@ func writeJSONStatus(cmd *cobra.Command, operation, status string, data any) err
 // standard output. Callers use it to retain a meaningful exit status without
 // corrupting JSON with a second error envelope.
 type ReportedError struct {
-	Cause error
-	Code  int
+	Cause  error
+	Code   int
+	Silent bool
 }
 
 func (e *ReportedError) Error() string {
@@ -79,6 +80,8 @@ func WriteError(out io.Writer, operation string, err error) error {
 func ErrorCategory(message string) string {
 	message = strings.ToLower(message)
 	switch {
+	case strings.Contains(message, "no results found"):
+		return "no_results"
 	case strings.Contains(message, "unknown provider"):
 		return "unknown_provider"
 	case strings.Contains(message, "not found"):
@@ -106,6 +109,8 @@ func ExitCode(message string) int {
 		return 5
 	}
 	switch ErrorCategory(message) {
+	case "no_results":
+		return 1
 	case "invalid_input":
 		return 2
 	case "filesystem":
@@ -119,6 +124,16 @@ func ExitCode(message string) int {
 	default:
 		return 10
 	}
+}
+
+// ErrorDiagnostic returns safe, stable context for verbose error reporting.
+// It deliberately omits provider responses, paths, and request details.
+func ErrorDiagnostic(err error) string {
+	message := "operation failed"
+	if err != nil {
+		message = err.Error()
+	}
+	return fmt.Sprintf("error category: %s; exit code: %d", ErrorCategory(message), ExitCode(message))
 }
 
 func writeHuman(out io.Writer, format string, args ...any) {

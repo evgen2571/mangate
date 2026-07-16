@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/constant"
 )
+
+func (m formatModel) HelpKeys(global keyMap) help.KeyMap { return formatHelpKeyMap{global: global} }
 
 type formatModel struct {
 	formats []archive.Format

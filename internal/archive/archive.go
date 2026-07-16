@@ -3,6 +3,7 @@ package archive
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -103,15 +104,18 @@ type Result struct {
 	IncludedPages int        `json:"includedPages"`
 	Validation    Validation `json:"validation"`
 	SourceRemoved bool       `json:"sourceRemoved"`
+	Warnings      []string   `json:"warnings,omitempty"`
 }
 
 type Inspection struct {
 	Validation
+	State             string    `json:"state"`
 	Path              string    `json:"path"`
 	EntryCount        int       `json:"entryCount"`
 	Entries           []string  `json:"entries,omitempty"`
 	UnexpectedEntries []string  `json:"unexpectedEntries,omitempty"`
 	MetadataFound     bool      `json:"metadataFound"`
+	IdentityConfirmed bool      `json:"identityConfirmed"`
 	Metadata          *Metadata `json:"metadata,omitempty"`
 }
 
@@ -130,6 +134,18 @@ type pageFile struct {
 }
 
 func CreateFromDirectory(options Options) (Result, error) {
+	return CreateFromDirectoryContext(context.Background(), options)
+}
+
+// CreateFromDirectoryContext creates an archive while honouring cancellation.
+// Cancellation leaves any prior final archive and the source directory intact.
+func CreateFromDirectoryContext(ctx context.Context, options Options) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("create archive: %w", err)
+	}
 	if options.Format != FormatCBZ && options.Format != FormatZIP {
 		return Result{}, fmt.Errorf("create archive: format must be cbz or zip")
 	}
@@ -142,6 +158,9 @@ func CreateFromDirectory(options Options) (Result, error) {
 	pages, state, err := sourcePages(options.SourceDir)
 	if err != nil {
 		return Result{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
 	if state != nil {
 		if !state.Complete || state.ExpectedPages != len(pages) {
@@ -160,6 +179,7 @@ func CreateFromDirectory(options Options) (Result, error) {
 			options.Metadata.ExpectedPages = state.ExpectedPages
 		}
 	}
+	warnings := metadataIdentityWarnings(options.Metadata)
 
 	if options.ExistingFileMode == "" {
 		options.ExistingFileMode = ExistingSkip
@@ -167,7 +187,7 @@ func CreateFromDirectory(options Options) (Result, error) {
 	if info, statErr := os.Stat(options.OutputPath); statErr == nil && !info.IsDir() {
 		inspection, inspectErr := Inspect(options.OutputPath)
 		if options.ExistingFileMode == ExistingSkip && inspectErr == nil && inspection.Complete && identitiesMatch(inspection.Validation, options.Metadata) {
-			return Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusSkipped, IncludedPages: inspection.PageCount, Validation: inspection.Validation}, nil
+			return Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusSkipped, IncludedPages: inspection.PageCount, Validation: inspection.Validation, Warnings: warnings}, nil
 		}
 		if options.ExistingFileMode != ExistingReplace {
 			return Result{}, fmt.Errorf("create archive: destination %q already exists; use --existing-files replace to replace it", options.OutputPath)
@@ -185,12 +205,15 @@ func CreateFromDirectory(options Options) (Result, error) {
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := writeArchive(temporary, pages, options.Format, options.Metadata); err != nil {
+	if err := writeArchiveContext(ctx, temporary, pages, options.Format, options.Metadata); err != nil {
 		_ = temporary.Close()
 		return Result{}, err
 	}
 	if err := temporary.Close(); err != nil {
 		return Result{}, fmt.Errorf("create archive: close temporary file: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
 	inspection, err := Inspect(temporaryPath)
 	if err != nil || !inspection.Complete || inspection.PageCount != len(pages) {
@@ -202,7 +225,7 @@ func CreateFromDirectory(options Options) (Result, error) {
 	if err := os.Rename(temporaryPath, options.OutputPath); err != nil {
 		return Result{}, fmt.Errorf("create archive: finalize archive: %w", err)
 	}
-	result := Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusComplete, IncludedPages: len(pages), Validation: inspection.Validation}
+	result := Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusComplete, IncludedPages: len(pages), Validation: inspection.Validation, Warnings: warnings}
 	if options.RemoveSource {
 		if err := os.RemoveAll(options.SourceDir); err != nil {
 			return result, fmt.Errorf("create archive: archive completed but remove source directory: %w", err)
@@ -210,6 +233,19 @@ func CreateFromDirectory(options Options) (Result, error) {
 		result.SourceRemoved = true
 	}
 	return result, nil
+}
+
+func metadataIdentityWarnings(metadata Metadata) []string {
+	switch {
+	case metadata.TitleID == "" && metadata.ChapterID == "":
+		return []string{"source metadata is unavailable; archive identity cannot be confirmed"}
+	case metadata.TitleID == "":
+		return []string{"source metadata has no title identity; archive identity cannot be fully confirmed"}
+	case metadata.ChapterID == "":
+		return []string{"source metadata has no chapter identity; archive identity cannot be fully confirmed"}
+	default:
+		return nil
+	}
 }
 
 func sourcePages(directory string) ([]pageFile, *chapterState, error) {
@@ -345,13 +381,20 @@ func imageExtension(header []byte) string {
 }
 
 func writeArchive(destination io.Writer, pages []pageFile, format Format, metadata Metadata) error {
+	return writeArchiveContext(context.Background(), destination, pages, format, metadata)
+}
+
+func writeArchiveContext(ctx context.Context, destination io.Writer, pages []pageFile, format Format, metadata Metadata) error {
 	writer := zip.NewWriter(destination)
 	defer writer.Close()
 	for _, page := range pages {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("create archive: %w", err)
+		}
 		if !isSafeEntry(page.name) {
 			return fmt.Errorf("create archive: unsafe page filename %q", page.name)
 		}
-		if err := copyEntry(writer, page.name, page.path); err != nil {
+		if err := copyEntryContext(ctx, writer, page.name, page.path); err != nil {
 			return err
 		}
 	}
@@ -381,6 +424,10 @@ func writeArchive(destination io.Writer, pages []pageFile, format Format, metada
 }
 
 func copyEntry(writer *zip.Writer, name, path string) error {
+	return copyEntryContext(context.Background(), writer, name, path)
+}
+
+func copyEntryContext(ctx context.Context, writer *zip.Writer, name, path string) error {
 	in, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("create archive: open page %q: %w", path, err)
@@ -390,8 +437,23 @@ func copyEntry(writer *zip.Writer, name, path string) error {
 	if err != nil {
 		return fmt.Errorf("create archive: create entry %q: %w", name, err)
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		return fmt.Errorf("create archive: write entry %q: %w", name, err)
+	buffer := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("create archive: %w", err)
+		}
+		count, readErr := in.Read(buffer)
+		if count > 0 {
+			if _, err := out.Write(buffer[:count]); err != nil {
+				return fmt.Errorf("create archive: write entry %q: %w", name, err)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return fmt.Errorf("create archive: read entry %q: %w", name, readErr)
+		}
 	}
 	return nil
 }
@@ -423,7 +485,7 @@ func comicInfoXML(metadata Metadata) ([]byte, error) {
 }
 
 func Inspect(path string) (Inspection, error) {
-	inspection := Inspection{Path: path, Validation: Validation{Format: formatFromPath(path)}}
+	inspection := Inspection{Path: path, State: "structurally_invalid", Validation: Validation{Format: formatFromPath(path)}}
 	if inspection.Format == "" {
 		inspection.Message = "archive extension must be .cbz or .zip"
 		return inspection, errors.New(inspection.Message)
@@ -484,11 +546,22 @@ func Inspect(path string) (Inspection, error) {
 	}
 	inspection.TitleID = metadata.TitleID
 	inspection.ChapterID = metadata.ChapterID
+	inspection.IdentityConfirmed = inspection.TitleID != "" && inspection.ChapterID != ""
 	if inspection.MetadataFound {
 		inspection.Metadata = &metadata
 	}
 	inspection.Valid = true
 	inspection.Complete = metadata.Completion == "complete" && (metadata.ExpectedPages == 0 || metadata.ExpectedPages == inspection.PageCount)
+	switch {
+	case !inspection.MetadataFound:
+		inspection.State = "metadata_incomplete"
+	case !inspection.IdentityConfirmed:
+		inspection.State = "identity_unconfirmed"
+	case inspection.Complete:
+		inspection.State = "complete"
+	default:
+		inspection.State = "incomplete"
+	}
 	if !inspection.Complete {
 		inspection.Message = "archive metadata does not confirm completion"
 	}

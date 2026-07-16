@@ -19,14 +19,20 @@ func TestChaptersShortHelpIsReadableAndShowsSelectionCommands(t *testing.T) {
 }
 
 func TestResultsShortHelpKeepsOnlyPrimaryActions(t *testing.T) {
-	m := newResultsModel("query", nil)
+	m := newResultsModel("query", "mangadex", nil)
 	bindings := m.HelpKeys(newKeyMap()).ShortHelp()
 
-	if got, max := len(bindings), 7; got > max {
+	if got, max := len(bindings), 8; got > max {
 		t.Fatalf("len(ShortHelp()) = %d, want at most %d bindings", got, max)
 	}
 	assertHelpContains(t, bindings, "f", "full")
+	assertHelpContains(t, bindings, "/", "filter")
 	assertHelpContains(t, bindings, "?", "help")
+}
+
+func TestFormatAndConfirmationHelpReflectActiveActions(t *testing.T) {
+	assertHelpContains(t, (formatHelpKeyMap{global: newKeyMap()}).ShortHelp(), "enter", "continue")
+	assertHelpContains(t, (confirmHelpKeyMap{global: newKeyMap()}).ShortHelp(), "enter", "start download")
 }
 
 func assertHelpContains(t *testing.T, bindings []key.Binding, keyText, desc string) {

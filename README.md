@@ -25,6 +25,7 @@ mangate diagnostics
 
 # Find a title, then inspect it and its chapters.
 mangate search "example title" --limit 10
+mangate search "example title" --interactive
 mangate title <title-id>
 mangate chapters <title-id>
 
@@ -48,13 +49,20 @@ mangate --format cbz download <title-id> --range 1-10 --dry-run
 
 # Convert pages that were already downloaded. This never contacts a provider.
 mangate --format cbz archive convert ./library/Example-123/Chapter-1
+mangate --format cbz archive convert ./library/Example-123/Chapter-1 --remove-source --yes
 mangate archive inspect ./library/Example-123/Chapter-1.cbz
 mangate archive verify ./library/Example-123/Chapter-1.cbz
 ```
 
+Human-readable search results include the provider, alternative title, content rating, publication status, original language, and year when the provider supplies them. Use `--language` to filter by original language and `--content-type` to filter content ratings when supplied by a provider. Repeat `--content-type` to match any supplied value; duplicates are ignored and their order does not matter. Add `--interactive` to open matching results in the TUI without repeating the search. Use the displayed `Reference` value with `mangate title`, `mangate chapters`, or `mangate download`; `--json` retains the complete structured metadata.
+
+Use `--quiet` to suppress successful human-readable command output; it does not suppress errors or alter `--json` output. Use `--verbose` to add a safe error category and exit-code diagnostic on failure.
+
+Exit status `1` means a valid search returned no results. In JSON mode, this is represented by a `no_results` status and an empty result list.
+
 `--chapter` rejects ambiguous releases. Use `--chapter-id` in that case. Chapters are listed in ascending provider chapter sequence with their stable IDs and languages. `--range`, `--before`, and `--after` currently compare provider chapter labels, so stable chapter IDs are the safe choice for special labels such as `Prologue`. Archive downloads validate and reuse matching existing archives under the default `skip` policy without downloading page content again.
 
-Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead. Pass `--non-interactive` in scripts to refuse TUI entry explicitly. TUI colors follow terminal defaults; use `--no-color` to disable them or `--color` to force them. Those two flags conflict.
+Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. Mangate supports standard Linux terminal emulators, SSH sessions, and terminal multiplexers with basic or true-colour capability; it refuses pipes, redirected output, and `TERM=dumb` so interactive rendering cannot corrupt scripted output. Pass `--non-interactive` in scripts to refuse TUI entry explicitly. TUI colors follow terminal defaults; use `--no-color` to disable them or `--color` to force them. Those two flags conflict.
 
 The TUI is a sequential keyboard flow: search, choose a title, select one or more chapters, choose Directory, CBZ, or ZIP, choose or edit the output root, then review the operation before it starts. The chapter selector labels local state as complete pages, incomplete pages, archive present, or not downloaded; `/` can filter metadata and local state with terms such as `local:complete` or `local:archive`. The review shows known page totals, every planned output path, existing-output policy decisions, and whether source pages are retained after archive validation. A final result screen separates completed, reused, incomplete, and archive-failed chapters with their actual output paths; a partial page failure still finalizes any sibling chapters that completed safely. Use arrows or `j` and `k` to move, `space` to toggle chapters, `a` to select all visible chapters, `l` to select the latest visible chapter, `r` to select the filtered range from the previous range anchor to the current row, `d` to clear them, `enter` to continue, and `esc` to go back. `ctrl+g` opens configuration, including output root, default format, existing-file policy, and source retention; applying it while reviewing immediately refreshes the plan. It has no mouse requirement. `ctrl+c` or `q` exits before a download begins; while a download is active it cancels the operation and keeps completed page data intact.
 
@@ -80,7 +88,7 @@ Mangate writes every archive to a temporary sibling file, reopens and verifies i
 
 Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised. Every human-readable download completion (including archive reuse and partial failure) reports completed, skipped/reused, failed, and archive-failure counts plus the resulting output paths. Downloads selecting 25 or more chapters, replacing outputs, or deleting archive source pages require `--yes`; use `--dry-run` first to inspect the resolved plan.
 
-`archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, and completion state without extracting anything.
+`archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata; the result carries an explicit warning when title or chapter identity cannot be confirmed. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, completion state, and an explicit `identityConfirmed` value without extracting anything. Their structured `state` is one of `structurally_invalid`, `metadata_incomplete`, `identity_unconfirmed`, `incomplete`, or `complete`.
 
 Use `mangate --format cbz archive convert <chapter-directory> --dry-run` to inspect a local conversion target without creating an archive or deleting source pages. The plan reports the target path, whether it already exists, and whether source cleanup was requested.
 
@@ -109,9 +117,9 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python/src python -m unittest discover -s p
 
 Every core command accepts `--json`. Standard output then contains exactly one JSON object with `formatVersion`, `operation`, `status`, and `data`. Error output uses the same envelope and carries a stable category such as `invalid_input`, `unknown_provider`, `not_found`, `unsupported_capability`, `timeout`, `filesystem`, or `cancelled`.
 
-`0` means complete success. `2` means invalid command usage, `3` configuration failure, `4` provider or content failure, `5` partial download, `6` filesystem failure, `7` cancellation, `8` archive creation or validation failure, and `10` internal failure. A multi-chapter partial result uses `5` and its structured chapter result identifies the completed and incomplete chapters. A successful search with no results returns `0`.
+`0` means complete success. `1` means a valid search found no results, `2` means invalid command usage, `3` configuration failure, `4` provider or content failure, `5` partial download, `6` filesystem failure, `7` cancellation, `8` archive creation or validation failure, and `10` internal failure. A multi-chapter partial result uses `5` and its structured chapter result identifies the completed and incomplete chapters. In JSON mode an empty search uses the `no_results` status with an empty result list.
 
-Use `--quiet` to suppress progress. `--verbose` writes limited diagnostic context to standard error and never prints credentials. JSON output never mixes progress into standard output.
+Use `--quiet` to suppress successful human-readable output. `--verbose` writes limited diagnostic context to standard error and never prints credentials. JSON output never mixes progress into standard output.
 
 ## Provider support
 
@@ -145,4 +153,4 @@ except MangateError as error:
 
 `Client` methods block and return structured dictionaries. Each call runs independently and may be used from different Python threads. Pass a `threading.Event` as `cancel_event` to `download` to interrupt the process. The same durable-page guarantees apply.
 
-`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan and `assume_yes=True` for broad or destructive operations that require explicit acknowledgement. It returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning; `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.
+`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan and `assume_yes=True` for broad or destructive operations that require explicit acknowledgement. It returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning and `assume_yes=True` for source deletion or replacement, and `Client.convert_many` converts directories sequentially in input order (with optional one-to-one output paths). `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.

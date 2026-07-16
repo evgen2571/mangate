@@ -63,14 +63,15 @@ func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, cha
 			downloadErr := m.app.UseCases().DownloadChapters(ctx, manga, chapters, func(progress usecase.DownloadProgress) {
 				progressCh <- downloadProgressMsgFromUsecase(progress)
 			})
-			cancelled := errors.Is(downloadErr, context.Canceled)
+			cancelled := operationCancelled(downloadErr)
 			var outcomes []chapterOutcome
 			var archiveErr error
 			if cancelled {
 				outcomes = m.directoryChapterOutcomes(manga, chapters)
 			} else {
-				outcomes, archiveErr = m.archiveChapters(manga, chapters)
+				outcomes, archiveErr = m.archiveChapters(ctx, manga, chapters)
 			}
+			cancelled = operationCancelled(downloadErr, archiveErr)
 			if operationErr := errors.Join(downloadErr, archiveErr); operationErr != nil {
 				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes, Cancelled: cancelled, Err: operationErr}
 				return
@@ -83,6 +84,15 @@ func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, cha
 	}
 }
 
+func operationCancelled(errorsToCheck ...error) bool {
+	for _, err := range errorsToCheck {
+		if errors.Is(err, context.Canceled) {
+			return true
+		}
+	}
+	return false
+}
+
 type chapterOutcome struct {
 	Name   string
 	Status string
@@ -90,7 +100,7 @@ type chapterOutcome struct {
 	Error  string
 }
 
-func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) ([]chapterOutcome, error) {
+func (m model) archiveChapters(ctx context.Context, manga *source.Manga, chapters []*source.Chapter) ([]chapterOutcome, error) {
 	format, err := archive.ParseFormat(m.app.Cfg.Download.Format)
 	if err != nil {
 		return nil, err
@@ -107,7 +117,7 @@ func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) 
 		}
 		sourceDir := outcomes[index].Path
 		archivePath := sourceDir + format.Extension()
-		result, err := archive.CreateFromDirectory(archive.Options{
+		result, err := archive.CreateFromDirectoryContext(ctx, archive.Options{
 			Format:           format,
 			SourceDir:        sourceDir,
 			OutputPath:       archivePath,

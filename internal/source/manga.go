@@ -24,10 +24,13 @@ type ProviderInfo struct {
 }
 
 type MangaMetadata struct {
-	Description  map[string]string `json:"description,omitempty"`
-	ChapterCount int               `json:"chapterCount,omitempty"`
-	Status       string            `json:"status,omitempty"`
-	ContentType  string            `json:"contentType,omitempty"`
+	Description      map[string]string `json:"description,omitempty"`
+	AlternativeTitle string            `json:"alternativeTitle,omitempty"`
+	ChapterCount     int               `json:"chapterCount,omitempty"`
+	Status           string            `json:"status,omitempty"`
+	ContentType      string            `json:"contentType,omitempty"`
+	Language         string            `json:"language,omitempty"`
+	Year             int               `json:"year,omitempty"`
 }
 
 type Cover struct {

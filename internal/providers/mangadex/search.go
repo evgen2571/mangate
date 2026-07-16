@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/source"
@@ -15,9 +16,13 @@ type mangaDexManga struct {
 	ID         string `json:"id"`
 	URL        string
 	Attributes struct {
-		TitleMap       map[string]string `json:"title"`
-		DescriptionMap map[string]string `json:"description"`
-		Status         string            `json:"status"`
+		TitleMap         map[string]string   `json:"title"`
+		AltTitles        []map[string]string `json:"altTitles"`
+		DescriptionMap   map[string]string   `json:"description"`
+		Status           string              `json:"status"`
+		ContentRating    string              `json:"contentRating"`
+		OriginalLanguage string              `json:"originalLanguage"`
+		Year             int                 `json:"year"`
 	} `json:"attributes"`
 }
 
@@ -50,7 +55,7 @@ func (pr *Provider) Search(ctx context.Context, title string) ([]*source.Manga, 
 	mangas := make([]*source.Manga, 0, len(mangaDexResponse.Data))
 	for _, mangaDexManga := range mangaDexResponse.Data {
 		mangaDexManga.URL = pr.site("title/" + mangaDexManga.ID)
-		manga := mangaDexManga.toSource()
+		manga := mangaDexManga.toSource(pr.language)
 		mangas = append(mangas, manga)
 	}
 
@@ -92,26 +97,62 @@ func (pr *Provider) Title(ctx context.Context, id string) (*source.Manga, error)
 		return nil, fmt.Errorf("title response in %q did not include an id", pr.Name())
 	}
 	payload.Data.URL = pr.site("title/" + payload.Data.ID)
-	return payload.Data.toSource(), nil
+	return payload.Data.toSource(pr.language), nil
 }
 
-func (mdm *mangaDexManga) getTitle() string {
-	title := ""
-	for _, t := range mdm.Attributes.TitleMap {
-		title = t
-		break
+func (mdm *mangaDexManga) getTitle(preferredLanguage string) string {
+	return localizedValue(mdm.Attributes.TitleMap, preferredLanguage)
+}
+
+func (mdm *mangaDexManga) alternativeTitle(preferredLanguage, primaryTitle string) string {
+	for _, language := range []string{preferredLanguage, "en"} {
+		for _, titles := range mdm.Attributes.AltTitles {
+			if title := strings.TrimSpace(titles[language]); title != "" && title != primaryTitle {
+				return title
+			}
+		}
+	}
+	for _, titles := range mdm.Attributes.AltTitles {
+		if title := localizedValue(titles, preferredLanguage); title != "" && title != primaryTitle {
+			return title
+		}
+	}
+	return ""
+}
+
+func localizedValue(values map[string]string, preferredLanguage string) string {
+	for _, language := range []string{preferredLanguage, "en"} {
+		if value := strings.TrimSpace(values[language]); value != "" {
+			return value
+		}
 	}
 
-	return title
+	languages := make([]string, 0, len(values))
+	for language := range values {
+		languages = append(languages, language)
+	}
+	sort.Strings(languages)
+	for _, language := range languages {
+		if value := strings.TrimSpace(values[language]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
-func (mdm *mangaDexManga) toSource() *source.Manga {
+func (mdm *mangaDexManga) toSource(preferredLanguage string) *source.Manga {
+	primaryTitle := mdm.getTitle(preferredLanguage)
 	return &source.Manga{
 		ID:    mdm.ID,
 		URL:   mdm.URL,
-		Title: mdm.getTitle(),
+		Title: primaryTitle,
 		Metadata: source.MangaMetadata{
-			Description: mdm.Attributes.DescriptionMap,
+			Description:      mdm.Attributes.DescriptionMap,
+			AlternativeTitle: mdm.alternativeTitle(preferredLanguage, primaryTitle),
+			Status:           mdm.Attributes.Status,
+			ContentType:      mdm.Attributes.ContentRating,
+			Language:         mdm.Attributes.OriginalLanguage,
+			Year:             mdm.Attributes.Year,
 		},
 	}
 }

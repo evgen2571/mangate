@@ -76,6 +76,7 @@ type resultsKeyMap struct {
 	Down     key.Binding
 	Select   key.Binding
 	Download key.Binding
+	Filter   key.Binding
 	MetaUp   key.Binding
 	MetaDown key.Binding
 	Back     key.Binding
@@ -99,6 +100,10 @@ func newResultsKeyMap() resultsKeyMap {
 			key.WithKeys("f"),
 			key.WithHelp("f", "full"),
 		),
+		Filter: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "filter"),
+		),
 		MetaUp: key.NewBinding(
 			key.WithKeys("i"),
 			key.WithHelp("i", "meta up"),
@@ -118,6 +123,31 @@ type resultsHelpKeyMap struct {
 	global keyMap
 	local  resultsKeyMap
 }
+
+type formatHelpKeyMap struct{ global keyMap }
+
+func (k formatHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("↑/k", "↓/j"), key.WithHelp("↑/k ↓/j", "move")),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "continue")),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		k.global.Config, k.global.Help, k.global.Quit,
+	}
+}
+
+func (k formatHelpKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
+
+type confirmHelpKeyMap struct{ global keyMap }
+
+func (k confirmHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "start download")),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "change format")),
+		k.global.Config, k.global.Help, k.global.Quit,
+	}
+}
+
+func (k confirmHelpKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
 func (k searchHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
@@ -158,6 +188,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Down,
 		k.local.Select,
 		k.local.Download,
+		k.local.Filter,
 		k.local.Back,
 		k.global.Help,
 		k.global.Quit,
@@ -166,7 +197,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k resultsHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Select, k.local.Download, k.local.Back},
+		{k.local.Up, k.local.Down, k.local.Select, k.local.Download, k.local.Filter, k.local.Back},
 		{k.local.MetaUp, k.local.MetaDown},
 		{k.global.Config, k.global.Help, k.global.Suspend, k.global.Quit},
 	}

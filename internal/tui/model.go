@@ -93,6 +93,18 @@ func NewWithContext(a *app.App, baseContext context.Context) tea.Model {
 	return model
 }
 
+// NewWithSearchResults opens the TUI at an already-resolved search result
+// list. It lets direct CLI search hand off to interactive selection without
+// repeating the provider request.
+func NewWithSearchResults(a *app.App, baseContext context.Context, query string, results []*source.Manga) tea.Model {
+	m := NewWithContext(a, baseContext).(*model)
+	m.search.input.SetValue(query)
+	m.search.input.CursorEnd()
+	m.results = newResultsModel(query, a.Cfg.Provider, results)
+	m.state = stateResults
+	return m
+}
+
 func (m model) Init() tea.Cmd {
 	return m.search.Init()
 }
@@ -123,7 +135,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loading.spinner.Tick, m.searchMangaCmd(msg.Query))
 
 	case searchSucceededMsg:
-		m.results = newResultsModel(msg.Query, msg.Results)
+		m.results = newResultsModel(msg.Query, m.app.Cfg.Provider, msg.Results)
 		m.state = stateResults
 		m.resizeActiveModel()
 
@@ -256,6 +268,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.output.status = "output root cannot be empty"
 			return m, nil
 		}
+		warning, err := outputPathWarning(path)
+		if err != nil {
+			m.output.status = err.Error()
+			return m, nil
+		}
 		cfg := m.app.Cfg.Clone()
 		cfg.Download.Dir = filepath.Clean(path)
 		if err := m.app.ApplyConfig(cfg); err != nil {
@@ -263,6 +280,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
+		m.confirm.outputWarning = warning
 		m.state = stateConfirm
 		m.resizeActiveModel()
 		return m, nil
@@ -579,8 +597,10 @@ func (m model) currentHelp() help.KeyMap {
 		return m.downloading.HelpKeys(m.keys)
 	case stateConfig:
 		return m.config.HelpKeys(m.keys)
-	case stateFormat, stateConfirm:
-		return m.chapters.HelpKeys(m.keys)
+	case stateFormat:
+		return m.format.HelpKeys(m.keys)
+	case stateConfirm:
+		return m.confirm.HelpKeys(m.keys)
 	case stateOutput:
 		return m.output.HelpKeys(m.keys)
 	case stateCompletion:
