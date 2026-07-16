@@ -130,7 +130,7 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 	return &cobra.Command{
 		Use:   name + " <archive-path>",
 		Short: map[string]string{"inspect": "Show archive contents and completion state", "verify": "Check archive structure and completion state"}[name],
-		Args:  requireOneArgument("a local <chapter-directory>", "mangate --format cbz archive convert ./library/Example/Chapter-1"),
+		Args:  requireOneArgument("a local <archive-path>", "mangate archive "+name+" ./library/Example-123/Chapter-1.cbz"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			inspection, err := archive.Inspect(args[0])
 			if wantsJSON(cmd) {

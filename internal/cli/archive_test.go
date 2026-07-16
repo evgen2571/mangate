@@ -159,3 +159,16 @@ func TestArchiveInspectJSONIncludesStoredMetadata(t *testing.T) {
 		t.Fatalf("metadata = %#v", response.Data.Metadata)
 	}
 }
+
+func TestArchiveInspectMissingPathExplainsArchiveArgument(t *testing.T) {
+	application, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCmd(application)
+	cmd.SetArgs([]string{"archive", "inspect"})
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "local <archive-path>") || !strings.Contains(err.Error(), "archive inspect") {
+		t.Fatalf("Execute() error = %v, want archive path guidance", err)
+	}
+}
