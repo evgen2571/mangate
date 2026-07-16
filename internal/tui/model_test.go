@@ -101,6 +101,18 @@ func TestEmptyResultsBackReturnsToEditableQuery(t *testing.T) {
 	}
 }
 
+func TestNarrowTerminalShowsResizeMessageWithoutChangingState(t *testing.T) {
+	m := model{state: stateChapters, chapters: newChaptersModel(nil, nil)}
+	updated, cmd := m.Update(tea.WindowSizeMsg{Width: 20, Height: 8})
+	got := updated.(model)
+	if cmd != nil || got.state != stateChapters {
+		t.Fatalf("state = %v, command = %v; want preserved chapter selection", got.state, cmd)
+	}
+	if !strings.Contains(got.View(), "Terminal is too small") {
+		t.Fatalf("view = %q, want resize message", got.View())
+	}
+}
+
 func TestTUISanitizationDoesNotChangeProviderIdentifiers(t *testing.T) {
 	manga := &source.Manga{ID: "id\x1b[2J", Title: "title\nnext", Metadata: source.MangaMetadata{Description: map[string]string{"en": "body\ttext"}}}
 	chapter := &source.Chapter{ID: "chapter\x1b[2J", Title: "part\nnext"}
