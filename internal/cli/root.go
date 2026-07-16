@@ -45,6 +45,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 	cmd.AddCommand(
 		NewArchiveCmd(a),
 		NewChaptersCmd(a),
+		NewCompletionCmd(cmd),
 		NewConfigCmd(a),
 		NewDownloadCmd(a),
 		NewInteractiveCmd(a),
