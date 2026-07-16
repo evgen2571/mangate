@@ -120,4 +120,4 @@ except MangateError as error:
 
 `Client` methods block and return structured dictionaries. Each call runs independently and may be used from different Python threads. Pass a `threading.Event` as `cancel_event` to `download` to interrupt the process. The same durable-page guarantees apply.
 
-`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"` and returns the requested format, output paths, and archive validation state. `Client.convert`, `inspect_archive`, and `verify_archive` expose local archive operations. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.
+`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"` and returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert`, `inspect_archive`, and `verify_archive` expose local archive operations. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.

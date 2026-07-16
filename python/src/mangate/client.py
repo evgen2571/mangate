@@ -191,6 +191,11 @@ class Client:
             if proc.returncode != 0:
                 raise MangateError(_category(stderr), stderr.strip() or "Mangate failed", stderr) from None
             raise MangateError("internal", "Mangate returned invalid JSON", stderr) from None
+        # A partial download is a usable result with failed chapters recorded in
+        # its data. Preserve it for callers instead of discarding completed
+        # archive paths because the CLI correctly returned exit status 5.
+        if payload.get("status") == "partial":
+            return payload
         if proc.returncode != 0 or payload.get("status") != "success":
             error = payload.get("data", {})
             if isinstance(error, dict):
