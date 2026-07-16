@@ -2,12 +2,15 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
 )
@@ -23,6 +26,7 @@ const (
 	stateConfig
 	stateFormat
 	stateConfirm
+	stateCompletion
 )
 
 type model struct {
@@ -45,6 +49,7 @@ type model struct {
 	config      configModel
 	format      formatModel
 	confirm     confirmModel
+	completion  completionModel
 }
 
 func New(a *app.App) tea.Model {
@@ -251,13 +256,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadSucceededMsg:
 		m.chapters.clearSelection()
 		m.chapters.setStatus(fmt.Sprintf("downloaded %d chapter(s)", len(msg.Chapters)))
-		m.state = stateChapters
+		m.completion = newCompletionModel(m.app, msg.Manga, msg.Chapters, nil)
+		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
 
 	case downloadFailedMsg:
 		m.chapters.setStatus(fmt.Sprintf("download failed: %v", msg.Err))
-		m.state = stateChapters
+		m.completion = newCompletionModel(m.app, msg.Manga, msg.Chapters, msg.Err)
+		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
 
@@ -336,6 +343,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if m.state == stateCompletion {
+			switch msg.String() {
+			case "enter", "esc", "backspace":
+				m.state = stateChapters
+				m.resizeActiveModel()
+				return m, nil
+			}
+		}
 	}
 
 	switch m.state {
@@ -371,6 +386,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case stateFormat, stateConfirm:
 		return m, nil
+
+	case stateCompletion:
+		return m, nil
 	}
 
 	return m, nil
@@ -381,6 +399,37 @@ func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chap
 	m.pendingFullMangaDownload = nil
 	m.confirm = confirmModel{manga: manga, chapters: chapters, provider: m.app.Cfg.Provider, output: m.app.Cfg.Download.Dir, existing: m.app.Cfg.Download.ExistingFileMode}
 	m.state = stateFormat
+}
+
+func newCompletionModel(application *app.App, manga *source.Manga, chapters []*source.Chapter, operationErr error) completionModel {
+	completion := completionModel{success: operationErr == nil}
+	if application == nil {
+		completion.summary = "Download finished."
+		return completion
+	}
+	format, err := archive.ParseFormat(application.Cfg.Download.Format)
+	if err != nil {
+		format = archive.FormatDirectory
+	}
+	completion.summary = completionSummary(len(chapters), string(format))
+	if operationErr != nil {
+		completion.summary = fmt.Sprintf("Download finished with failures across %d selected chapter(s).", len(chapters))
+		completion.error = operationErr.Error()
+		return completion
+	}
+	if manga == nil {
+		return completion
+	}
+	names := downloader.ChapterDirectoryNames(chapters)
+	root := filepath.Join(application.Cfg.Download.Dir, downloader.TitleDirectoryName(manga))
+	for index := range chapters {
+		path := filepath.Join(root, names[index])
+		if format != archive.FormatDirectory {
+			path += format.Extension()
+		}
+		completion.paths = append(completion.paths, path)
+	}
+	return completion
 }
 
 func (m model) View() string {
@@ -406,6 +455,8 @@ func (m model) View() string {
 		body = m.format.View()
 	case stateConfirm:
 		body = m.confirm.View()
+	case stateCompletion:
+		body = m.completion.View()
 	default:
 		body = ""
 	}
@@ -435,6 +486,8 @@ func (m model) currentHelp() help.KeyMap {
 	case stateConfig:
 		return m.config.HelpKeys(m.keys)
 	case stateFormat, stateConfirm:
+		return m.chapters.HelpKeys(m.keys)
+	case stateCompletion:
 		return m.chapters.HelpKeys(m.keys)
 	default:
 		return m.search.HelpKeys(m.keys)
@@ -468,6 +521,8 @@ func (m *model) resizeActiveModel() {
 		m.format.SetSize(m.width, bodyHeight)
 	case stateConfirm:
 		m.confirm.SetSize(m.width, bodyHeight)
+	case stateCompletion:
+		m.completion.SetSize(m.width, bodyHeight)
 	}
 }
 

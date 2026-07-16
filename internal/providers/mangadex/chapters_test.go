@@ -19,6 +19,9 @@ func TestProviderChaptersRequestsConfiguredLanguage(t *testing.T) {
 		if !reflect.DeepEqual(languages, []string{"ru"}) {
 			t.Fatalf("translatedLanguage[] query = %#v, want %#v", languages, []string{"ru"})
 		}
+		if includes := r.URL.Query()["includes[]"]; !reflect.DeepEqual(includes, []string{"scanlation_group"}) {
+			t.Fatalf("includes[] query = %#v, want scanlation group", includes)
+		}
 
 		writeMangaDexChaptersResponse(t, w, 0, 500, 0, nil)
 	}))
@@ -77,7 +80,7 @@ func TestProviderChaptersFetchesAllPages(t *testing.T) {
 func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeMangaDexChaptersResponse(t, w, 0, 500, 1, []testMangaDexChapter{
-			{ID: "chapter-1", Chapter: "1", Title: "First", Language: "en", Pages: 23},
+			{ID: "chapter-1", Volume: "2", Chapter: "1", Title: "First", Language: "en", ReleaseGroup: "Example Group", PublishedAt: "2026-01-02T03:04:05+00:00", Pages: 23},
 		})
 	}))
 	defer server.Close()
@@ -92,6 +95,39 @@ func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	}
 	if chapters[0].PageCount != 23 {
 		t.Fatalf("chapter PageCount = %d, want 23", chapters[0].PageCount)
+	}
+	if chapters[0].Language != "en" {
+		t.Fatalf("chapter Language = %q, want en", chapters[0].Language)
+	}
+	if chapters[0].Volume != "2" {
+		t.Fatalf("chapter Volume = %q, want 2", chapters[0].Volume)
+	}
+	if chapters[0].ReleaseGroup != "Example Group" || chapters[0].PublishedAt != "2026-01-02T03:04:05+00:00" {
+		t.Fatalf("chapter release metadata = %#v", chapters[0])
+	}
+}
+
+func TestProviderChaptersOrdersDuplicateReleasesDeterministically(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeMangaDexChaptersResponse(t, w, 0, 500, 3, []testMangaDexChapter{
+			{ID: "z-id", Chapter: "1", Language: "en", ReleaseGroup: "Zebra", PublishedAt: "2026-01-02T00:00:00+00:00"},
+			{ID: "a-id", Chapter: "1", Language: "en", ReleaseGroup: "Alpha", PublishedAt: "2026-01-03T00:00:00+00:00"},
+			{ID: "one", Chapter: "2", Language: "en"},
+		})
+	}))
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL, "en")
+	chapters, err := provider.Chapters(context.Background(), &source.Manga{ID: "manga-id"})
+	if err != nil {
+		t.Fatalf("Chapters() error = %v", err)
+	}
+	gotIDs := make([]string, 0, len(chapters))
+	for _, chapter := range chapters {
+		gotIDs = append(gotIDs, chapter.ID)
+	}
+	if !reflect.DeepEqual(gotIDs, []string{"a-id", "z-id", "one"}) {
+		t.Fatalf("chapter IDs = %#v, want deterministic release order", gotIDs)
 	}
 }
 
@@ -112,11 +148,14 @@ func newTestProvider(t *testing.T, baseURL, language string) *Provider {
 }
 
 type testMangaDexChapter struct {
-	ID       string
-	Chapter  string
-	Title    string
-	Language string
-	Pages    int
+	ID           string
+	Volume       string
+	Chapter      string
+	Title        string
+	Language     string
+	ReleaseGroup string
+	PublishedAt  string
+	Pages        int
 }
 
 func writeMangaDexChaptersResponse(t *testing.T, w http.ResponseWriter, offset, limit, total int, chapters []testMangaDexChapter) {
@@ -127,11 +166,17 @@ func writeMangaDexChaptersResponse(t *testing.T, w http.ResponseWriter, offset, 
 		data = append(data, map[string]any{
 			"id": chapter.ID,
 			"attributes": map[string]any{
+				"volume":             chapter.Volume,
 				"chapter":            chapter.Chapter,
 				"title":              chapter.Title,
 				"pages":              chapter.Pages,
 				"translatedLanguage": chapter.Language,
+				"publishAt":          chapter.PublishedAt,
 			},
+			"relationships": []map[string]any{{
+				"type":       "scanlation_group",
+				"attributes": map[string]any{"name": chapter.ReleaseGroup},
+			}},
 		})
 	}
 

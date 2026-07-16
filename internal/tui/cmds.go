@@ -98,9 +98,12 @@ func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) 
 				TitleID:       manga.ID,
 				Title:         manga.Title,
 				ChapterID:     chapter.ID,
+				Volume:        chapter.Volume,
 				ChapterNumber: chapter.Index,
 				ChapterTitle:  chapter.Title,
 				Language:      chapter.Language,
+				ReleaseGroup:  chapter.ReleaseGroup,
+				PublishedAt:   chapter.PublishedAt,
 				ExpectedPages: chapter.PageCount,
 			},
 		})

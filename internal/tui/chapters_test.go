@@ -114,3 +114,27 @@ func TestChaptersModelFooterShowsTotalChapterCount(t *testing.T) {
 		t.Fatalf("footerText() = %q, want to contain %q", got, want)
 	}
 }
+
+func TestChapterItemDescriptionShowsReleaseMetadataPagesAndStableID(t *testing.T) {
+	item := chapterItem{value: &source.Chapter{ID: "chapter-id", Volume: "3", Language: "en", ReleaseGroup: "Example Group", PublishedAt: "2026-01-02", PageCount: 12}}
+	description := item.Description()
+	for _, want := range []string{"Volume: 3", "Language: en", "Group: Example Group", "Published: 2026-01-02", "Pages: 12", "ID: chapter-id"} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("Description() = %q, want %q", description, want)
+		}
+	}
+}
+
+func TestChaptersModelFiltersByLanguageAndSelectsVisibleChapters(t *testing.T) {
+	chapters := []*source.Chapter{
+		{ID: "english", Index: "1", Language: "en"},
+		{ID: "russian", Index: "1", Language: "ru"},
+	}
+	m := newChaptersModel(&source.Manga{Title: "Test"}, chapters)
+	m.list.SetFilterText("ru")
+	m.selectAllVisible()
+	selected := m.chaptersForDownload()
+	if len(selected) != 1 || selected[0].ID != "russian" {
+		t.Fatalf("chaptersForDownload() = %#v, want only russian chapter", selected)
+	}
+}

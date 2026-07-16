@@ -18,12 +18,19 @@ type mangaDexChapter struct {
 	ID         string `json:"id"`
 	URL        string
 	Attributes struct {
-		Volume   string `json:"volume"`
-		Chapter  string `json:"chapter"`
-		Title    string `json:"title"`
-		Pages    int    `json:"pages"`
-		Language string `json:"translatedLanguage"`
+		Volume    string `json:"volume"`
+		Chapter   string `json:"chapter"`
+		Title     string `json:"title"`
+		Pages     int    `json:"pages"`
+		Language  string `json:"translatedLanguage"`
+		PublishAt string `json:"publishAt"`
 	} `json:"attributes"`
+	Relationships []struct {
+		Type       string `json:"type"`
+		Attributes struct {
+			Name string `json:"name"`
+		} `json:"attributes"`
+	} `json:"relationships"`
 }
 
 func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*source.Chapter, error) {
@@ -34,6 +41,7 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 		params.Set("limit", strconv.Itoa(mangaDexChapterPageLimit))
 		params.Set("offset", strconv.Itoa(offset))
 		params.Add("translatedLanguage[]", pr.language)
+		params.Add("includes[]", "scanlation_group")
 
 		url := pr.api("manga/" + manga.ID + "/feed?" + params.Encode())
 
@@ -105,12 +113,25 @@ func (mdc *mangaDexChapter) getIndex() string {
 
 func (mdc *mangaDexChapter) toSource() *source.Chapter {
 	return &source.Chapter{
-		ID:        mdc.ID,
-		URL:       mdc.URL,
-		Index:     mdc.getIndex(),
-		Title:     mdc.getTitle(),
-		PageCount: mdc.Attributes.Pages,
+		ID:           mdc.ID,
+		URL:          mdc.URL,
+		Volume:       mdc.Attributes.Volume,
+		Index:        mdc.getIndex(),
+		Title:        mdc.getTitle(),
+		Language:     mdc.Attributes.Language,
+		ReleaseGroup: mdc.releaseGroup(),
+		PublishedAt:  mdc.Attributes.PublishAt,
+		PageCount:    mdc.Attributes.Pages,
 	}
+}
+
+func (mdc *mangaDexChapter) releaseGroup() string {
+	for _, relationship := range mdc.Relationships {
+		if relationship.Type == "scanlation_group" && relationship.Attributes.Name != "" {
+			return relationship.Attributes.Name
+		}
+	}
+	return ""
 }
 
 func sortChaptersByChapter(chapters []mangaDexChapter) {
@@ -119,7 +140,7 @@ func sortChaptersByChapter(chapters []mangaDexChapter) {
 		chapterJ, errJ := strconv.ParseFloat(chapters[j].Attributes.Chapter, 64)
 
 		if errI != nil && errJ != nil {
-			return chapters[i].Attributes.Chapter < chapters[j].Attributes.Chapter
+			return chapterTieBreak(chapters[i], chapters[j])
 		}
 		if errI != nil {
 			return false
@@ -128,6 +149,20 @@ func sortChaptersByChapter(chapters []mangaDexChapter) {
 			return true
 		}
 
-		return chapterI < chapterJ
+		if chapterI != chapterJ {
+			return chapterI < chapterJ
+		}
+		return chapterTieBreak(chapters[i], chapters[j])
 	})
+}
+
+func chapterTieBreak(left, right mangaDexChapter) bool {
+	leftFields := []string{left.Attributes.Chapter, left.Attributes.Language, left.releaseGroup(), left.Attributes.PublishAt, left.ID}
+	rightFields := []string{right.Attributes.Chapter, right.Attributes.Language, right.releaseGroup(), right.Attributes.PublishAt, right.ID}
+	for index := range leftFields {
+		if leftFields[index] != rightFields[index] {
+			return leftFields[index] < rightFields[index]
+		}
+	}
+	return false
 }

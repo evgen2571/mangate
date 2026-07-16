@@ -74,6 +74,22 @@ func TestTUISanitizationDoesNotChangeProviderIdentifiers(t *testing.T) {
 	}
 }
 
+func TestCompletionModelReportsArchivePaths(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Download.Format = "cbz"
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manga := &source.Manga{ID: "title", Title: "Example"}
+	chapters := []*source.Chapter{{ID: "one", Index: "1"}, {ID: "two", Index: "2"}}
+	completion := newCompletionModel(a, manga, chapters, nil)
+	if !completion.success || len(completion.paths) != 2 || !strings.HasSuffix(completion.paths[0], ".cbz") {
+		t.Fatalf("completion = %#v", completion)
+	}
+}
+
 func TestModelFullMangaDownloadIgnoresStaleChaptersLoad(t *testing.T) {
 	pending := &source.Manga{ID: "manga-pending", Title: "Pending"}
 	stale := &source.Manga{ID: "manga-stale", Title: "Stale"}

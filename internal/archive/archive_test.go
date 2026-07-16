@@ -3,8 +3,10 @@ package archive
 import (
 	"archive/zip"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -20,7 +22,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 		Format:     FormatCBZ,
 		SourceDir:  source,
 		OutputPath: output,
-		Metadata:   Metadata{Provider: "example", TitleID: "title-id", Title: "Example", ChapterID: "chapter-id", ChapterNumber: "10"},
+		Metadata:   Metadata{Provider: "example", TitleID: "title-id", Title: "Example", ChapterID: "chapter-id", Volume: "2", ChapterNumber: "10"},
 	})
 	if err != nil {
 		t.Fatalf("CreateFromDirectory() error = %v", err)
@@ -47,6 +49,25 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 			t.Fatalf("entries = %v, want %v", got, want)
 		}
 	}
+	for _, file := range reader.File {
+		if file.Name != "ComicInfo.xml" {
+			continue
+		}
+		in, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "<Volume>2</Volume>") {
+			t.Fatalf("ComicInfo.xml = %s, want volume", data)
+		}
+	}
 
 	inspection, err := Inspect(output)
 	if err != nil {
@@ -54,6 +75,9 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	}
 	if !inspection.Valid || !inspection.Complete || inspection.PageCount != 3 || inspection.Format != FormatCBZ {
 		t.Fatalf("inspection = %#v", inspection)
+	}
+	if inspection.Metadata == nil || inspection.Metadata.Provider != "example" || inspection.Metadata.Volume != "2" || inspection.Metadata.ChapterNumber != "10" {
+		t.Fatalf("inspection metadata = %#v", inspection.Metadata)
 	}
 }
 
@@ -69,6 +93,42 @@ func TestCreateFromDirectoryRejectsIncompleteSourceAndLeavesNoFinalArchive(t *te
 	}
 	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
 		t.Fatalf("final archive exists after failure: %v", statErr)
+	}
+}
+
+func TestInspectReportsUnexpectedNonPageEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chapter.cbz")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	if err := writeEntry(writer, "0001.jpg", jpegPage()); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(Metadata{ExpectedPages: 1, Completion: "complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEntry(writer, ".mangate.json", metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEntry(writer, "notes.txt", []byte("unexpected")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	inspection, err := Inspect(path)
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if !inspection.Complete || len(inspection.UnexpectedEntries) != 1 || inspection.UnexpectedEntries[0] != "notes.txt" {
+		t.Fatalf("inspection = %#v", inspection)
 	}
 }
 
@@ -92,6 +152,45 @@ func TestCreateFromDirectoryExistingArchivePolicies(t *testing.T) {
 	if err == nil {
 		t.Fatal("fail policy error = nil")
 	}
+}
+
+func TestCreateFromDirectoryCarriesProviderFromLocalState(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.jpg", jpegPage())
+	state := []byte(`{"provider":"mangadex","titleId":"title-id","chapterId":"chapter-id","expectedPages":1,"complete":true}`)
+	if err := os.WriteFile(filepath.Join(source, ".mangate.json"), state, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "chapter.zip")
+	if _, err := CreateFromDirectory(Options{Format: FormatZIP, SourceDir: source, OutputPath: output}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	for _, file := range reader.File {
+		if file.Name != ".mangate.json" {
+			continue
+		}
+		in, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var metadata Metadata
+		if err := json.NewDecoder(in).Decode(&metadata); err != nil {
+			t.Fatal(err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if metadata.Provider != "mangadex" {
+			t.Fatalf("provider = %q, want mangadex", metadata.Provider)
+		}
+		return
+	}
+	t.Fatal("archive metadata entry not found")
 }
 
 func TestInspectRejectsUnsafeAndDuplicateEntries(t *testing.T) {
@@ -189,6 +288,23 @@ func TestCreateFromDirectoryNormalizesNumericPageNamesForLexicographicOrder(t *t
 		if got[index] != want[index] {
 			t.Fatalf("entries = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestCreateFromDirectoryDetectsImageExtensionForFallbackImageName(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.img", pngPage())
+	output := filepath.Join(t.TempDir(), "chapter.zip")
+	if _, err := CreateFromDirectory(Options{Format: FormatZIP, SourceDir: source, OutputPath: output}); err != nil {
+		t.Fatalf("CreateFromDirectory() error = %v", err)
+	}
+	reader, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if reader.File[0].Name != "0001.png" {
+		t.Fatalf("page entry = %q, want 0001.png", reader.File[0].Name)
 	}
 }
 

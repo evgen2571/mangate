@@ -136,6 +136,7 @@ class Client:
         output_format: str = "cbz",
         output: str | os.PathLike[str] | None = None,
         remove_source: bool = False,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         """Create a CBZ or ZIP archive from an existing chapter directory."""
         if output_format.lower() not in {"cbz", "zip"}:
@@ -145,6 +146,8 @@ class Client:
             args.extend(["--output", os.fspath(output)])
         if remove_source:
             args.append("--remove-source")
+        if dry_run:
+            args.append("--dry-run")
         args.append(os.fspath(chapter_directory))
         return self._json(args)["data"]
 

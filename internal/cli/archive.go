@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -23,6 +24,7 @@ func NewArchiveCmd(a *app.App) *cobra.Command {
 func newArchiveConvertCmd(a *app.App) *cobra.Command {
 	var output string
 	var removeSource bool
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:     "convert <chapter-directory>",
 		Short:   "Create a CBZ or ZIP archive from local chapter pages",
@@ -42,6 +44,17 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 			}
 			if output == "" {
 				output = filepath.Clean(sourceDir) + format.Extension()
+			}
+			if dryRun {
+				plan, err := planArchiveConversion(sourceDir, output, format, removeSource)
+				if err != nil {
+					return err
+				}
+				if wantsJSON(cmd) {
+					return writeJSON(cmd, "archive.convert.plan", plan)
+				}
+				writeHuman(cmd.OutOrStdout(), "Source: %s\nFormat: %s\nOutput: %s\nDestination exists: %t\nRemove source after validation: %t\nDry run: no files will be changed\n", plan.SourceDir, plan.Format, plan.OutputPath, plan.DestinationExists, plan.RemoveSource)
+				return nil
 			}
 			result, err := archive.CreateFromDirectory(archive.Options{
 				Format:           format,
@@ -65,7 +78,32 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&output, "output", "", "Destination archive path")
 	cmd.Flags().BoolVar(&removeSource, "remove-source", false, "Remove the source directory after archive validation")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the conversion plan without writing an archive")
 	return cmd
+}
+
+type archiveConversionPlan struct {
+	SourceDir         string         `json:"sourceDir"`
+	OutputPath        string         `json:"outputPath"`
+	Format            archive.Format `json:"format"`
+	DestinationExists bool           `json:"destinationExists"`
+	RemoveSource      bool           `json:"removeSource"`
+}
+
+func planArchiveConversion(sourceDir, outputPath string, format archive.Format, removeSource bool) (archiveConversionPlan, error) {
+	info, err := os.Stat(sourceDir)
+	if err != nil {
+		return archiveConversionPlan{}, fmt.Errorf("archive convert: inspect source directory: %w", err)
+	}
+	if !info.IsDir() {
+		return archiveConversionPlan{}, fmt.Errorf("archive convert: source %q is not a directory", sourceDir)
+	}
+	_, err = os.Stat(outputPath)
+	exists := err == nil
+	if err != nil && !os.IsNotExist(err) {
+		return archiveConversionPlan{}, fmt.Errorf("archive convert: inspect destination: %w", err)
+	}
+	return archiveConversionPlan{SourceDir: sourceDir, OutputPath: outputPath, Format: format, DestinationExists: exists, RemoveSource: removeSource}, nil
 }
 
 func newArchiveInspectCmd(name string) *cobra.Command {
@@ -85,6 +123,27 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 				return err
 			}
 			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nComplete: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.Complete)
+			if len(inspection.UnexpectedEntries) > 0 {
+				writeHuman(cmd.OutOrStdout(), "Unexpected entries: %s\n", strings.Join(inspection.UnexpectedEntries, ", "))
+			}
+			if metadata := inspection.Metadata; metadata != nil {
+				writeHuman(cmd.OutOrStdout(), "Provider: %s\nTitle: %s\nTitle ID: %s\nChapter: %s\nChapter ID: %s\n", metadata.Provider, metadata.Title, metadata.TitleID, metadata.ChapterNumber, metadata.ChapterID)
+				if metadata.Volume != "" {
+					writeHuman(cmd.OutOrStdout(), "Volume: %s\n", metadata.Volume)
+				}
+				if metadata.ChapterTitle != "" {
+					writeHuman(cmd.OutOrStdout(), "Chapter title: %s\n", metadata.ChapterTitle)
+				}
+				if metadata.Language != "" {
+					writeHuman(cmd.OutOrStdout(), "Language: %s\n", metadata.Language)
+				}
+				if metadata.ReleaseGroup != "" {
+					writeHuman(cmd.OutOrStdout(), "Release group: %s\n", metadata.ReleaseGroup)
+				}
+				if metadata.PublishedAt != "" {
+					writeHuman(cmd.OutOrStdout(), "Published: %s\n", metadata.PublishedAt)
+				}
+			}
 			return nil
 		},
 	}
