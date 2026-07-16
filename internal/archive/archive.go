@@ -105,10 +105,11 @@ type Result struct {
 
 type Inspection struct {
 	Validation
-	Path          string   `json:"path"`
-	EntryCount    int      `json:"entryCount"`
-	Entries       []string `json:"entries,omitempty"`
-	MetadataFound bool     `json:"metadataFound"`
+	Path          string    `json:"path"`
+	EntryCount    int       `json:"entryCount"`
+	Entries       []string  `json:"entries,omitempty"`
+	MetadataFound bool      `json:"metadataFound"`
+	Metadata      *Metadata `json:"metadata,omitempty"`
 }
 
 type chapterState struct {
@@ -477,6 +478,9 @@ func Inspect(path string) (Inspection, error) {
 	}
 	inspection.TitleID = metadata.TitleID
 	inspection.ChapterID = metadata.ChapterID
+	if inspection.MetadataFound {
+		inspection.Metadata = &metadata
+	}
 	inspection.Valid = true
 	inspection.Complete = metadata.Completion == "complete" && (metadata.ExpectedPages == 0 || metadata.ExpectedPages == inspection.PageCount)
 	if !inspection.Complete {

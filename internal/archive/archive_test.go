@@ -76,6 +76,9 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	if !inspection.Valid || !inspection.Complete || inspection.PageCount != 3 || inspection.Format != FormatCBZ {
 		t.Fatalf("inspection = %#v", inspection)
 	}
+	if inspection.Metadata == nil || inspection.Metadata.Provider != "example" || inspection.Metadata.Volume != "2" || inspection.Metadata.ChapterNumber != "10" {
+		t.Fatalf("inspection metadata = %#v", inspection.Metadata)
+	}
 }
 
 func TestCreateFromDirectoryRejectsIncompleteSourceAndLeavesNoFinalArchive(t *testing.T) {

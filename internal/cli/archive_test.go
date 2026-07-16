@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/config"
 )
 
@@ -84,5 +85,47 @@ func TestArchiveConvertDryRunDoesNotCreateArchive(t *testing.T) {
 	}
 	if _, err := os.Stat(source); err != nil {
 		t.Fatalf("dry run removed source: %v", err)
+	}
+}
+
+func TestArchiveInspectJSONIncludesStoredMetadata(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "0001.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "chapter.cbz")
+	if _, err := archive.CreateFromDirectory(archive.Options{
+		Format:     archive.FormatCBZ,
+		SourceDir:  source,
+		OutputPath: archivePath,
+		Metadata:   archive.Metadata{Title: "Example", ChapterNumber: "1", ExpectedPages: 1},
+	}); err != nil {
+		t.Fatalf("CreateFromDirectory() error = %v", err)
+	}
+	application, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inspect := NewRootCmd(application)
+	var stdout bytes.Buffer
+	inspect.SetOut(&stdout)
+	inspect.SetArgs([]string{"--json", "archive", "inspect", archivePath})
+	if err := inspect.Execute(); err != nil {
+		t.Fatalf("inspect Execute() error = %v", err)
+	}
+	var response struct {
+		Data struct {
+			Metadata struct {
+				ExpectedPages int    `json:"expectedPages"`
+				Completion    string `json:"completion"`
+			} `json:"metadata"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
+		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
+	}
+	if response.Data.Metadata.ExpectedPages != 1 || response.Data.Metadata.Completion != "complete" {
+		t.Fatalf("metadata = %#v", response.Data.Metadata)
 	}
 }
