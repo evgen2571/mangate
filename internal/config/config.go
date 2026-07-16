@@ -18,49 +18,49 @@ const (
 )
 
 type Config struct {
-	Provider string
-	Language string
+	Provider string `json:"provider"`
+	Language string `json:"language"`
 
-	Providers   ProvidersConfig
-	HTTP        HTTPConfig
-	Download    DownloadConfig
-	Concurrency ConcurrencyConfig
-	Search      SearchConfig
-	Dirs        DirsConfig
+	Providers   ProvidersConfig   `json:"providers"`
+	HTTP        HTTPConfig        `json:"http"`
+	Download    DownloadConfig    `json:"download"`
+	Concurrency ConcurrencyConfig `json:"concurrency"`
+	Search      SearchConfig      `json:"search"`
+	Dirs        DirsConfig        `json:"dirs"`
 }
 
 type ProvidersConfig struct {
-	MangaDex MangaDexConfig
+	MangaDex MangaDexConfig `json:"mangadex"`
 }
 
 type MangaDexConfig struct {
-	SiteURL    string
-	BaseURL    string
-	UploadsURL string
+	SiteURL    string `json:"siteUrl"`
+	BaseURL    string `json:"baseUrl"`
+	UploadsURL string `json:"uploadsUrl"`
 }
 
 type HTTPConfig struct {
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout"`
 }
 
 type DownloadConfig struct {
-	Dir              string
-	Format           string
-	ExistingFileMode string
-	RetainSource     bool
+	Dir              string `json:"dir"`
+	Format           string `json:"format"`
+	ExistingFileMode string `json:"existingFileMode"`
+	RetainSource     bool   `json:"retainSource"`
 }
 
 type ConcurrencyConfig struct {
-	PageDownloads    int
-	ChapterDownloads int
+	PageDownloads    int `json:"pageDownloads"`
+	ChapterDownloads int `json:"chapterDownloads"`
 }
 
 type SearchConfig struct {
-	HistoryMax int
+	HistoryMax int `json:"historyMax"`
 }
 
 type DirsConfig struct {
-	Cache string
+	Cache string `json:"cache"`
 }
 
 type fileConfig struct {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -25,5 +26,31 @@ func TestConfigShowsEffectiveFormatAndOutput(t *testing.T) {
 	text := output.String()
 	if !strings.Contains(text, "Format: cbz") || !strings.Contains(text, "Output: ./library") {
 		t.Fatalf("output = %q", text)
+	}
+}
+
+func TestConfigJSONUsesStableLowerCamelCaseNames(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCmd(a)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--json", "config"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	data := response["data"].(map[string]any)
+	configuration := data["config"].(map[string]any)
+	if _, exists := configuration["provider"]; !exists {
+		t.Fatalf("configuration = %#v, want provider key", configuration)
+	}
+	if _, exists := configuration["Provider"]; exists {
+		t.Fatalf("configuration contains unstable Provider key: %#v", configuration)
 	}
 }
