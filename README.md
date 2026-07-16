@@ -80,6 +80,25 @@ Archive downloads retain the page directory by default. Use `--retain-source=fal
 
 Run `mangate config` to inspect the effective provider, output root, format, existing-file policy, and source-retention setting after configuration and command flags are merged.
 
+## Shell completion
+
+Mangate includes generated completion commands for Bash, Zsh, and Fish. Load one in the current shell with the corresponding command:
+
+```sh
+source <(mangate completion bash)
+source <(mangate completion zsh)
+mangate completion fish | source
+```
+
+Completion is local. It does not search providers or download content.
+
+## Testing
+
+```sh
+go test ./...
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=python/src python -m unittest discover -s python/tests -v
+```
+
 ## JSON output and exit status
 
 Every core command accepts `--json`. Standard output then contains exactly one JSON object with `formatVersion`, `operation`, `status`, and `data`. Error output uses the same envelope and carries a stable category such as `invalid_input`, `unknown_provider`, `not_found`, `unsupported_capability`, `timeout`, `filesystem`, or `cancelled`.
