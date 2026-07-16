@@ -419,6 +419,10 @@ func Inspect(path string) (Inspection, error) {
 		}
 		seen[file.Name] = struct{}{}
 		if isPageName(file.Name) {
+			if err := validateArchivePage(file); err != nil {
+				inspection.Message = err.Error()
+				return inspection, err
+			}
 			if previousPage != "" && file.Name <= previousPage {
 				inspection.Message = "archive page entries are not ordered"
 				return inspection, errors.New(inspection.Message)
@@ -452,6 +456,23 @@ func Inspect(path string) (Inspection, error) {
 		inspection.Message = "archive metadata does not confirm completion"
 	}
 	return inspection, nil
+}
+
+func validateArchivePage(file *zip.File) error {
+	in, err := file.Open()
+	if err != nil {
+		return fmt.Errorf("archive page %q cannot be opened: %w", file.Name, err)
+	}
+	defer in.Close()
+	header := make([]byte, 32)
+	count, readErr := io.ReadFull(in, header)
+	if readErr != nil && readErr != io.ErrUnexpectedEOF {
+		return fmt.Errorf("archive page %q cannot be read: %w", file.Name, readErr)
+	}
+	if !matchesImageSignature(header[:count], strings.ToLower(filepath.Ext(file.Name))) {
+		return fmt.Errorf("archive page %q does not contain a valid image matching its extension", file.Name)
+	}
+	return nil
 }
 
 func formatFromPath(path string) Format {

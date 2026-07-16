@@ -122,6 +122,39 @@ func TestInspectRejectsUnsafeAndDuplicateEntries(t *testing.T) {
 	}
 }
 
+func TestInspectRejectsPageWithInvalidImageBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "invalid.zip")
+	out, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(out)
+	page, err := writer.Create("0001.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Write([]byte("not an image")); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := writer.Create(".mangate.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := metadata.Write([]byte(`{"completion":"complete","expectedPages":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := Inspect(path)
+	if err == nil || inspection.Valid {
+		t.Fatalf("Inspect() = %#v, %v; want invalid page error", inspection, err)
+	}
+}
+
 func TestCreateFromDirectoryRejectsNonImagePageBytes(t *testing.T) {
 	source := t.TempDir()
 	writePage(t, source, "0001.jpg", []byte("not an image"))
