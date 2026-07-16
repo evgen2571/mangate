@@ -21,6 +21,7 @@ The default configuration is `~/.config/mangate/config.json`, or `MANGATE_CONFIG
 # Discover what is installed without making a provider request.
 mangate providers
 mangate provider mangadex
+mangate diagnostics
 
 # Find a title, then inspect it and its chapters.
 mangate search "example title" --limit 10

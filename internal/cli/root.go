@@ -47,6 +47,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 		NewChaptersCmd(a),
 		NewCompletionCmd(cmd),
 		NewConfigCmd(a),
+		NewDiagnosticsCmd(a),
 		NewDownloadCmd(a),
 		NewInteractiveCmd(a),
 		NewProviderCmd(a),
