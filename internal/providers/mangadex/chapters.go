@@ -140,7 +140,7 @@ func sortChaptersByChapter(chapters []mangaDexChapter) {
 		chapterJ, errJ := strconv.ParseFloat(chapters[j].Attributes.Chapter, 64)
 
 		if errI != nil && errJ != nil {
-			return chapters[i].Attributes.Chapter < chapters[j].Attributes.Chapter
+			return chapterTieBreak(chapters[i], chapters[j])
 		}
 		if errI != nil {
 			return false
@@ -149,6 +149,20 @@ func sortChaptersByChapter(chapters []mangaDexChapter) {
 			return true
 		}
 
-		return chapterI < chapterJ
+		if chapterI != chapterJ {
+			return chapterI < chapterJ
+		}
+		return chapterTieBreak(chapters[i], chapters[j])
 	})
+}
+
+func chapterTieBreak(left, right mangaDexChapter) bool {
+	leftFields := []string{left.Attributes.Chapter, left.Attributes.Language, left.releaseGroup(), left.Attributes.PublishAt, left.ID}
+	rightFields := []string{right.Attributes.Chapter, right.Attributes.Language, right.releaseGroup(), right.Attributes.PublishAt, right.ID}
+	for index := range leftFields {
+		if leftFields[index] != rightFields[index] {
+			return leftFields[index] < rightFields[index]
+		}
+	}
+	return false
 }

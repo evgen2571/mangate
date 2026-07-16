@@ -107,6 +107,30 @@ func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	}
 }
 
+func TestProviderChaptersOrdersDuplicateReleasesDeterministically(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeMangaDexChaptersResponse(t, w, 0, 500, 3, []testMangaDexChapter{
+			{ID: "z-id", Chapter: "1", Language: "en", ReleaseGroup: "Zebra", PublishedAt: "2026-01-02T00:00:00+00:00"},
+			{ID: "a-id", Chapter: "1", Language: "en", ReleaseGroup: "Alpha", PublishedAt: "2026-01-03T00:00:00+00:00"},
+			{ID: "one", Chapter: "2", Language: "en"},
+		})
+	}))
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL, "en")
+	chapters, err := provider.Chapters(context.Background(), &source.Manga{ID: "manga-id"})
+	if err != nil {
+		t.Fatalf("Chapters() error = %v", err)
+	}
+	gotIDs := make([]string, 0, len(chapters))
+	for _, chapter := range chapters {
+		gotIDs = append(gotIDs, chapter.ID)
+	}
+	if !reflect.DeepEqual(gotIDs, []string{"a-id", "z-id", "one"}) {
+		t.Fatalf("chapter IDs = %#v, want deterministic release order", gotIDs)
+	}
+}
+
 func newTestProvider(t *testing.T, baseURL, language string) *Provider {
 	t.Helper()
 
