@@ -96,6 +96,42 @@ func TestCreateFromDirectoryRejectsIncompleteSourceAndLeavesNoFinalArchive(t *te
 	}
 }
 
+func TestInspectReportsUnexpectedNonPageEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chapter.cbz")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	if err := writeEntry(writer, "0001.jpg", jpegPage()); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(Metadata{ExpectedPages: 1, Completion: "complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEntry(writer, ".mangate.json", metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEntry(writer, "notes.txt", []byte("unexpected")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	inspection, err := Inspect(path)
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if !inspection.Complete || len(inspection.UnexpectedEntries) != 1 || inspection.UnexpectedEntries[0] != "notes.txt" {
+		t.Fatalf("inspection = %#v", inspection)
+	}
+}
+
 func TestCreateFromDirectoryExistingArchivePolicies(t *testing.T) {
 	source := t.TempDir()
 	writePage(t, source, "0001.webp", webpPage())

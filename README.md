@@ -76,7 +76,7 @@ Mangate writes every archive to a temporary sibling file, reopens and verifies i
 
 Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised.
 
-`archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, and completion state without extracting anything.
+`archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, and completion state without extracting anything.
 
 Use `mangate --format cbz archive convert <chapter-directory> --dry-run` to inspect a local conversion target without creating an archive or deleting source pages. The plan reports the target path, whether it already exists, and whether source cleanup was requested.
 

@@ -123,6 +123,9 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 				return err
 			}
 			writeHuman(cmd.OutOrStdout(), "Archive: %s\nFormat: %s\nPages: %d\nEntries: %d\nComplete: %t\n", inspection.Path, inspection.Format, inspection.PageCount, inspection.EntryCount, inspection.Complete)
+			if len(inspection.UnexpectedEntries) > 0 {
+				writeHuman(cmd.OutOrStdout(), "Unexpected entries: %s\n", strings.Join(inspection.UnexpectedEntries, ", "))
+			}
 			if metadata := inspection.Metadata; metadata != nil {
 				writeHuman(cmd.OutOrStdout(), "Provider: %s\nTitle: %s\nTitle ID: %s\nChapter: %s\nChapter ID: %s\n", metadata.Provider, metadata.Title, metadata.TitleID, metadata.ChapterNumber, metadata.ChapterID)
 				if metadata.Volume != "" {

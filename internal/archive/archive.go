@@ -107,11 +107,12 @@ type Result struct {
 
 type Inspection struct {
 	Validation
-	Path          string    `json:"path"`
-	EntryCount    int       `json:"entryCount"`
-	Entries       []string  `json:"entries,omitempty"`
-	MetadataFound bool      `json:"metadataFound"`
-	Metadata      *Metadata `json:"metadata,omitempty"`
+	Path              string    `json:"path"`
+	EntryCount        int       `json:"entryCount"`
+	Entries           []string  `json:"entries,omitempty"`
+	UnexpectedEntries []string  `json:"unexpectedEntries,omitempty"`
+	MetadataFound     bool      `json:"metadataFound"`
+	Metadata          *Metadata `json:"metadata,omitempty"`
 }
 
 type chapterState struct {
@@ -460,6 +461,9 @@ func Inspect(path string) (Inspection, error) {
 			previousPage = file.Name
 			inspection.PageCount++
 		}
+		if !isPageName(file.Name) && !isKnownMetadataEntry(file.Name) {
+			inspection.UnexpectedEntries = append(inspection.UnexpectedEntries, file.Name)
+		}
 		if file.Name == ".mangate.json" {
 			inspection.MetadataFound = true
 			in, err := file.Open()
@@ -489,6 +493,10 @@ func Inspect(path string) (Inspection, error) {
 		inspection.Message = "archive metadata does not confirm completion"
 	}
 	return inspection, nil
+}
+
+func isKnownMetadataEntry(name string) bool {
+	return name == ".mangate.json" || name == "ComicInfo.xml"
 }
 
 func validateArchivePage(file *zip.File) error {
