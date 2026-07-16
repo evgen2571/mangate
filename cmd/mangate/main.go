@@ -30,10 +30,15 @@ func main() {
 	rootCmd := cli.NewRootCmd(a)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	execErr := rootCmd.ExecuteContext(ctx)
-	closeErr := a.Close()
-	if err := errors.Join(execErr, closeErr); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		jsonOutput, _ := rootCmd.Flags().GetBool("json")
+		var reported *cli.ReportedError
+		if errors.As(err, &reported) {
+			if !jsonOutput {
+				fmt.Fprintln(os.Stderr, err)
+			}
+			os.Exit(reported.Code)
+		}
 		if jsonOutput {
 			_ = cli.WriteError(os.Stdout, "command", err)
 		} else {

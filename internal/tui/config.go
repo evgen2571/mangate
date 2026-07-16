@@ -21,13 +21,14 @@ const (
 	configFieldProvider configField = iota
 	configFieldLanguage
 	configFieldDownloadDir
-	configFieldDownloadType
+	configFieldDownloadFormat
+	configFieldExistingFiles
+	configFieldRetainSource
 	configFieldHTTPTimeout
 	configFieldPageDownloads
 	configFieldChapterDownloads
 	configFieldSearchHistoryMax
 	configFieldCacheDir
-	configFieldTempDir
 	configFieldCount
 )
 
@@ -180,8 +181,12 @@ func (m configModel) fieldLabel(field configField) string {
 		return "Language"
 	case configFieldDownloadDir:
 		return "Download dir"
-	case configFieldDownloadType:
-		return "Download type"
+	case configFieldDownloadFormat:
+		return "Output format"
+	case configFieldExistingFiles:
+		return "Existing files"
+	case configFieldRetainSource:
+		return "Retain source"
 	case configFieldHTTPTimeout:
 		return "HTTP timeout"
 	case configFieldPageDownloads:
@@ -192,8 +197,6 @@ func (m configModel) fieldLabel(field configField) string {
 		return "Search history max"
 	case configFieldCacheDir:
 		return "Cache dir"
-	case configFieldTempDir:
-		return "Temp dir"
 	default:
 		return "Unknown"
 	}
@@ -207,8 +210,12 @@ func (m configModel) fieldValue(field configField) string {
 		return m.draft.Language
 	case configFieldDownloadDir:
 		return m.draft.Download.Dir
-	case configFieldDownloadType:
-		return m.draft.Download.Type
+	case configFieldDownloadFormat:
+		return m.draft.Download.Format
+	case configFieldExistingFiles:
+		return m.draft.Download.ExistingFileMode
+	case configFieldRetainSource:
+		return strconv.FormatBool(m.draft.Download.RetainSource)
 	case configFieldHTTPTimeout:
 		return m.draft.HTTP.Timeout.String()
 	case configFieldPageDownloads:
@@ -219,8 +226,6 @@ func (m configModel) fieldValue(field configField) string {
 		return strconv.Itoa(m.draft.Search.HistoryMax)
 	case configFieldCacheDir:
 		return m.draft.Dirs.Cache
-	case configFieldTempDir:
-		return m.draft.Dirs.Temp
 	default:
 		return ""
 	}
@@ -241,8 +246,16 @@ func (m *configModel) updateDraftFromInput() error {
 		next.Language = value
 	case configFieldDownloadDir:
 		next.Download.Dir = value
-	case configFieldDownloadType:
-		next.Download.Type = value
+	case configFieldDownloadFormat:
+		next.Download.Format = strings.ToLower(value)
+	case configFieldExistingFiles:
+		next.Download.ExistingFileMode = strings.ToLower(value)
+	case configFieldRetainSource:
+		retain, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse retain source: %w", err)
+		}
+		next.Download.RetainSource = retain
 	case configFieldHTTPTimeout:
 		d, err := time.ParseDuration(value)
 		if err != nil {
@@ -269,8 +282,6 @@ func (m *configModel) updateDraftFromInput() error {
 		next.Search.HistoryMax = n
 	case configFieldCacheDir:
 		next.Dirs.Cache = value
-	case configFieldTempDir:
-		next.Dirs.Temp = value
 	}
 
 	if err := next.Validate(); err != nil {

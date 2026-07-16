@@ -29,3 +29,11 @@ func TestSanitizeStringCollapsesRepeatedHyphensAndUnderscores(t *testing.T) {
 		t.Fatalf("SanitizeString() = %q, want %q", got, "Chapter-Name")
 	}
 }
+
+func TestSanitizeTerminalTextReplacesControlSequences(t *testing.T) {
+	got := SanitizeTerminalText("Title\x1b[2J\nnext\tcell")
+	want := "Title�[2J�next�cell"
+	if got != want {
+		t.Fatalf("SanitizeTerminalText() = %q, want %q", got, want)
+	}
+}

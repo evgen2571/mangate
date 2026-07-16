@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/usecase"
 	"github.com/evgen2571/mangate/internal/util"
@@ -19,6 +21,8 @@ import (
 type downloadRecord struct {
 	Provider    string            `json:"provider"`
 	Title       *source.Manga     `json:"title"`
+	Format      archive.Format    `json:"format"`
+	OutputRoot  string            `json:"outputRoot"`
 	Status      string            `json:"status"`
 	StartedAt   time.Time         `json:"startedAt"`
 	CompletedAt time.Time         `json:"completedAt"`
@@ -27,12 +31,14 @@ type downloadRecord struct {
 }
 
 type chapterDownload struct {
-	ID            string `json:"id"`
-	Number        string `json:"number,omitempty"`
-	Title         string `json:"title,omitempty"`
-	Status        string `json:"status"`
-	OutputPath    string `json:"outputPath"`
-	ExpectedPages int    `json:"expectedPages,omitempty"`
+	ID            string              `json:"id"`
+	Number        string              `json:"number,omitempty"`
+	Title         string              `json:"title,omitempty"`
+	Status        string              `json:"status"`
+	OutputPath    string              `json:"outputPath"`
+	ArchivePath   string              `json:"archivePath,omitempty"`
+	Validation    *archive.Validation `json:"validation,omitempty"`
+	ExpectedPages int                 `json:"expectedPages,omitempty"`
 }
 
 func NewDownloadCmd(a *app.App) *cobra.Command {
@@ -41,12 +47,17 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	var chapterRange string
 	var first, latest, all bool
 	var before, after, language string
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "download <title-id>",
 		Short: "Download selected chapters that you are authorized to save",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireOneArgument("a stable <title-id> from `mangate search`", "mangate download <title-id> --latest"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			format, err := archive.ParseFormat(a.Cfg.Download.Format)
+			if err != nil {
+				return err
+			}
 			titleID := strings.TrimSpace(args[0])
 			if titleID == "" {
 				return fmt.Errorf("title id cannot be empty")
@@ -72,7 +83,26 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			}
 
 			started := time.Now().UTC()
-			record := downloadRecord{Provider: provider.Name(), Title: title, Status: "in_progress", StartedAt: started, Chapters: chapterRecords(a.Cfg.Download.Dir, title, selection, "pending")}
+			record := downloadRecord{Provider: provider.Name(), Title: title, Format: format, OutputRoot: a.Cfg.Download.Dir, Status: "in_progress", StartedAt: started, Chapters: chapterRecords(a.Cfg.Download.Dir, title, selection, format, "pending")}
+			if dryRun {
+				record.Status = "planned"
+				record.CompletedAt = time.Now().UTC()
+				for index := range record.Chapters {
+					record.Chapters[index].Status = "planned"
+				}
+				if wantsJSON(cmd) {
+					return writeJSON(cmd, "download.plan", record)
+				}
+				writeHuman(cmd.OutOrStdout(), "Title: %s\nProvider: %s\nChapters: %d selected\nFormat: %s\nOutput: %s\nDry run: no files will be changed\n", title.Title, provider.Name(), len(selection), format, a.Cfg.Download.Dir)
+				for _, chapter := range record.Chapters {
+					path := chapter.OutputPath
+					if chapter.ArchivePath != "" {
+						path = chapter.ArchivePath
+					}
+					writeHuman(cmd.OutOrStdout(), "  %s -> %s\n", chapter.ID, path)
+				}
+				return nil
+			}
 			notify := func(progress usecase.DownloadProgress) {
 				if wantsJSON(cmd) || isQuiet(cmd) {
 					return
@@ -81,17 +111,24 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			}
 			err = a.UseCases().DownloadChapters(cmd.Context(), title, selection, notify)
 			record.CompletedAt = time.Now().UTC()
+			updateChapterRecordStates(&record)
 			if err != nil {
-				record.Status = "incomplete"
 				record.Error = err.Error()
-				updateChapterRecordStates(&record)
-				if wantsJSON(cmd) {
-					return writeJSON(cmd, "download", record)
+				if format != archive.FormatDirectory {
+					if archiveErr := finalizeArchives(record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); archiveErr != nil {
+						record.Error = errors.Join(err, archiveErr).Error()
+					}
 				}
-				return fmt.Errorf("download title %q: %w", titleID, err)
+				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
 			}
 			for index := range record.Chapters {
 				record.Chapters[index].Status = "complete"
+			}
+			if format != archive.FormatDirectory {
+				if err := finalizeArchives(record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); err != nil {
+					record.Error = err.Error()
+					return reportDownloadResult(cmd, &record, err)
+				}
 			}
 			record.Status = "complete"
 			if wantsJSON(cmd) {
@@ -99,7 +136,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			}
 			if !isQuiet(cmd) {
 				writeHuman(cmd.ErrOrStderr(), "\n")
-				writeHuman(cmd.OutOrStdout(), "Downloaded %d chapter(s) to %s\n", len(selection), a.Cfg.Download.Dir)
+				writeHuman(cmd.OutOrStdout(), "Downloaded %d chapter(s) as %s to %s\n", len(selection), format, a.Cfg.Download.Dir)
 			}
 			return nil
 		},
@@ -114,7 +151,32 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	flags.StringVar(&before, "before", "", "Only chapters before this chapter number")
 	flags.StringVar(&after, "after", "", "Only chapters after this chapter number")
 	flags.StringVar(&language, "chapter-language", "", "Only chapters in this provider language")
+	flags.BoolVar(&dryRun, "dry-run", false, "Show selected chapters and output paths without downloading")
 	return cmd
+}
+
+func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause error) error {
+	completed := 0
+	for _, chapter := range record.Chapters {
+		if chapter.Status == "complete" || chapter.Status == "skipped" {
+			completed++
+		}
+	}
+	code := 5
+	if completed == 0 && ErrorCategory(cause.Error()) == "archive" {
+		code = 8
+	}
+	if completed > 0 {
+		record.Status = "partial"
+	} else {
+		record.Status = "incomplete"
+	}
+	if wantsJSON(cmd) {
+		if err := writeJSONStatus(cmd, "download", record.Status, record); err != nil {
+			return err
+		}
+	}
+	return &ReportedError{Cause: cause, Code: code}
 }
 
 func updateChapterRecordStates(record *downloadRecord) {
@@ -143,11 +205,11 @@ type chapterSelection struct {
 }
 
 func selectChapters(chapters []*source.Chapter, selection chapterSelection) ([]*source.Chapter, error) {
+	if err := selection.validate(); err != nil {
+		return nil, err
+	}
 	if len(selection.IDs) == 0 && len(selection.Numbers) == 0 && selection.Range == "" && !selection.First && !selection.Latest && !selection.All && selection.Before == "" && selection.After == "" {
 		return nil, fmt.Errorf("select chapters: choose --chapter-id, --chapter, --range, --first, --latest, or --all")
-	}
-	if (selection.First && selection.Latest) || (selection.First && selection.All) || (selection.Latest && selection.All) {
-		return nil, fmt.Errorf("select chapters: --first, --latest, and --all cannot be combined")
 	}
 	filtered := make([]*source.Chapter, 0, len(chapters))
 	for _, chapter := range chapters {
@@ -225,6 +287,27 @@ func selectChapters(chapters []*source.Chapter, selection chapterSelection) ([]*
 	return selected, nil
 }
 
+func (selection chapterSelection) validate() error {
+	modeCount := 0
+	for _, enabled := range []bool{selection.First, selection.Latest, selection.All} {
+		if enabled {
+			modeCount++
+		}
+	}
+	if modeCount > 1 {
+		return fmt.Errorf("select chapters: --first, --latest, and --all cannot be combined")
+	}
+	hasExplicit := len(selection.IDs) > 0 || len(selection.Numbers) > 0
+	hasRange := selection.Range != "" || selection.Before != "" || selection.After != ""
+	if modeCount > 0 && (hasExplicit || hasRange) {
+		return fmt.Errorf("select chapters: --first, --latest, or --all cannot be combined with explicit chapter selectors or ranges")
+	}
+	if hasExplicit && hasRange {
+		return fmt.Errorf("select chapters: explicit chapter selectors cannot be combined with --range, --before, or --after")
+	}
+	return nil
+}
+
 func chapterInRange(value, start, end string) bool {
 	return compareChapterLabels(value, start) >= 0 && compareChapterLabels(value, end) <= 0
 }
@@ -255,13 +338,28 @@ func chaptersWithNumber(chapters []*source.Chapter, number string) []*source.Cha
 	return matches
 }
 
-func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter, status string) []chapterDownload {
+func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter, format archive.Format, status string) []chapterDownload {
 	records := make([]chapterDownload, 0, len(chapters))
 	titleDir := util.SanitizeString(title.Title)
 	if id := util.SanitizeString(title.ID); id != "unknown" {
 		titleDir += "-" + id
 	}
-	for _, chapter := range chapters {
+	names := chapterDirectoryNames(chapters)
+	for index, chapter := range chapters {
+		directory := filepath.Join(root, titleDir, names[index])
+		record := chapterDownload{ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: directory, ExpectedPages: chapter.PageCount}
+		if format != archive.FormatDirectory {
+			record.ArchivePath = directory + format.Extension()
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func chapterDirectoryNames(chapters []*source.Chapter) []string {
+	names := make([]string, len(chapters))
+	used := make(map[string]struct{}, len(chapters))
+	for index, chapter := range chapters {
 		name := "unknown-chapter"
 		if chapter.Index != "" {
 			name = "Chapter-" + chapter.Index
@@ -269,9 +367,51 @@ func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter
 		if chapter.Title != "" {
 			name += "-" + chapter.Title
 		}
-		records = append(records, chapterDownload{ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: filepath.Join(root, titleDir, util.SanitizeString(name)), ExpectedPages: chapter.PageCount})
+		name = util.SanitizeString(name)
+		if _, exists := used[name]; exists {
+			name = util.SanitizeString(name + "-" + chapter.ID)
+		}
+		used[name] = struct{}{}
+		names[index] = name
 	}
-	return records
+	return names
+}
+
+func finalizeArchives(record downloadRecord, title *source.Manga, chapters []*source.Chapter, format archive.Format, existingMode string, removeSource bool) error {
+	var failures []error
+	for index, chapter := range chapters {
+		chapterRecord := &record.Chapters[index]
+		if chapterRecord.Status != "complete" {
+			continue
+		}
+		result, err := archive.CreateFromDirectory(archive.Options{
+			Format:           format,
+			SourceDir:        chapterRecord.OutputPath,
+			OutputPath:       chapterRecord.ArchivePath,
+			ExistingFileMode: archive.ExistingFileMode(existingMode),
+			RemoveSource:     removeSource,
+			Metadata: archive.Metadata{
+				Provider:      record.Provider,
+				TitleID:       title.ID,
+				Title:         title.Title,
+				ChapterID:     chapter.ID,
+				ChapterNumber: chapter.Index,
+				ChapterTitle:  chapter.Title,
+				Language:      chapter.Language,
+				ExpectedPages: chapter.PageCount,
+			},
+		})
+		if err != nil {
+			chapterRecord.Status = "archive_failed"
+			failures = append(failures, fmt.Errorf("create %s for chapter %q: %w", format, chapter.ID, err))
+			continue
+		}
+		chapterRecord.Validation = &result.Validation
+		if result.Status == archive.StatusSkipped {
+			chapterRecord.Status = "skipped"
+		}
+	}
+	return errors.Join(failures...)
 }
 
 func hasCapability(info source.ProviderInfo, capability string) bool {

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/util"
 )
 
 type state int
@@ -20,6 +21,8 @@ const (
 	stateChapters
 	stateDownloading
 	stateConfig
+	stateFormat
+	stateConfirm
 )
 
 type model struct {
@@ -40,6 +43,8 @@ type model struct {
 	chapters    chaptersModel
 	downloading downloadingModel
 	config      configModel
+	format      formatModel
+	confirm     confirmModel
 }
 
 func New(a *app.App) tea.Model {
@@ -53,7 +58,7 @@ func New(a *app.App) tea.Model {
 		}
 	}
 
-	return &model{
+	model := &model{
 		app:    a,
 		state:  stateSearch,
 		keys:   newKeyMap(),
@@ -61,6 +66,8 @@ func New(a *app.App) tea.Model {
 		search: newSearchModel(searchHistory),
 		config: newConfigModel(a.Cfg),
 	}
+	model.search.SetProvider(a.Cfg.Provider)
+	return model
 }
 
 func (m model) Init() tea.Cmd {
@@ -109,6 +116,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadCoverCmd(selected, w, h),
 		)
 
+	case searchFailedMsg:
+		m.search.SetStatus(fmt.Sprintf("Search failed: %v. Edit the query and try again.", msg.Err))
+		m.state = stateSearch
+		m.resizeActiveModel()
+		return m, nil
+
 	case coverLoadRequestedMsg:
 		selected := m.results.selectedManga()
 		if selected == nil || selected.ID != msg.MangaID {
@@ -136,7 +149,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resizeActiveModel()
 			return m, nil
 		}
-		if m.state == stateChapters || m.state == stateDownloading {
+		if m.state == stateConfirm {
+			m.state = stateFormat
+		} else if m.state == stateFormat {
+			m.state = stateChapters
+		} else if m.state == stateChapters || m.state == stateDownloading {
 			m.state = stateResults
 		} else {
 			m.state = stateSearch
@@ -150,7 +167,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pendingFullMangaDownload = nil
 
-		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.loading = newLoadingModel("Loading chapters", util.SanitizeTerminalText(msg.Manga.Title))
 		m.state = stateLoading
 		m.resizeActiveModel()
 		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
@@ -161,7 +178,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pendingFullMangaDownload = msg.Manga
 
-		m.loading = newLoadingModel("Loading chapters", msg.Manga.Title)
+		m.loading = newLoadingModel("Loading chapters", util.SanitizeTerminalText(msg.Manga.Title))
 		m.state = stateLoading
 		m.resizeActiveModel()
 		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
@@ -176,11 +193,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingFullMangaDownload = nil
 			chapters := nonNilChapters(msg.Chapters)
 			if msg.Manga != nil && len(chapters) > 0 {
-				progressCh := make(chan tea.Msg, 1024)
-				m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(chapters), progressCh)
-				m.state = stateDownloading
+				m.openFormatSelection(msg.Manga, chapters)
 				m.resizeActiveModel()
-				return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(msg.Manga, chapters, progressCh))
+				return m, nil
 			}
 			m.chapters.setStatus("no chapters to download")
 		}
@@ -193,6 +208,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingFullMangaDownload = nil
 		}
 		m.state = stateResults
+		if msg.Err != nil {
+			m.results.setStatus(fmt.Sprintf("Could not load chapters: %v", msg.Err))
+		}
 		m.resizeActiveModel()
 		return m, nil
 
@@ -200,7 +218,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Manga == nil || len(msg.Chapters) == 0 {
 			return m, nil
 		}
+		m.openFormatSelection(msg.Manga, msg.Chapters)
+		m.resizeActiveModel()
+		return m, nil
 
+	case downloadConfirmedMsg:
+		if msg.Manga == nil || len(msg.Chapters) == 0 {
+			return m, nil
+		}
+		cfg := m.app.Cfg.Clone()
+		cfg.Download.Format = string(m.format.selected())
+		if err := m.app.ApplyConfig(cfg); err != nil {
+			m.chapters.setStatus(fmt.Sprintf("apply format: %v", err))
+			m.state = stateChapters
+			return m, nil
+		}
 		progressCh := make(chan tea.Msg, 1024)
 		m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(msg.Chapters), progressCh)
 		m.state = stateDownloading
@@ -275,6 +307,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.state == stateFormat {
+			switch msg.String() {
+			case "up", "k":
+				m.format.move(-1)
+				return m, nil
+			case "down", "j":
+				m.format.move(1)
+				return m, nil
+			case "enter":
+				m.confirm.format = m.format.selected()
+				m.state = stateConfirm
+				m.resizeActiveModel()
+				return m, nil
+			case "esc", "backspace":
+				m.state = stateChapters
+				m.resizeActiveModel()
+				return m, nil
+			}
+		}
+		if m.state == stateConfirm {
+			switch msg.String() {
+			case "enter":
+				return m, func() tea.Msg { return downloadConfirmedMsg{Manga: m.confirm.manga, Chapters: m.confirm.chapters} }
+			case "esc", "backspace":
+				m.state = stateFormat
+				m.resizeActiveModel()
+				return m, nil
+			}
+		}
 	}
 
 	switch m.state {
@@ -307,12 +368,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.config, cmd = m.config.Update(msg)
 		return m, cmd
+
+	case stateFormat, stateConfirm:
+		return m, nil
 	}
 
 	return m, nil
 }
 
+func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chapter) {
+	m.format = newFormatModel(m.app.Cfg.Download.Format)
+	m.pendingFullMangaDownload = nil
+	m.confirm = confirmModel{manga: manga, chapters: chapters, provider: m.app.Cfg.Provider, output: m.app.Cfg.Download.Dir, existing: m.app.Cfg.Download.ExistingFileMode}
+	m.state = stateFormat
+}
+
 func (m model) View() string {
+	if m.width > 0 && m.height > 0 && (m.width < 40 || m.height < 12) {
+		return "Terminal is too small for Mangate. Resize to at least 40 columns by 12 rows.\n"
+	}
 	var body string
 
 	switch m.state {
@@ -328,6 +402,10 @@ func (m model) View() string {
 		body = m.downloading.View()
 	case stateConfig:
 		body = m.config.View()
+	case stateFormat:
+		body = m.format.View()
+	case stateConfirm:
+		body = m.confirm.View()
 	default:
 		body = ""
 	}
@@ -356,6 +434,8 @@ func (m model) currentHelp() help.KeyMap {
 		return m.downloading.HelpKeys(m.keys)
 	case stateConfig:
 		return m.config.HelpKeys(m.keys)
+	case stateFormat, stateConfirm:
+		return m.chapters.HelpKeys(m.keys)
 	default:
 		return m.search.HelpKeys(m.keys)
 	}
@@ -384,6 +464,10 @@ func (m *model) resizeActiveModel() {
 		m.downloading.SetSize(m.width, bodyHeight)
 	case stateConfig:
 		m.config.SetSize(m.width, bodyHeight)
+	case stateFormat:
+		m.format.SetSize(m.width, bodyHeight)
+	case stateConfirm:
+		m.confirm.SetSize(m.width, bodyHeight)
 	}
 }
 

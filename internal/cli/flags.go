@@ -21,8 +21,31 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		&cfg.Download.ExistingFileMode,
 		"existing-files",
 		cfg.Download.ExistingFileMode,
-		"Existing page behavior: skip, replace, or fail",
+		"Existing output behavior: skip, replace, or fail",
 	)
+
+	f.StringVar(
+		&cfg.Download.Format,
+		"format",
+		cfg.Download.Format,
+		"Output format: directory, cbz, or zip",
+	)
+
+	f.BoolVar(
+		&cfg.Download.RetainSource,
+		"retain-source",
+		cfg.Download.RetainSource,
+		"Keep page directories after successful archive creation",
+	)
+
+	f.Bool(
+		"non-interactive",
+		false,
+		"Refuse prompts and the terminal interface",
+	)
+
+	f.Bool("color", false, "Force color output when supported")
+	f.Bool("no-color", false, "Disable terminal color output")
 
 	f.StringVar(
 		&cfg.Language,
@@ -40,10 +63,10 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 	)
 
 	f.StringVar(
-		&cfg.Download.Type,
-		"download-type",
-		cfg.Download.Type,
-		"Download type (plain image directory)",
+		&cfg.Download.Dir,
+		"output",
+		cfg.Download.Dir,
+		"Output root for downloaded titles and archives",
 	)
 
 	// Concurrency
@@ -77,10 +100,4 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Cache directory",
 	)
 
-	f.StringVar(
-		&cfg.Dirs.Temp,
-		"temp-dir",
-		cfg.Dirs.Temp,
-		"Temporary directory",
-	)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/util"
 )
 
 type chapterItem struct {
@@ -41,7 +42,7 @@ func (i chapterItem) Description() string {
 		return ""
 	}
 
-	description := strings.TrimSpace(i.value.URL)
+	description := util.SanitizeTerminalText(strings.TrimSpace(i.value.URL))
 	if i.selected {
 		return lipgloss.NewStyle().Foreground(constant.InputBorderColor).Render(description)
 	}

@@ -18,49 +18,49 @@ const (
 )
 
 type Config struct {
-	Provider string
-	Language string
+	Provider string `json:"provider"`
+	Language string `json:"language"`
 
-	Providers   ProvidersConfig
-	HTTP        HTTPConfig
-	Download    DownloadConfig
-	Concurrency ConcurrencyConfig
-	Search      SearchConfig
-	Dirs        DirsConfig
+	Providers   ProvidersConfig   `json:"providers"`
+	HTTP        HTTPConfig        `json:"http"`
+	Download    DownloadConfig    `json:"download"`
+	Concurrency ConcurrencyConfig `json:"concurrency"`
+	Search      SearchConfig      `json:"search"`
+	Dirs        DirsConfig        `json:"dirs"`
 }
 
 type ProvidersConfig struct {
-	MangaDex MangaDexConfig
+	MangaDex MangaDexConfig `json:"mangadex"`
 }
 
 type MangaDexConfig struct {
-	SiteURL    string
-	BaseURL    string
-	UploadsURL string
+	SiteURL    string `json:"siteUrl"`
+	BaseURL    string `json:"baseUrl"`
+	UploadsURL string `json:"uploadsUrl"`
 }
 
 type HTTPConfig struct {
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout"`
 }
 
 type DownloadConfig struct {
-	Dir              string
-	Type             string
-	ExistingFileMode string
+	Dir              string `json:"dir"`
+	Format           string `json:"format"`
+	ExistingFileMode string `json:"existingFileMode"`
+	RetainSource     bool   `json:"retainSource"`
 }
 
 type ConcurrencyConfig struct {
-	PageDownloads    int
-	ChapterDownloads int
+	PageDownloads    int `json:"pageDownloads"`
+	ChapterDownloads int `json:"chapterDownloads"`
 }
 
 type SearchConfig struct {
-	HistoryMax int
+	HistoryMax int `json:"historyMax"`
 }
 
 type DirsConfig struct {
-	Cache string
-	Temp  string
+	Cache string `json:"cache"`
 }
 
 type fileConfig struct {
@@ -90,8 +90,10 @@ type fileHTTPConfig struct {
 
 type fileDownloadConfig struct {
 	Dir              *string `json:"dir,omitempty"`
+	Format           *string `json:"format,omitempty"`
 	Type             *string `json:"type,omitempty"`
 	ExistingFileMode *string `json:"existingFileMode,omitempty"`
+	RetainSource     *bool   `json:"retainSource,omitempty"`
 }
 
 type fileConcurrencyConfig struct {
@@ -105,7 +107,6 @@ type fileSearchConfig struct {
 
 type fileDirsConfig struct {
 	Cache *string `json:"cache,omitempty"`
-	Temp  *string `json:"temp,omitempty"`
 }
 
 func DefaultConfig() Config {
@@ -124,8 +125,9 @@ func DefaultConfig() Config {
 		},
 		Download: DownloadConfig{
 			Dir:              defaultDownloadDir(),
-			Type:             "plain",
+			Format:           "directory",
 			ExistingFileMode: "skip",
+			RetainSource:     true,
 		},
 		Concurrency: ConcurrencyConfig{
 			PageDownloads:    8,
@@ -136,7 +138,6 @@ func DefaultConfig() Config {
 		},
 		Dirs: DirsConfig{
 			Cache: defaultCacheDir(),
-			Temp:  defaultTempDir(),
 		},
 	}
 }
@@ -155,8 +156,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("http timeout must be > 0")
 	case strings.TrimSpace(c.Download.Dir) == "":
 		return fmt.Errorf("download dir cannot be empty")
-	case strings.TrimSpace(c.Download.Type) == "":
-		return fmt.Errorf("download type cannot be empty")
+	case c.Download.Format != "directory" && c.Download.Format != "cbz" && c.Download.Format != "zip":
+		return fmt.Errorf("download format must be directory, cbz, or zip")
 	case c.Download.ExistingFileMode != "skip" && c.Download.ExistingFileMode != "replace" && c.Download.ExistingFileMode != "fail":
 		return fmt.Errorf("existing file mode must be skip, replace, or fail")
 	case c.Concurrency.PageDownloads <= 0:
@@ -167,8 +168,6 @@ func (c Config) Validate() error {
 		return fmt.Errorf("search history max must be >= 0")
 	case strings.TrimSpace(c.Dirs.Cache) == "":
 		return fmt.Errorf("cache dir cannot be empty")
-	case strings.TrimSpace(c.Dirs.Temp) == "":
-		return fmt.Errorf("temp dir cannot be empty")
 	}
 
 	if err := validateHTTPURL("mangadex site url", c.Providers.MangaDex.SiteURL); err != nil {
@@ -290,11 +289,17 @@ func (f fileConfig) applyTo(cfg *Config) error {
 		if f.Download.Dir != nil {
 			cfg.Download.Dir = *f.Download.Dir
 		}
+		if f.Download.Format != nil {
+			cfg.Download.Format = strings.ToLower(strings.TrimSpace(*f.Download.Format))
+		}
 		if f.Download.Type != nil {
-			cfg.Download.Type = *f.Download.Type
+			return fmt.Errorf("download type is no longer configurable; only plain is supported by this legacy field, use download.format")
 		}
 		if f.Download.ExistingFileMode != nil {
 			cfg.Download.ExistingFileMode = *f.Download.ExistingFileMode
+		}
+		if f.Download.RetainSource != nil {
+			cfg.Download.RetainSource = *f.Download.RetainSource
 		}
 	}
 	if f.Concurrency != nil {
@@ -311,9 +316,6 @@ func (f fileConfig) applyTo(cfg *Config) error {
 	if f.Dirs != nil {
 		if f.Dirs.Cache != nil {
 			cfg.Dirs.Cache = *f.Dirs.Cache
-		}
-		if f.Dirs.Temp != nil {
-			cfg.Dirs.Temp = *f.Dirs.Temp
 		}
 	}
 
@@ -336,8 +338,9 @@ func newFileConfig(cfg Config) fileConfig {
 		},
 		Download: &fileDownloadConfig{
 			Dir:              stringPtr(cfg.Download.Dir),
-			Type:             stringPtr(cfg.Download.Type),
+			Format:           stringPtr(cfg.Download.Format),
 			ExistingFileMode: stringPtr(cfg.Download.ExistingFileMode),
+			RetainSource:     boolPtr(cfg.Download.RetainSource),
 		},
 		Concurrency: &fileConcurrencyConfig{
 			PageDownloads:    intPtr(cfg.Concurrency.PageDownloads),
@@ -348,7 +351,6 @@ func newFileConfig(cfg Config) fileConfig {
 		},
 		Dirs: &fileDirsConfig{
 			Cache: stringPtr(cfg.Dirs.Cache),
-			Temp:  stringPtr(cfg.Dirs.Temp),
 		},
 	}
 }
@@ -358,6 +360,10 @@ func stringPtr(v string) *string {
 }
 
 func intPtr(v int) *int {
+	return &v
+}
+
+func boolPtr(v bool) *bool {
 	return &v
 }
 
@@ -396,8 +402,4 @@ func defaultCacheDir() string {
 		return "./.cache"
 	}
 	return filepath.Join(root, constant.ProjectName)
-}
-
-func defaultTempDir() string {
-	return filepath.Join(os.TempDir(), constant.ProjectName)
 }

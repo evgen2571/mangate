@@ -158,7 +158,6 @@ func TestSearchHistoryFacadeHandlesMissingAppOrCache(t *testing.T) {
 func TestApplyAndSaveConfigPersistsAppliedConfig(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Dirs.Cache = t.TempDir()
-	cfg.Dirs.Temp = t.TempDir()
 	cfg.Download.Dir = t.TempDir()
 
 	a, err := New(cfg)

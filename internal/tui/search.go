@@ -20,6 +20,8 @@ type searchModel struct {
 
 	history         []string
 	suggestionIndex int
+	provider        string
+	status          string
 }
 
 func newSearchModel(history []string) searchModel {
@@ -111,7 +113,11 @@ func (m searchModel) View() string {
 	lines := []string{
 		logo,
 		"",
+		fmt.Sprintf("Provider: %s", displayProvider(m.provider)),
 		inputBox,
+	}
+	if m.status != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(constant.MutedColor).Render(m.status))
 	}
 
 	if suggestion := m.virtualSuggestionText(); suggestion != "" {
@@ -151,6 +157,21 @@ func (m searchModel) View() string {
 		lipgloss.Center,
 		panel,
 	)
+}
+
+func (m *searchModel) SetProvider(provider string) {
+	m.provider = strings.TrimSpace(provider)
+}
+
+func (m *searchModel) SetStatus(status string) {
+	m.status = strings.TrimSpace(status)
+}
+
+func displayProvider(provider string) string {
+	if provider == "" {
+		return "configured default"
+	}
+	return provider
 }
 
 func (m searchModel) HelpKeys(global keyMap) searchHelpKeyMap {

@@ -68,9 +68,6 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 }
 
 func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
-	if d.cfg.Download.Type != "plain" {
-		return fmt.Errorf("download chapter: download type %q is not supported; use plain", d.cfg.Download.Type)
-	}
 	if len(c.Pages) == 0 && pageLoader != nil {
 		pages, err := pageLoader(ctx, c)
 		if err != nil {
@@ -170,6 +167,11 @@ func titleDirName(manga *source.Manga) string {
 		return title + "-" + id
 	}
 	return title
+}
+
+// TitleDirectoryName returns the stable local directory name used for a title.
+func TitleDirectoryName(manga *source.Manga) string {
+	return titleDirName(manga)
 }
 
 func existingPage(base string) bool {
@@ -287,6 +289,12 @@ func uniqueChapterDirNames(chapters []*source.Chapter) []string {
 	}
 
 	return names
+}
+
+// ChapterDirectoryNames returns the collision-safe local directory names used
+// for a selected chapter sequence.
+func ChapterDirectoryNames(chapters []*source.Chapter) []string {
+	return uniqueChapterDirNames(chapters)
 }
 
 func chapterDirBaseName(chapter *source.Chapter) string {
@@ -474,28 +482,4 @@ func tempPageExtension(rawURL string) string {
 	}
 
 	return ".img"
-}
-
-func (d *Downloader) basePath() (string, error) {
-	d.basePathOnce.Do(func() {
-		d.basePathErr = util.EnsureDir(d.cfg.Dirs.Temp, "temporary root directory")
-		if d.basePathErr != nil {
-			return
-		}
-
-		workDir, err := os.MkdirTemp(d.cfg.Dirs.Temp, "mangate-*")
-		if err != nil {
-			d.basePathErr = fmt.Errorf("create temporary work directory in %q: %w", d.cfg.Dirs.Temp, err)
-			return
-		}
-
-		d.workPath = workDir
-		d.ownsWorkPath = true
-	})
-
-	if d.basePathErr != nil {
-		return "", d.basePathErr
-	}
-
-	return d.workPath, nil
 }

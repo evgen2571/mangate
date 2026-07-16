@@ -33,8 +33,6 @@ else
   download_dir="$HOME/downloads/mangate"
   cache_root="${XDG_CACHE_HOME:-$HOME/.cache}"
   cache_dir="$cache_root/mangate"
-  temp_root="${TMPDIR:-/tmp}"
-  temp_dir="$temp_root/mangate"
 
   cat > "$config_file" <<EOF
 {
@@ -51,8 +49,7 @@ else
     "timeout": "30s"
   },
   "download": {
-    "dir": "$download_dir",
-    "type": "plain"
+    "dir": "$download_dir"
   },
   "concurrency": {
     "pageDownloads": 8,
@@ -62,8 +59,7 @@ else
     "historyMax": 100
   },
   "dirs": {
-    "cache": "$cache_dir",
-    "temp": "$temp_dir"
+    "cache": "$cache_dir"
   }
 }
 EOF

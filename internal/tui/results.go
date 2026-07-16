@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/constant"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/util"
 )
 
 type resultItem struct {
@@ -38,14 +39,14 @@ func (i resultItem) Title() string {
 	if i.value == nil || strings.TrimSpace(i.value.Title) == "" {
 		return fmt.Sprintf("Unknown #%d", i.idx+1)
 	}
-	return strings.TrimSpace(i.value.Title)
+	return util.SanitizeTerminalText(strings.TrimSpace(i.value.Title))
 }
 
 func (i resultItem) Description() string {
 	if i.value == nil {
 		return ""
 	}
-	return strings.TrimSpace(i.value.URL)
+	return util.SanitizeTerminalText(strings.TrimSpace(i.value.URL))
 }
 
 type resultsModel struct {
@@ -60,6 +61,11 @@ type resultsModel struct {
 	coverSpinner spinner.Model
 	covers       map[string]coverState
 	results      []*source.Manga
+	status       string
+}
+
+func (m *resultsModel) setStatus(status string) {
+	m.status = strings.TrimSpace(status)
 }
 
 type resultsLayout struct {
@@ -230,11 +236,15 @@ func (m resultsModel) View() string {
 
 	l := m.layout()
 
+	footerText := fmt.Sprintf("Results for %q", m.query)
+	if m.status != "" {
+		footerText += " • " + m.status
+	}
 	footer := lipgloss.NewStyle().
 		Width(l.leftContentWidth).
 		Padding(0, 1).
 		Foreground(constant.MutedColor).
-		Render(fmt.Sprintf("Results for %q", m.query))
+		Render(footerText)
 
 	footerHeight := lipgloss.Height(footer)
 	listHeight := max(1, l.leftContentHeight-footerHeight)
@@ -381,9 +391,9 @@ func (m resultsModel) metadataContent() string {
 	}
 
 	header := []string{
-		fmt.Sprintf("Title: %s", item.value.Title),
-		fmt.Sprintf("ID: %s", item.value.ID),
-		fmt.Sprintf("URL: %s", item.value.URL),
+		fmt.Sprintf("Title: %s", util.SanitizeTerminalText(item.value.Title)),
+		fmt.Sprintf("ID: %s", util.SanitizeTerminalText(item.value.ID)),
+		fmt.Sprintf("URL: %s", util.SanitizeTerminalText(item.value.URL)),
 	}
 	if item.value.Metadata.ChapterCount > 0 {
 		header = append(header, fmt.Sprintf("Chapters: %d", item.value.Metadata.ChapterCount))
@@ -394,7 +404,7 @@ func (m resultsModel) metadataContent() string {
 		"",
 	)
 
-	return strings.Join(header, "\n") + m.renderMarkdown(desc)
+	return strings.Join(header, "\n") + m.renderMarkdown(util.SanitizeTerminalText(desc))
 }
 
 func (m resultsModel) rightPanelInnerWidth() int {

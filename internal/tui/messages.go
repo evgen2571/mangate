@@ -41,6 +41,11 @@ type downloadRequestedMsg struct {
 	Chapters []*source.Chapter
 }
 
+type downloadConfirmedMsg struct {
+	Manga    *source.Manga
+	Chapters []*source.Chapter
+}
+
 type downloadProgressMsg struct {
 	Title     string
 	Detail    string
