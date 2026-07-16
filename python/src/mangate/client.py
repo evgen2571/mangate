@@ -143,6 +143,7 @@ class Client:
         output: str | os.PathLike[str] | None = None,
         remove_source: bool = False,
         dry_run: bool = False,
+        assume_yes: bool = False,
     ) -> dict[str, Any]:
         """Create a CBZ or ZIP archive from an existing chapter directory."""
         if output_format.lower() not in {"cbz", "zip"}:
@@ -154,8 +155,42 @@ class Client:
             args.append("--remove-source")
         if dry_run:
             args.append("--dry-run")
+        if assume_yes:
+            args.append("--yes")
         args.append(os.fspath(chapter_directory))
         return self._json(args)["data"]
+
+    def convert_many(
+        self,
+        chapter_directories: Iterable[str | os.PathLike[str]],
+        *,
+        output_format: str = "cbz",
+        outputs: Iterable[str | os.PathLike[str]] | None = None,
+        remove_source: bool = False,
+        dry_run: bool = False,
+        assume_yes: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Convert chapter directories in input order.
+
+        ``outputs`` is optional. When supplied it must contain exactly one
+        destination for every source directory; this prevents accidental
+        destination reuse across a batch.
+        """
+        directories = [os.fspath(directory) for directory in chapter_directories]
+        destinations = None if outputs is None else [os.fspath(output) for output in outputs]
+        if destinations is not None and len(destinations) != len(directories):
+            raise ValueError("outputs must contain exactly one path per chapter directory")
+        return [
+            self.convert(
+                directory,
+                output_format=output_format,
+                output=None if destinations is None else destinations[index],
+                remove_source=remove_source,
+                dry_run=dry_run,
+                assume_yes=assume_yes,
+            )
+            for index, directory in enumerate(directories)
+        ]
 
     def inspect_archive(self, archive_path: str | os.PathLike[str]) -> dict[str, Any]:
         """Return archive entries, metadata state, and page count without extraction."""

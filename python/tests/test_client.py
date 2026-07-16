@@ -53,13 +53,14 @@ class ClientTests(unittest.TestCase):
         }
         process = _CompletedProcess(payload, 0)
         with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
-            result = Client().convert("chapter", output_format="cbz", remove_source=True, dry_run=True)
+            result = Client().convert("chapter", output_format="cbz", remove_source=True, dry_run=True, assume_yes=True)
         command = popen.call_args.args[0]
         self.assertIn("archive", command)
         self.assertIn("convert", command)
         self.assertIn("--format", command)
         self.assertIn("--remove-source", command)
         self.assertIn("--dry-run", command)
+        self.assertIn("--yes", command)
         self.assertEqual(result["format"], "cbz")
 
     def test_download_dry_run_uses_requested_format_without_writes(self) -> None:
@@ -77,6 +78,23 @@ class ClientTests(unittest.TestCase):
         self.assertIn("--yes", command)
         self.assertIn("zip", command)
         self.assertEqual(result["status"], "planned")
+
+    def test_convert_many_preserves_input_and_output_order(self) -> None:
+        first = _CompletedProcess({"formatVersion": "1", "operation": "archive.convert", "status": "success", "data": {"outputPath": "first.cbz"}}, 0)
+        second = _CompletedProcess({"formatVersion": "1", "operation": "archive.convert", "status": "success", "data": {"outputPath": "second.cbz"}}, 0)
+        with patch("mangate.client.subprocess.Popen", side_effect=[first, second]) as popen:
+            results = Client().convert_many(["first", "second"], output_format="cbz", outputs=["first.cbz", "second.cbz"], dry_run=True, assume_yes=True)
+        self.assertEqual([result["outputPath"] for result in results], ["first.cbz", "second.cbz"])
+        first_command, second_command = [call.args[0] for call in popen.call_args_list]
+        self.assertEqual(first_command[-1], "first")
+        self.assertEqual(second_command[-1], "second")
+        self.assertIn("first.cbz", first_command)
+        self.assertIn("second.cbz", second_command)
+        self.assertIn("--yes", first_command)
+
+    def test_convert_many_rejects_mismatched_destinations(self) -> None:
+        with self.assertRaisesRegex(ValueError, "one path per"):
+            Client().convert_many(["first", "second"], outputs=["only-one.cbz"])
 
 
 if __name__ == "__main__":

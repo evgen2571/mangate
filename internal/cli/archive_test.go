@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/app"
@@ -33,8 +34,9 @@ func TestArchiveConvertJSONCreatesCBZWithoutProvider(t *testing.T) {
 		Operation string `json:"operation"`
 		Status    string `json:"status"`
 		Data      struct {
-			OutputPath string `json:"outputPath"`
-			Format     string `json:"format"`
+			OutputPath string   `json:"outputPath"`
+			Format     string   `json:"format"`
+			Warnings   []string `json:"warnings"`
 			Validation struct {
 				Complete bool `json:"complete"`
 			} `json:"validation"`
@@ -48,6 +50,9 @@ func TestArchiveConvertJSONCreatesCBZWithoutProvider(t *testing.T) {
 	}
 	if filepath.Ext(response.Data.OutputPath) != ".cbz" {
 		t.Fatalf("output path = %q", response.Data.OutputPath)
+	}
+	if len(response.Data.Warnings) != 1 || !strings.Contains(response.Data.Warnings[0], "identity cannot be confirmed") {
+		t.Fatalf("warnings = %#v", response.Data.Warnings)
 	}
 }
 
@@ -88,6 +93,30 @@ func TestArchiveConvertDryRunDoesNotCreateArchive(t *testing.T) {
 	}
 }
 
+func TestArchiveConvertRequiresYesForDestructiveOperations(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "remove source", args: []string{"--format", "cbz", "archive", "convert", "--remove-source", "chapter"}, want: "removing the source"},
+		{name: "replace", args: []string{"--format", "cbz", "--existing-files", "replace", "archive", "convert", "chapter"}, want: "replacing an existing"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			application, err := app.New(config.DefaultConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := NewRootCmd(application)
+			cmd.SetArgs(test.args)
+			err = cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), test.want) || !strings.Contains(err.Error(), "--yes") {
+				t.Fatalf("Execute() error = %v, want acknowledgement error", err)
+			}
+		})
+	}
+}
+
 func TestArchiveInspectJSONIncludesStoredMetadata(t *testing.T) {
 	source := t.TempDir()
 	if err := os.WriteFile(filepath.Join(source, "0001.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
@@ -116,7 +145,8 @@ func TestArchiveInspectJSONIncludesStoredMetadata(t *testing.T) {
 	}
 	var response struct {
 		Data struct {
-			Metadata struct {
+			IdentityConfirmed bool `json:"identityConfirmed"`
+			Metadata          struct {
 				ExpectedPages int    `json:"expectedPages"`
 				Completion    string `json:"completion"`
 			} `json:"metadata"`
@@ -125,7 +155,7 @@ func TestArchiveInspectJSONIncludesStoredMetadata(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
 		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
 	}
-	if response.Data.Metadata.ExpectedPages != 1 || response.Data.Metadata.Completion != "complete" {
+	if response.Data.IdentityConfirmed || response.Data.Metadata.ExpectedPages != 1 || response.Data.Metadata.Completion != "complete" {
 		t.Fatalf("metadata = %#v", response.Data.Metadata)
 	}
 }

@@ -73,7 +73,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Inspect() error = %v", err)
 	}
-	if !inspection.Valid || !inspection.Complete || inspection.PageCount != 3 || inspection.Format != FormatCBZ {
+	if !inspection.Valid || !inspection.Complete || !inspection.IdentityConfirmed || inspection.PageCount != 3 || inspection.Format != FormatCBZ {
 		t.Fatalf("inspection = %#v", inspection)
 	}
 	if inspection.Metadata == nil || inspection.Metadata.Provider != "example" || inspection.Metadata.Volume != "2" || inspection.Metadata.ChapterNumber != "10" {
@@ -93,6 +93,22 @@ func TestCreateFromDirectoryRejectsIncompleteSourceAndLeavesNoFinalArchive(t *te
 	}
 	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
 		t.Fatalf("final archive exists after failure: %v", statErr)
+	}
+}
+
+func TestCreateFromDirectoryWarnsWhenLocalIdentityIsUnavailable(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.jpg", jpegPage())
+	result, err := CreateFromDirectory(Options{Format: FormatCBZ, SourceDir: source, OutputPath: filepath.Join(t.TempDir(), "chapter.cbz")})
+	if err != nil {
+		t.Fatalf("CreateFromDirectory() error = %v", err)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "identity cannot be confirmed") {
+		t.Fatalf("warnings = %#v", result.Warnings)
+	}
+	inspection, err := Inspect(result.OutputPath)
+	if err != nil || inspection.IdentityConfirmed {
+		t.Fatalf("inspection = %#v, error = %v", inspection, err)
 	}
 }
 

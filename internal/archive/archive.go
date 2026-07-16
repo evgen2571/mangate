@@ -103,6 +103,7 @@ type Result struct {
 	IncludedPages int        `json:"includedPages"`
 	Validation    Validation `json:"validation"`
 	SourceRemoved bool       `json:"sourceRemoved"`
+	Warnings      []string   `json:"warnings,omitempty"`
 }
 
 type Inspection struct {
@@ -112,6 +113,7 @@ type Inspection struct {
 	Entries           []string  `json:"entries,omitempty"`
 	UnexpectedEntries []string  `json:"unexpectedEntries,omitempty"`
 	MetadataFound     bool      `json:"metadataFound"`
+	IdentityConfirmed bool      `json:"identityConfirmed"`
 	Metadata          *Metadata `json:"metadata,omitempty"`
 }
 
@@ -160,6 +162,7 @@ func CreateFromDirectory(options Options) (Result, error) {
 			options.Metadata.ExpectedPages = state.ExpectedPages
 		}
 	}
+	warnings := metadataIdentityWarnings(options.Metadata)
 
 	if options.ExistingFileMode == "" {
 		options.ExistingFileMode = ExistingSkip
@@ -167,7 +170,7 @@ func CreateFromDirectory(options Options) (Result, error) {
 	if info, statErr := os.Stat(options.OutputPath); statErr == nil && !info.IsDir() {
 		inspection, inspectErr := Inspect(options.OutputPath)
 		if options.ExistingFileMode == ExistingSkip && inspectErr == nil && inspection.Complete && identitiesMatch(inspection.Validation, options.Metadata) {
-			return Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusSkipped, IncludedPages: inspection.PageCount, Validation: inspection.Validation}, nil
+			return Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusSkipped, IncludedPages: inspection.PageCount, Validation: inspection.Validation, Warnings: warnings}, nil
 		}
 		if options.ExistingFileMode != ExistingReplace {
 			return Result{}, fmt.Errorf("create archive: destination %q already exists; use --existing-files replace to replace it", options.OutputPath)
@@ -202,7 +205,7 @@ func CreateFromDirectory(options Options) (Result, error) {
 	if err := os.Rename(temporaryPath, options.OutputPath); err != nil {
 		return Result{}, fmt.Errorf("create archive: finalize archive: %w", err)
 	}
-	result := Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusComplete, IncludedPages: len(pages), Validation: inspection.Validation}
+	result := Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusComplete, IncludedPages: len(pages), Validation: inspection.Validation, Warnings: warnings}
 	if options.RemoveSource {
 		if err := os.RemoveAll(options.SourceDir); err != nil {
 			return result, fmt.Errorf("create archive: archive completed but remove source directory: %w", err)
@@ -210,6 +213,19 @@ func CreateFromDirectory(options Options) (Result, error) {
 		result.SourceRemoved = true
 	}
 	return result, nil
+}
+
+func metadataIdentityWarnings(metadata Metadata) []string {
+	switch {
+	case metadata.TitleID == "" && metadata.ChapterID == "":
+		return []string{"source metadata is unavailable; archive identity cannot be confirmed"}
+	case metadata.TitleID == "":
+		return []string{"source metadata has no title identity; archive identity cannot be fully confirmed"}
+	case metadata.ChapterID == "":
+		return []string{"source metadata has no chapter identity; archive identity cannot be fully confirmed"}
+	default:
+		return nil
+	}
 }
 
 func sourcePages(directory string) ([]pageFile, *chapterState, error) {
@@ -484,6 +500,7 @@ func Inspect(path string) (Inspection, error) {
 	}
 	inspection.TitleID = metadata.TitleID
 	inspection.ChapterID = metadata.ChapterID
+	inspection.IdentityConfirmed = inspection.TitleID != "" && inspection.ChapterID != ""
 	if inspection.MetadataFound {
 		inspection.Metadata = &metadata
 	}

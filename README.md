@@ -48,6 +48,7 @@ mangate --format cbz download <title-id> --range 1-10 --dry-run
 
 # Convert pages that were already downloaded. This never contacts a provider.
 mangate --format cbz archive convert ./library/Example-123/Chapter-1
+mangate --format cbz archive convert ./library/Example-123/Chapter-1 --remove-source --yes
 mangate archive inspect ./library/Example-123/Chapter-1.cbz
 mangate archive verify ./library/Example-123/Chapter-1.cbz
 ```
@@ -80,7 +81,7 @@ Mangate writes every archive to a temporary sibling file, reopens and verifies i
 
 Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised. Every human-readable download completion (including archive reuse and partial failure) reports completed, skipped/reused, failed, and archive-failure counts plus the resulting output paths. Downloads selecting 25 or more chapters, replacing outputs, or deleting archive source pages require `--yes`; use `--dry-run` first to inspect the resolved plan.
 
-`archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, and completion state without extracting anything.
+`archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata; the result carries an explicit warning when title or chapter identity cannot be confirmed. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, completion state, and an explicit `identityConfirmed` value without extracting anything.
 
 Use `mangate --format cbz archive convert <chapter-directory> --dry-run` to inspect a local conversion target without creating an archive or deleting source pages. The plan reports the target path, whether it already exists, and whether source cleanup was requested.
 
@@ -145,4 +146,4 @@ except MangateError as error:
 
 `Client` methods block and return structured dictionaries. Each call runs independently and may be used from different Python threads. Pass a `threading.Event` as `cancel_event` to `download` to interrupt the process. The same durable-page guarantees apply.
 
-`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan and `assume_yes=True` for broad or destructive operations that require explicit acknowledgement. It returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning; `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.
+`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan and `assume_yes=True` for broad or destructive operations that require explicit acknowledgement. It returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning and `assume_yes=True` for source deletion or replacement, and `Client.convert_many` converts directories sequentially in input order (with optional one-to-one output paths). `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.
