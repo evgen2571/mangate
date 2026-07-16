@@ -81,9 +81,22 @@ func TestReusableArchiveSelectionSkipsValidatedMatchingArchives(t *testing.T) {
 	}
 	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", ArchivePath: archivePath, Status: "pending"}}}
 	selection := []*source.Chapter{{ID: "chapter"}}
-	pending := reusableArchiveSelection(&record, selection, &source.Manga{ID: "title"})
-	if len(pending) != 0 || record.Chapters[0].Status != "skipped" || record.Chapters[0].Validation == nil {
+	pending, err := reusableArchiveSelection(&record, selection, &source.Manga{ID: "title"})
+	if err != nil || len(pending) != 0 || record.Chapters[0].Status != "skipped" || record.Chapters[0].Validation == nil {
 		t.Fatalf("pending = %#v, record = %#v", pending, record)
+	}
+}
+
+func TestReusableArchiveSelectionRejectsMismatchedExistingArchive(t *testing.T) {
+	directory := t.TempDir()
+	archivePath := filepath.Join(directory, "chapter.cbz")
+	if _, err := archive.CreateFromDirectory(archive.Options{Format: archive.FormatCBZ, SourceDir: writeArchiveSource(t), OutputPath: archivePath, Metadata: archive.Metadata{TitleID: "other-title", ChapterID: "other-chapter"}}); err != nil {
+		t.Fatal(err)
+	}
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", ArchivePath: archivePath, Status: "pending"}}}
+	_, err := reusableArchiveSelection(&record, []*source.Chapter{{ID: "chapter"}}, &source.Manga{ID: "title"})
+	if err == nil || !strings.Contains(err.Error(), "different chapter") {
+		t.Fatalf("reusableArchiveSelection() error = %v, want collision", err)
 	}
 }
 

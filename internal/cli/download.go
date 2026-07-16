@@ -86,7 +86,10 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			record := downloadRecord{Provider: provider.Name(), Title: title, Format: format, OutputRoot: a.Cfg.Download.Dir, Status: "in_progress", StartedAt: started, Chapters: chapterRecords(a.Cfg.Download.Dir, title, selection, format, "pending")}
 			pendingSelection := selection
 			if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
-				pendingSelection = reusableArchiveSelection(&record, selection, title)
+				pendingSelection, err = reusableArchiveSelection(&record, selection, title)
+				if err != nil {
+					return err
+				}
 			}
 			if dryRun {
 				record.Status = "planned"
@@ -214,19 +217,29 @@ func updateChapterRecordStates(record *downloadRecord) {
 	}
 }
 
-func reusableArchiveSelection(record *downloadRecord, selection []*source.Chapter, title *source.Manga) []*source.Chapter {
+func reusableArchiveSelection(record *downloadRecord, selection []*source.Chapter, title *source.Manga) ([]*source.Chapter, error) {
 	pending := make([]*source.Chapter, 0, len(selection))
 	for index, chapter := range selection {
 		chapterRecord := &record.Chapters[index]
+		if _, err := os.Stat(chapterRecord.ArchivePath); err != nil {
+			if os.IsNotExist(err) {
+				pending = append(pending, chapter)
+				continue
+			}
+			return nil, fmt.Errorf("inspect existing archive %q: %w", chapterRecord.ArchivePath, err)
+		}
 		inspection, err := archive.Inspect(chapterRecord.ArchivePath)
 		if err == nil && inspection.Complete && inspection.TitleID == title.ID && inspection.ChapterID == chapter.ID {
 			chapterRecord.Status = "skipped"
 			chapterRecord.Validation = &inspection.Validation
 			continue
 		}
-		pending = append(pending, chapter)
+		if err != nil {
+			return nil, fmt.Errorf("existing archive %q is invalid; use --existing-files replace to replace it: %w", chapterRecord.ArchivePath, err)
+		}
+		return nil, fmt.Errorf("existing archive %q belongs to a different chapter; use --existing-files replace to replace it", chapterRecord.ArchivePath)
 	}
-	return pending
+	return pending, nil
 }
 
 type chapterSelection struct {
