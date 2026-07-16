@@ -67,6 +67,22 @@ func TestModelSearchFailureReturnsToEditableSearch(t *testing.T) {
 	}
 }
 
+func TestNewWithSearchResultsStartsAtResolvedResults(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := []*source.Manga{{ID: "manga-a", Title: "Manga A"}}
+	created := NewWithSearchResults(a, context.Background(), "manga", results)
+	m, ok := created.(*model)
+	if !ok {
+		t.Fatalf("NewWithSearchResults() = %T, want *model", created)
+	}
+	if m.state != stateResults || m.results.query != "manga" || m.results.selectedManga() != results[0] {
+		t.Fatalf("model = %#v, want resolved result state", m)
+	}
+}
+
 func TestTUISanitizationDoesNotChangeProviderIdentifiers(t *testing.T) {
 	manga := &source.Manga{ID: "id\x1b[2J", Title: "title\nnext", Metadata: source.MangaMetadata{Description: map[string]string{"en": "body\ttext"}}}
 	chapter := &source.Chapter{ID: "chapter\x1b[2J", Title: "part\nnext"}

@@ -80,6 +80,58 @@ func TestChaptersCommandRejectsEmptyMangaID(t *testing.T) {
 	}
 }
 
+func TestSearchCommandShowsDistinguishingMetadata(t *testing.T) {
+	a := newTestApp(t, fakeProvider{searchResults: []*source.Manga{{
+		ID: "stable-id", Title: "Primary Title", URL: "https://example.test/title/stable-id",
+		Metadata: source.MangaMetadata{
+			AlternativeTitle: "Alternative Title", ContentType: "safe", Status: "ongoing", Language: "ja", Year: 2024,
+		},
+	}}})
+
+	cmd := NewSearchCmd(a)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"primary"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	for _, want := range []string{"1. Primary Title", "Provider: fake", "Alternative title: Alternative Title", "Content type: safe", "Status: ongoing", "Language: ja", "Year: 2024", "Reference: stable-id"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output missing %q\noutput:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestSearchCommandFiltersLanguageAndContentType(t *testing.T) {
+	a := newTestApp(t, fakeProvider{searchResults: []*source.Manga{
+		{ID: "wanted", Title: "Wanted", Metadata: source.MangaMetadata{Language: "ja", ContentType: "safe"}},
+		{ID: "wrong-language", Title: "Wrong Language", Metadata: source.MangaMetadata{Language: "en", ContentType: "safe"}},
+		{ID: "wrong-type", Title: "Wrong Type", Metadata: source.MangaMetadata{Language: "ja", ContentType: "erotica"}},
+	}})
+
+	cmd := NewRootCmd(a)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--language", "ja", "search", "wanted", "--content-type", "safe"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !strings.Contains(out.String(), "Wanted") || strings.Contains(out.String(), "Wrong Language") || strings.Contains(out.String(), "Wrong Type") {
+		t.Fatalf("unexpected filtered output:\n%s", out.String())
+	}
+}
+
+func TestSearchCommandRejectsInteractiveJSON(t *testing.T) {
+	cmd := NewRootCmd(newTestApp(t, fakeProvider{}))
+	cmd.SetArgs([]string{"--json", "search", "wanted", "--interactive"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--interactive cannot be combined with --json") {
+		t.Fatalf("Execute() error = %v, want interactive JSON conflict", err)
+	}
+}
+
 func newTestApp(t *testing.T, provider fakeProvider) *app.App {
 	t.Helper()
 
@@ -100,7 +152,8 @@ func newTestApp(t *testing.T, provider fakeProvider) *app.App {
 }
 
 type fakeProvider struct {
-	chapters []*source.Chapter
+	chapters      []*source.Chapter
+	searchResults []*source.Manga
 }
 
 func (p fakeProvider) Name() string { return "fake" }
@@ -114,7 +167,7 @@ func (p fakeProvider) Title(_ context.Context, id string) (*source.Manga, error)
 }
 
 func (p fakeProvider) Search(context.Context, string) ([]*source.Manga, error) {
-	return nil, nil
+	return p.searchResults, nil
 }
 
 func (p fakeProvider) Chapters(_ context.Context, manga *source.Manga) ([]*source.Chapter, error) {

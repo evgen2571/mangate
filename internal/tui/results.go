@@ -46,7 +46,18 @@ func (i resultItem) Description() string {
 	if i.value == nil {
 		return ""
 	}
-	return util.SanitizeTerminalText(strings.TrimSpace(i.value.URL))
+
+	parts := []string{}
+	if value := strings.TrimSpace(i.value.Metadata.AlternativeTitle); value != "" {
+		parts = append(parts, value)
+	}
+	if value := strings.TrimSpace(i.value.Metadata.Status); value != "" {
+		parts = append(parts, value)
+	}
+	if value := strings.TrimSpace(i.value.Metadata.ContentType); value != "" {
+		parts = append(parts, value)
+	}
+	return util.SanitizeTerminalText(strings.Join(parts, " • "))
 }
 
 type resultsModel struct {
@@ -55,6 +66,7 @@ type resultsModel struct {
 	initialized bool
 
 	query        string
+	provider     string
 	keys         resultsKeyMap
 	list         list.Model
 	metadata     viewport.Model
@@ -76,7 +88,7 @@ type resultsLayout struct {
 	bottomContentHeight int
 }
 
-func newResultsModel(query string, results []*source.Manga) resultsModel {
+func newResultsModel(query, provider string, results []*source.Manga) resultsModel {
 	items := make([]list.Item, 0, len(results))
 	for i, r := range results {
 		items = append(items, resultItem{
@@ -100,6 +112,7 @@ func newResultsModel(query string, results []*source.Manga) resultsModel {
 
 	return resultsModel{
 		query:        query,
+		provider:     strings.TrimSpace(provider),
 		keys:         newResultsKeyMap(),
 		list:         l,
 		metadata:     vp,
@@ -390,13 +403,33 @@ func (m resultsModel) metadataContent() string {
 		}
 	}
 
-	header := []string{
-		fmt.Sprintf("Title: %s", util.SanitizeTerminalText(item.value.Title)),
-		fmt.Sprintf("ID: %s", util.SanitizeTerminalText(item.value.ID)),
-		fmt.Sprintf("URL: %s", util.SanitizeTerminalText(item.value.URL)),
+	header := []string{fmt.Sprintf("Title: %s", util.SanitizeTerminalText(item.value.Title))}
+	if m.provider != "" {
+		header = append(header, fmt.Sprintf("Provider: %s", util.SanitizeTerminalText(m.provider)))
+	}
+	if item.value.Metadata.AlternativeTitle != "" {
+		header = append(header, fmt.Sprintf("Alternative title: %s", util.SanitizeTerminalText(item.value.Metadata.AlternativeTitle)))
+	}
+	if item.value.Metadata.ContentType != "" {
+		header = append(header, fmt.Sprintf("Content type: %s", util.SanitizeTerminalText(item.value.Metadata.ContentType)))
+	}
+	if item.value.Metadata.Status != "" {
+		header = append(header, fmt.Sprintf("Status: %s", util.SanitizeTerminalText(item.value.Metadata.Status)))
+	}
+	if item.value.Metadata.Language != "" {
+		header = append(header, fmt.Sprintf("Language: %s", util.SanitizeTerminalText(item.value.Metadata.Language)))
+	}
+	if item.value.Metadata.Year > 0 {
+		header = append(header, fmt.Sprintf("Year: %d", item.value.Metadata.Year))
 	}
 	if item.value.Metadata.ChapterCount > 0 {
 		header = append(header, fmt.Sprintf("Chapters: %d", item.value.Metadata.ChapterCount))
+	}
+	if item.value.ID != "" {
+		header = append(header, fmt.Sprintf("Reference: %s", util.SanitizeTerminalText(item.value.ID)))
+	}
+	if item.value.URL != "" {
+		header = append(header, fmt.Sprintf("URL: %s", util.SanitizeTerminalText(item.value.URL)))
 	}
 	header = append(header,
 		"",

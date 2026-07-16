@@ -19,7 +19,7 @@ func TestChaptersShortHelpIsReadableAndShowsSelectionCommands(t *testing.T) {
 }
 
 func TestResultsShortHelpKeepsOnlyPrimaryActions(t *testing.T) {
-	m := newResultsModel("query", nil)
+	m := newResultsModel("query", "mangadex", nil)
 	bindings := m.HelpKeys(newKeyMap()).ShortHelp()
 
 	if got, max := len(bindings), 7; got > max {

@@ -44,6 +44,18 @@ func NewTitleCmd(a *app.App) *cobra.Command {
 			if title.Metadata.Status != "" {
 				writeHuman(cmd.OutOrStdout(), "Status: %s\n", title.Metadata.Status)
 			}
+			if title.Metadata.AlternativeTitle != "" {
+				writeHuman(cmd.OutOrStdout(), "Alternative title: %s\n", title.Metadata.AlternativeTitle)
+			}
+			if title.Metadata.ContentType != "" {
+				writeHuman(cmd.OutOrStdout(), "Content type: %s\n", title.Metadata.ContentType)
+			}
+			if title.Metadata.Language != "" {
+				writeHuman(cmd.OutOrStdout(), "Language: %s\n", title.Metadata.Language)
+			}
+			if title.Metadata.Year > 0 {
+				writeHuman(cmd.OutOrStdout(), "Year: %d\n", title.Metadata.Year)
+			}
 			if description := preferredDescription(title.Metadata.Description); description != "" {
 				writeHuman(cmd.OutOrStdout(), "\n%s\n", description)
 			}

@@ -25,6 +25,7 @@ mangate diagnostics
 
 # Find a title, then inspect it and its chapters.
 mangate search "example title" --limit 10
+mangate search "example title" --interactive
 mangate title <title-id>
 mangate chapters <title-id>
 
@@ -52,6 +53,8 @@ mangate --format cbz archive convert ./library/Example-123/Chapter-1 --remove-so
 mangate archive inspect ./library/Example-123/Chapter-1.cbz
 mangate archive verify ./library/Example-123/Chapter-1.cbz
 ```
+
+Human-readable search results include the provider, alternative title, content rating, publication status, original language, and year when the provider supplies them. Use `--language` to filter by original language and `--content-type` to filter content ratings when supplied by a provider. Add `--interactive` to open matching results in the TUI without repeating the search. Use the displayed `Reference` value with `mangate title`, `mangate chapters`, or `mangate download`; `--json` retains the complete structured metadata.
 
 `--chapter` rejects ambiguous releases. Use `--chapter-id` in that case. Chapters are listed in ascending provider chapter sequence with their stable IDs and languages. `--range`, `--before`, and `--after` currently compare provider chapter labels, so stable chapter IDs are the safe choice for special labels such as `Prologue`. Archive downloads validate and reuse matching existing archives under the default `skip` policy without downloading page content again.
 

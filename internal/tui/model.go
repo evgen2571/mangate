@@ -93,6 +93,16 @@ func NewWithContext(a *app.App, baseContext context.Context) tea.Model {
 	return model
 }
 
+// NewWithSearchResults opens the TUI at an already-resolved search result
+// list. It lets direct CLI search hand off to interactive selection without
+// repeating the provider request.
+func NewWithSearchResults(a *app.App, baseContext context.Context, query string, results []*source.Manga) tea.Model {
+	m := NewWithContext(a, baseContext).(*model)
+	m.results = newResultsModel(query, a.Cfg.Provider, results)
+	m.state = stateResults
+	return m
+}
+
 func (m model) Init() tea.Cmd {
 	return m.search.Init()
 }
@@ -123,7 +133,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loading.spinner.Tick, m.searchMangaCmd(msg.Query))
 
 	case searchSucceededMsg:
-		m.results = newResultsModel(msg.Query, msg.Results)
+		m.results = newResultsModel(msg.Query, m.app.Cfg.Provider, msg.Results)
 		m.state = stateResults
 		m.resizeActiveModel()
 
