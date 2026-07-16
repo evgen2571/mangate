@@ -124,6 +124,31 @@ type resultsHelpKeyMap struct {
 	local  resultsKeyMap
 }
 
+type formatHelpKeyMap struct{ global keyMap }
+
+func (k formatHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("↑/k", "↓/j"), key.WithHelp("↑/k ↓/j", "move")),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "continue")),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		k.global.Config, k.global.Help, k.global.Quit,
+	}
+}
+
+func (k formatHelpKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
+
+type confirmHelpKeyMap struct{ global keyMap }
+
+func (k confirmHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "start download")),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "change format")),
+		k.global.Config, k.global.Help, k.global.Quit,
+	}
+}
+
+func (k confirmHelpKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
+
 func (k searchHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.local.Submit,

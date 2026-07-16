@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/config"
@@ -14,6 +15,8 @@ import (
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
 )
+
+func (m confirmModel) HelpKeys(global keyMap) help.KeyMap { return confirmHelpKeyMap{global: global} }
 
 type confirmModel struct {
 	manga             *source.Manga

@@ -30,6 +30,11 @@ func TestResultsShortHelpKeepsOnlyPrimaryActions(t *testing.T) {
 	assertHelpContains(t, bindings, "?", "help")
 }
 
+func TestFormatAndConfirmationHelpReflectActiveActions(t *testing.T) {
+	assertHelpContains(t, (formatHelpKeyMap{global: newKeyMap()}).ShortHelp(), "enter", "continue")
+	assertHelpContains(t, (confirmHelpKeyMap{global: newKeyMap()}).ShortHelp(), "enter", "start download")
+}
+
 func assertHelpContains(t *testing.T, bindings []key.Binding, keyText, desc string) {
 	t.Helper()
 

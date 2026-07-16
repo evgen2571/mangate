@@ -591,8 +591,10 @@ func (m model) currentHelp() help.KeyMap {
 		return m.downloading.HelpKeys(m.keys)
 	case stateConfig:
 		return m.config.HelpKeys(m.keys)
-	case stateFormat, stateConfirm:
-		return m.chapters.HelpKeys(m.keys)
+	case stateFormat:
+		return m.format.HelpKeys(m.keys)
+	case stateConfirm:
+		return m.confirm.HelpKeys(m.keys)
 	case stateOutput:
 		return m.output.HelpKeys(m.keys)
 	case stateCompletion:
