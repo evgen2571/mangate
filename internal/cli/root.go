@@ -97,7 +97,9 @@ func runTUI(cmd *cobra.Command, ui tea.Model) error {
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
-	p := tea.NewProgram(ui)
+	// The alternate screen keeps TUI frames out of shell scrollback and Bubble
+	// Tea restores the previous terminal state when the program exits.
+	p := tea.NewProgram(ui, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }

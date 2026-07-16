@@ -1,4 +1,4 @@
-// Package interactive provides Mangate's deliberately plain terminal interface.
+// Package interactive provides Mangate's keyboard-first terminal interface.
 package interactive
 
 import (
@@ -11,14 +11,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/config"
-	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
-	"github.com/evgen2571/mangate/internal/usecase"
 	"github.com/evgen2571/mangate/internal/util"
 )
 
@@ -44,12 +47,20 @@ type model struct {
 	width, height int
 
 	input         textinput.Model
+	resultsList   list.Model
+	spinner       spinner.Model
+	progressBar   progress.Model
+	help          help.Model
+	doneViewport  viewport.Model
+	showHelp      bool
+	loading       bool
 	status        string
 	query         string
 	results       []*source.Manga
 	resultCursor  int
 	chapters      []*source.Chapter
 	chapterCursor int
+	chapterOffset int
 	selected      map[int]bool
 	chapterFilter string
 	filtering     bool
@@ -60,30 +71,12 @@ type model struct {
 	progress      downloadProgress
 	progressCh    chan tea.Msg
 	completion    string
+	doneErr       error
+	doneCompleted int
+	doneFailed    int
 	configCursor  int
 	configEditing bool
 	draft         config.Config
-}
-
-type searchDone struct {
-	query   string
-	results []*source.Manga
-	err     error
-}
-type chaptersDone struct {
-	manga    *source.Manga
-	chapters []*source.Chapter
-	err      error
-	all      bool
-}
-type downloadProgress struct {
-	completed, total, completedChapters, totalChapters int
-	active                                             string
-}
-type downloadDone struct {
-	err                        error
-	completed, skipped, failed int
-	paths                      []string
 }
 
 func New(a *app.App) tea.Model { return NewWithContext(a, context.Background()) }
@@ -93,26 +86,33 @@ func NewWithContext(a *app.App, ctx context.Context) tea.Model {
 		ctx = context.Background()
 	}
 	m := &model{app: a, ctx: ctx, screen: searchScreen, selected: map[int]bool{}, rangeAnchor: -1, format: archive.FormatDirectory}
+	m.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
+	m.progressBar = progress.New(progress.WithDefaultGradient())
+	m.progressBar.ShowPercentage = true
+	m.help = help.New()
+	m.doneViewport = viewport.New(1, 1)
 	if a != nil {
 		m.format, _ = archive.ParseFormat(a.Cfg.Download.Format)
 	}
-	m.resetInput("search: ", "title")
+	m.resetInput("Search: ", "")
+	m.newResultsList(nil)
 	return m
 }
 
 func NewWithSearchResults(a *app.App, ctx context.Context, query string, results []*source.Manga) tea.Model {
 	m := NewWithContext(a, ctx).(*model)
 	m.query, m.results, m.screen = query, results, resultsScreen
+	m.newResultsList(results)
 	return m
 }
 
-func (m *model) Init() tea.Cmd { return textinput.Blink }
+func (m *model) Init() tea.Cmd { return tea.Batch(textinput.Blink, m.spinner.Tick) }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.input.Width = max(16, msg.Width-12)
+		m.resize()
 		return m, nil
 	case searchDone:
 		if msg.err != nil {
@@ -120,7 +120,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = searchScreen
 			return m, nil
 		}
-		m.query, m.results, m.resultCursor, m.status, m.screen = msg.query, msg.results, 0, "", resultsScreen
+		m.query, m.results, m.resultCursor, m.status, m.screen, m.loading = msg.query, msg.results, 0, "", resultsScreen, false
+		m.newResultsList(msg.results)
 		return m, nil
 	case chaptersDone:
 		if msg.err != nil {
@@ -128,7 +129,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = resultsScreen
 			return m, nil
 		}
-		m.manga, m.chapters, m.chapterCursor, m.selected, m.chapterFilter, m.filtering, m.rangeAnchor = msg.manga, msg.chapters, 0, map[int]bool{}, "", false, -1
+		m.manga, m.chapters, m.chapterCursor, m.chapterOffset, m.selected, m.chapterFilter, m.filtering, m.rangeAnchor, m.loading = msg.manga, msg.chapters, 0, 0, map[int]bool{}, "", false, -1, false
 		if msg.all {
 			for i, chapter := range m.chapters {
 				if chapter != nil {
@@ -146,6 +147,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadDone:
 		m.cancel = nil
 		m.screen = doneScreen
+		m.loading = false
+		m.doneErr, m.doneCompleted, m.doneFailed = msg.err, msg.completed, msg.failed
 		m.completion = fmt.Sprintf("complete: %d  reused: %d  failed: %d", msg.completed, msg.skipped, msg.failed)
 		if msg.err != nil {
 			m.completion += "\n" + util.SanitizeTerminalText(msg.err.Error())
@@ -153,8 +156,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.paths) > 0 {
 			m.completion += "\n" + strings.Join(msg.paths, "\n")
 		}
+		m.doneViewport.SetContent(m.completion)
+		m.resize()
 		return m, nil
 	case tea.KeyMsg:
+		if msg.String() == "?" && m.screen != workingScreen {
+			m.showHelp = !m.showHelp
+			return m, nil
+		}
+		if m.showHelp && msg.String() == "esc" {
+			m.showHelp = false
+			return m, nil
+		}
 		if msg.String() == "ctrl+c" || msg.String() == "q" {
 			if m.screen == workingScreen && m.cancel != nil {
 				m.cancel()
@@ -163,10 +176,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
+		if m.width > 0 && (m.width < minWidth || m.height < minHeight) {
+			return m, nil
+		}
 		if msg.String() == "ctrl+g" && m.screen != workingScreen {
 			m.previous, m.screen, m.draft, m.configCursor, m.configEditing = m.screen, configScreen, m.app.Cfg.Clone(), 0, false
 			return m, nil
 		}
+	}
+	if m.loading || m.screen == workingScreen {
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 	switch m.screen {
 	case searchScreen:
@@ -184,8 +205,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case configScreen:
 		return m.updateConfig(msg)
 	case doneScreen:
-		if key, ok := msg.(tea.KeyMsg); ok && (key.String() == "enter" || key.String() == "esc") {
-			m.screen = chaptersScreen
+		if key, ok := msg.(tea.KeyMsg); ok {
+			if key.String() == "enter" || key.String() == "esc" {
+				m.screen = chaptersScreen
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.doneViewport, cmd = m.doneViewport.Update(msg)
+			return m, cmd
 		}
 	}
 	return m, nil
@@ -197,7 +224,7 @@ func (m *model) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if q == "" {
 			return m, nil
 		}
-		m.status = "searching " + q
+		m.status, m.loading = "Searching...", true
 		return m, func() tea.Msg {
 			results, err := m.app.UseCases().SearchManga(nil, q)
 			if err == nil {
@@ -214,28 +241,33 @@ func (m *model) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
-		return m, nil
+		var cmd tea.Cmd
+		m.resultsList, cmd = m.resultsList.Update(msg)
+		return m, cmd
 	}
 	switch key.String() {
 	case "j", "down":
-		m.resultCursor = move(m.resultCursor, 1, len(m.results))
+		m.resultsList.CursorDown()
 	case "k", "up":
-		m.resultCursor = move(m.resultCursor, -1, len(m.results))
+		m.resultsList.CursorUp()
 	case "esc", "backspace":
 		m.screen = searchScreen
-		m.resetInput("search: ", "title")
+		m.resetInput("Search: ", m.query)
 	case "enter", "f":
-		if len(m.results) == 0 || m.results[m.resultCursor] == nil {
+		item, ok := m.resultsList.SelectedItem().(resultItem)
+		if !ok || item.manga == nil {
 			return m, nil
 		}
-		manga, all := m.results[m.resultCursor], key.String() == "f"
-		m.status = "loading chapters"
+		manga, all := item.manga, key.String() == "f"
+		m.status, m.loading = "Loading chapters...", true
 		return m, func() tea.Msg {
 			chapters, err := m.app.UseCases().Chapters(nil, manga)
 			return chaptersDone{manga, chapters, err, all}
 		}
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.resultsList, cmd = m.resultsList.Update(msg)
+	return m, cmd
 }
 
 func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -308,7 +340,7 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "/":
 		m.filtering = true
-		m.resetInput("filter: ", "chapter, language, local:complete")
+		m.resetInput("Filter: ", m.chapterFilter)
 	case "esc", "backspace":
 		m.screen = resultsScreen
 	case "enter":
@@ -342,7 +374,7 @@ func (m *model) updateFormat(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.format = formats[(index+len(formats)-1)%len(formats)]
 	case "enter":
 		m.screen = outputScreen
-		m.resetInput("output: ", m.app.Cfg.Download.Dir)
+		m.resetInput("Output: ", m.app.Cfg.Download.Dir)
 	case "esc":
 		m.screen = chaptersScreen
 	}
@@ -370,6 +402,7 @@ func (m *model) updateOutput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = reviewScreen
 			return m, nil
 		}
+		m.status = ""
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -431,7 +464,7 @@ func (m *model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.configCursor = move(m.configCursor, -1, len(configLabels))
 	case "enter":
 		m.configEditing = true
-		m.resetInput("value: ", m.configValue())
+		m.resetInput("Value: ", m.configValue())
 	case "a":
 		if err := m.app.ApplyConfig(m.draft); err != nil {
 			m.status = err.Error()
@@ -448,80 +481,6 @@ func (m *model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = m.previous
 	}
 	return m, nil
-}
-
-func (m *model) View() string {
-	lines := []string{"mangate"}
-	switch m.screen {
-	case searchScreen:
-		lines = append(lines, "", m.input.View(), "", "enter search  ctrl+g config  q quit")
-	case resultsScreen:
-		lines = append(lines, "", "results: "+m.query)
-		for i, r := range m.results {
-			mark := " "
-			if i == m.resultCursor {
-				mark = ">"
-			}
-			title := "unknown"
-			if r != nil {
-				title = util.SanitizeTerminalText(r.Title)
-			}
-			lines = append(lines, fmt.Sprintf("%s %s", mark, title))
-		}
-		lines = append(lines, "", "j/k move  enter chapters  f all chapters  esc back")
-	case chaptersScreen:
-		lines = append(lines, "", util.SanitizeTerminalText(m.manga.Title))
-		for position, index := range m.visibleChapters() {
-			mark := " "
-			if position == m.chapterCursor {
-				mark = ">"
-			}
-			check := "[ ]"
-			if m.selected[index] {
-				check = "[x]"
-			}
-			lines = append(lines, fmt.Sprintf("%s %s %s", mark, check, m.chapterLabel(index)))
-		}
-		if m.filtering {
-			lines = append(lines, "", m.input.View())
-		}
-		lines = append(lines, "", fmt.Sprintf("%d selected. space toggle  a all  d clear  l latest  r range  / filter  enter continue", len(m.selected)))
-	case formatScreen:
-		lines = append(lines, "", "format")
-		for _, f := range []archive.Format{archive.FormatDirectory, archive.FormatCBZ, archive.FormatZIP} {
-			mark := " "
-			if f == m.format {
-				mark = ">"
-			}
-			lines = append(lines, fmt.Sprintf("%s %s", mark, f))
-		}
-		lines = append(lines, "", "j/k choose  enter continue  esc back")
-	case outputScreen:
-		lines = append(lines, "", m.input.View(), "", "enter continue  esc back")
-	case reviewScreen:
-		lines = append(lines, "", fmt.Sprintf("%s", util.SanitizeTerminalText(m.manga.Title)), fmt.Sprintf("chapters: %d", len(m.selectedChapters())), "format: "+string(m.format), "output: "+m.app.Cfg.Download.Dir, "", "enter download  esc back")
-	case configScreen:
-		lines = append(lines, "", "config")
-		for i, label := range configLabels {
-			mark := " "
-			if i == m.configCursor {
-				mark = ">"
-			}
-			lines = append(lines, fmt.Sprintf("%s %s: %s", mark, label, m.configValueAt(i)))
-		}
-		if m.configEditing {
-			lines = append(lines, "", m.input.View())
-		}
-		lines = append(lines, "", "enter edit  a apply  s save  esc back")
-	case workingScreen:
-		lines = append(lines, "", fmt.Sprintf("downloading %d/%d pages", m.progress.completed, m.progress.total), fmt.Sprintf("chapters %d/%d", m.progress.completedChapters, m.progress.totalChapters), m.progress.active, "", "q cancel")
-	case doneScreen:
-		lines = append(lines, "", m.completion, "", "enter back to chapters")
-	}
-	if m.status != "" {
-		lines = append(lines, "", m.status)
-	}
-	return strings.Join(lines, "\n") + "\n"
 }
 
 func (m *model) openFormat() {
@@ -589,63 +548,6 @@ func validOutput(path string) error {
 		return errors.New("output is an existing file")
 	}
 	return nil
-}
-
-func (m *model) waitForProgress() tea.Cmd {
-	return func() tea.Msg { return <-m.progressCh }
-}
-
-func (m *model) download(ctx context.Context, chapters []*source.Chapter, progressCh chan tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		go func() {
-			var completed, skipped, failed int
-			paths := []string{}
-			err := m.app.UseCases().DownloadChapters(ctx, m.manga, chapters, func(p usecase.DownloadProgress) {
-				active := ""
-				for _, c := range p.Chapters {
-					if c.Active {
-						active = c.Name
-						break
-					}
-				}
-				progressCh <- downloadProgress{p.CompletedPages, p.TotalPages, p.CompletedChapters, p.TotalChapters, active}
-			})
-			if err == nil {
-				for _, chapter := range chapters {
-					path := filepath.Join(m.app.Cfg.Download.Dir, downloader.TitleDirectoryName(m.manga), m.chapterDirectory(chapter))
-					if m.format != archive.FormatDirectory {
-						archivePath := path + m.format.Extension()
-						result, archiveErr := archive.CreateFromDirectoryContext(ctx, archive.Options{Format: m.format, SourceDir: path, OutputPath: archivePath, ExistingFileMode: archive.ExistingFileMode(m.app.Cfg.Download.ExistingFileMode), RemoveSource: !m.app.Cfg.Download.RetainSource, Metadata: archive.Metadata{Provider: m.app.Cfg.Provider, TitleID: m.manga.ID, Title: m.manga.Title, ChapterID: chapter.ID, ChapterNumber: chapter.Index, ChapterTitle: chapter.Title, ExpectedPages: chapter.PageCount}})
-						if archiveErr != nil {
-							failed++
-							err = errors.Join(err, archiveErr)
-							continue
-						}
-						path = archivePath
-						if result.Status == archive.StatusSkipped {
-							skipped++
-							paths = append(paths, path)
-							continue
-						}
-					}
-					completed++
-					paths = append(paths, path)
-				}
-			}
-			progressCh <- downloadDone{err, completed, skipped, failed, paths}
-			close(progressCh)
-		}()
-		return nil
-	}
-}
-
-func (m *model) chapterDirectory(chapter *source.Chapter) string {
-	for index, candidate := range m.chapters {
-		if candidate == chapter {
-			return downloader.ChapterDirectoryNames(m.chapters)[index]
-		}
-	}
-	return downloader.ChapterDirectoryNames([]*source.Chapter{chapter})[0]
 }
 
 var configLabels = []string{"provider", "language", "output", "format", "existing files", "retain source", "http timeout", "page downloads", "chapter downloads", "history max", "cache"}
