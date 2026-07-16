@@ -227,9 +227,19 @@ func truncate(value string, width int) string {
 	if width < 4 {
 		return "..."
 	}
-	runes := []rune(util.SanitizeTerminalText(value))
-	if len(runes) <= width {
-		return string(runes)
+	value = util.SanitizeTerminalText(value)
+	if lipgloss.Width(value) <= width {
+		return value
 	}
-	return string(runes[:width-3]) + "..."
+	var out strings.Builder
+	remaining := width - lipgloss.Width("...")
+	for _, r := range value {
+		runeWidth := lipgloss.Width(string(r))
+		if runeWidth > remaining {
+			break
+		}
+		out.WriteRune(r)
+		remaining -= runeWidth
+	}
+	return out.String() + "..."
 }

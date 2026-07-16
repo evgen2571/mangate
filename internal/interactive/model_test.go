@@ -255,6 +255,13 @@ func TestReviewCardUsesConnectedFixedWidthBorder(t *testing.T) {
 	}
 }
 
+func TestTruncateUsesTerminalCellWidth(t *testing.T) {
+	value := truncate("漫画漫画漫画", 7)
+	if got, want := lipgloss.Width(value), 7; got != want {
+		t.Fatalf("truncated width = %d, want %d: %q", got, want, value)
+	}
+}
+
 func TestCompletionStatesAreDistinct(t *testing.T) {
 	m := testModel(t)
 	resize(t, m, 80, 24)
