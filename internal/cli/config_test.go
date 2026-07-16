@@ -67,3 +67,16 @@ func TestTUIRejectsNonInteractiveMode(t *testing.T) {
 		t.Fatalf("Execute() error = %v, want non-interactive rejection", err)
 	}
 }
+
+func TestMissingTitleArgumentExplainsStableReference(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCmd(a)
+	cmd.SetArgs([]string{"download"})
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "stable <title-id>") || !strings.Contains(err.Error(), "mangate download") {
+		t.Fatalf("Execute() error = %v, want actionable title reference error", err)
+	}
+}

@@ -14,7 +14,7 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search <title>",
 		Short: "Search manga by title using the default provider",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  requireSearchQuery,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			title := strings.TrimSpace(strings.Join(args, " "))
 			if title == "" {

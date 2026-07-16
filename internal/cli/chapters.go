@@ -15,7 +15,12 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "chapters <manga-id>",
 		Short: "List chapters for a manga using the default provider",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 && strings.TrimSpace(args[0]) == "" {
+				return fmt.Errorf("manga id cannot be empty")
+			}
+			return requireOneArgument("a stable <title-id> from `mangate search`", "mangate chapters <title-id>")(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mangaID := strings.TrimSpace(args[0])
 			if mangaID == "" {

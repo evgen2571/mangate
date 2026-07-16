@@ -52,7 +52,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download <title-id>",
 		Short: "Download selected chapters that you are authorized to save",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireOneArgument("a stable <title-id> from `mangate search`", "mangate download <title-id> --latest"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format, err := archive.ParseFormat(a.Cfg.Download.Format)
 			if err != nil {
