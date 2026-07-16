@@ -39,3 +39,25 @@ func TestResultsModelShowsDistinguishingMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestResultsModelFiltersAlternativeTitles(t *testing.T) {
+	m := newResultsModel("query", "mangadex", []*source.Manga{
+		{ID: "one", Title: "Primary", Metadata: source.MangaMetadata{AlternativeTitle: "Hidden Gem"}},
+		{ID: "two", Title: "Other"},
+	})
+	m.list.SetFilterText("hidden")
+	if got := len(m.list.VisibleItems()); got != 1 {
+		t.Fatalf("visible items = %d, want 1", got)
+	}
+}
+
+func TestEmptyResultsExplainRecoveryActions(t *testing.T) {
+	m := newResultsModel("missing", "mangadex", nil)
+	m.SetSize(100, 30)
+	view := m.View()
+	for _, want := range []string{"No results found", "missing", "mangadex", "Esc: edit query", "q: quit"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("empty results view missing %q:\n%s", want, view)
+		}
+	}
+}

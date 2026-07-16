@@ -76,6 +76,7 @@ type resultsKeyMap struct {
 	Down     key.Binding
 	Select   key.Binding
 	Download key.Binding
+	Filter   key.Binding
 	MetaUp   key.Binding
 	MetaDown key.Binding
 	Back     key.Binding
@@ -98,6 +99,10 @@ func newResultsKeyMap() resultsKeyMap {
 		Download: key.NewBinding(
 			key.WithKeys("f"),
 			key.WithHelp("f", "full"),
+		),
+		Filter: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "filter"),
 		),
 		MetaUp: key.NewBinding(
 			key.WithKeys("i"),
@@ -158,6 +163,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Down,
 		k.local.Select,
 		k.local.Download,
+		k.local.Filter,
 		k.local.Back,
 		k.global.Help,
 		k.global.Quit,
@@ -166,7 +172,7 @@ func (k resultsHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k resultsHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Select, k.local.Download, k.local.Back},
+		{k.local.Up, k.local.Down, k.local.Select, k.local.Download, k.local.Filter, k.local.Back},
 		{k.local.MetaUp, k.local.MetaDown},
 		{k.global.Config, k.global.Help, k.global.Suspend, k.global.Quit},
 	}

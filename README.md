@@ -58,6 +58,8 @@ Human-readable search results include the provider, alternative title, content r
 
 Use `--quiet` to suppress successful human-readable command output; it does not suppress errors or alter `--json` output. Use `--verbose` to add a safe error category and exit-code diagnostic on failure.
 
+Exit status `1` means a valid search returned no results. In JSON mode, this is represented by a `no_results` status and an empty result list.
+
 `--chapter` rejects ambiguous releases. Use `--chapter-id` in that case. Chapters are listed in ascending provider chapter sequence with their stable IDs and languages. `--range`, `--before`, and `--after` currently compare provider chapter labels, so stable chapter IDs are the safe choice for special labels such as `Prologue`. Archive downloads validate and reuse matching existing archives under the default `skip` policy without downloading page content again.
 
 Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead. Pass `--non-interactive` in scripts to refuse TUI entry explicitly. TUI colors follow terminal defaults; use `--no-color` to disable them or `--color` to force them. Those two flags conflict.

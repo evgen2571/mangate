@@ -238,7 +238,7 @@ class Client:
         # A partial download is a usable result with failed chapters recorded in
         # its data. Preserve it for callers instead of discarding completed
         # archive paths because the CLI correctly returned exit status 5.
-        if payload.get("status") == "partial":
+        if payload.get("status") in {"partial", "no_results"}:
             return payload
         if proc.returncode != 0 or payload.get("status") != "success":
             error = payload.get("data", {})

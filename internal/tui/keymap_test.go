@@ -22,10 +22,11 @@ func TestResultsShortHelpKeepsOnlyPrimaryActions(t *testing.T) {
 	m := newResultsModel("query", "mangadex", nil)
 	bindings := m.HelpKeys(newKeyMap()).ShortHelp()
 
-	if got, max := len(bindings), 7; got > max {
+	if got, max := len(bindings), 8; got > max {
 		t.Fatalf("len(ShortHelp()) = %d, want at most %d bindings", got, max)
 	}
 	assertHelpContains(t, bindings, "f", "full")
+	assertHelpContains(t, bindings, "/", "filter")
 	assertHelpContains(t, bindings, "?", "help")
 }
 

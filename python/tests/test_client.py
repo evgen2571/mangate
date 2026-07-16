@@ -44,6 +44,18 @@ class ClientTests(unittest.TestCase):
             result = Client().download("title-id", latest=True)
         self.assertEqual(result["chapters"][0]["status"], "complete")
 
+    def test_search_returns_empty_list_for_valid_no_results_response(self) -> None:
+        payload = {
+            "formatVersion": "1",
+            "operation": "search",
+            "status": "no_results",
+            "data": {"provider": "mangadex", "query": "missing", "results": []},
+        }
+        process = _CompletedProcess(payload, 1)
+        with patch("mangate.client.subprocess.Popen", return_value=process):
+            results = Client().search("missing")
+        self.assertEqual(results, [])
+
     def test_convert_uses_archive_command_and_requested_format(self) -> None:
         payload = {
             "formatVersion": "1",

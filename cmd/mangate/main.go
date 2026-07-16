@@ -38,7 +38,7 @@ func main() {
 		}
 		var reported *cli.ReportedError
 		if errors.As(err, &reported) {
-			if !jsonOutput {
+			if !jsonOutput && !reported.Silent {
 				fmt.Fprintln(os.Stderr, err)
 			}
 			os.Exit(reported.Code)

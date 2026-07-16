@@ -32,7 +32,14 @@ func (i resultItem) FilterValue() string {
 	if i.value == nil {
 		return ""
 	}
-	return i.value.Title
+	return strings.Join([]string{
+		i.value.Title,
+		i.value.Metadata.AlternativeTitle,
+		i.value.Metadata.Status,
+		i.value.Metadata.ContentType,
+		i.value.Metadata.Language,
+		fmt.Sprint(i.value.Metadata.Year),
+	}, " ")
 }
 
 func (i resultItem) Title() string {
@@ -100,7 +107,7 @@ func newResultsModel(query, provider string, results []*source.Manga) resultsMod
 	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.SetShowHelp(false)
 	l.SetShowPagination(true)
 
@@ -186,6 +193,11 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.list.FilterState() == list.Filtering {
+			var listCmd tea.Cmd
+			m.list, listCmd = m.list.Update(msg)
+			return m, tea.Batch(append(cmds, listCmd)...)
+		}
 		switch {
 		case key.Matches(msg, m.keys.Back):
 			return m, tea.Batch(append(cmds, func() tea.Msg { return goBackMsg{} })...)
@@ -245,6 +257,16 @@ func (m resultsModel) Update(msg tea.Msg) (resultsModel, tea.Cmd) {
 func (m resultsModel) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading results UI..."
+	}
+	if len(m.results) == 0 {
+		message := lipgloss.JoinVertical(
+			lipgloss.Center,
+			lipgloss.NewStyle().Bold(true).Foreground(constant.LogoColor).Render("No results found"),
+			fmt.Sprintf("No titles matched %q with provider %s.", m.query, displayProvider(m.provider)),
+			"",
+			lipgloss.NewStyle().Foreground(constant.MutedColor).Render("Esc: edit query • q: quit"),
+		)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, message)
 	}
 
 	l := m.layout()

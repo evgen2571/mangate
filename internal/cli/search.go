@@ -38,11 +38,15 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 			results = filterSearchResults(results, languageFilter, contentTypes)
 
 			if len(results) == 0 {
+				record := searchRecord{Provider: a.Cfg.Provider, Query: title, Results: []*source.Manga{}}
 				if wantsJSON(cmd) {
-					return writeJSON(cmd, "search", searchRecord{Provider: a.Cfg.Provider, Query: title, Results: []*source.Manga{}})
+					if err := writeJSONStatus(cmd, "search", "no_results", record); err != nil {
+						return err
+					}
+				} else {
+					writeHuman(cmd.OutOrStdout(), "no results found for %q\n", title)
 				}
-				writeHuman(cmd.OutOrStdout(), "no results found for %q\n", title)
-				return nil
+				return &ReportedError{Cause: fmt.Errorf("no results found for %q", title), Code: 1, Silent: true}
 			}
 			if limit > 0 && len(results) > limit {
 				results = results[:limit]

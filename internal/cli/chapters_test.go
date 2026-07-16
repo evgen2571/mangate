@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -157,6 +158,21 @@ func TestQuietDoesNotSuppressJSONSearchOutput(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"operation":"search"`) {
 		t.Fatalf("JSON output = %q, want search envelope", out.String())
+	}
+}
+
+func TestSearchCommandReportsNoResults(t *testing.T) {
+	cmd := NewSearchCmd(newTestApp(t, fakeProvider{}))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"missing"})
+	err := cmd.Execute()
+	var reported *ReportedError
+	if !errors.As(err, &reported) || reported.Code != 1 || !reported.Silent {
+		t.Fatalf("Execute() error = %#v, want silent no-results exit", err)
+	}
+	if !strings.Contains(out.String(), "no results found for") {
+		t.Fatalf("output = %q, want no-results message", out.String())
 	}
 }
 

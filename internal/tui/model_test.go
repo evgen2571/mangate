@@ -83,6 +83,24 @@ func TestNewWithSearchResultsStartsAtResolvedResults(t *testing.T) {
 	}
 }
 
+func TestEmptyResultsBackReturnsToEditableQuery(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := NewWithSearchResults(a, context.Background(), "missing", nil)
+	m := created.(*model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("Update(Esc) returned nil command")
+	}
+	updated, _ = updated.Update(cmd())
+	got := updated.(model)
+	if got.state != stateSearch || got.search.input.Value() != "missing" {
+		t.Fatalf("state = %v, query = %q; want editable preserved search", got.state, got.search.input.Value())
+	}
+}
+
 func TestTUISanitizationDoesNotChangeProviderIdentifiers(t *testing.T) {
 	manga := &source.Manga{ID: "id\x1b[2J", Title: "title\nnext", Metadata: source.MangaMetadata{Description: map[string]string{"en": "body\ttext"}}}
 	chapter := &source.Chapter{ID: "chapter\x1b[2J", Title: "part\nnext"}

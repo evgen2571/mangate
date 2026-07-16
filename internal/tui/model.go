@@ -98,6 +98,8 @@ func NewWithContext(a *app.App, baseContext context.Context) tea.Model {
 // repeating the provider request.
 func NewWithSearchResults(a *app.App, baseContext context.Context, query string, results []*source.Manga) tea.Model {
 	m := NewWithContext(a, baseContext).(*model)
+	m.search.input.SetValue(query)
+	m.search.input.CursorEnd()
 	m.results = newResultsModel(query, a.Cfg.Provider, results)
 	m.state = stateResults
 	return m
