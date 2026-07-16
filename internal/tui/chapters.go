@@ -21,7 +21,10 @@ type chapterItem struct {
 }
 
 func (i chapterItem) FilterValue() string {
-	return i.value.DisplayName()
+	if i.value == nil {
+		return ""
+	}
+	return strings.Join([]string{i.value.DisplayName(), i.value.Language, i.value.ID}, " ")
 }
 
 func (i chapterItem) Title() string {
@@ -42,7 +45,17 @@ func (i chapterItem) Description() string {
 		return ""
 	}
 
-	description := util.SanitizeTerminalText(strings.TrimSpace(i.value.URL))
+	parts := make([]string, 0, 3)
+	if language := strings.TrimSpace(i.value.Language); language != "" {
+		parts = append(parts, "Language: "+util.SanitizeTerminalText(language))
+	}
+	if i.value.PageCount > 0 {
+		parts = append(parts, fmt.Sprintf("Pages: %d", i.value.PageCount))
+	}
+	if id := strings.TrimSpace(i.value.ID); id != "" {
+		parts = append(parts, "ID: "+util.SanitizeTerminalText(id))
+	}
+	description := strings.Join(parts, "  •  ")
 	if i.selected {
 		return lipgloss.NewStyle().Foreground(constant.InputBorderColor).Render(description)
 	}

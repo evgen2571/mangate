@@ -60,6 +60,9 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 				if chapter.PageCount > 0 {
 					writeHuman(out, "   Pages: %d\n", chapter.PageCount)
 				}
+				if chapter.Language != "" {
+					writeHuman(out, "   Language: %s\n", chapter.Language)
+				}
 				if chapter.URL != "" {
 					writeHuman(out, "   URL:   %s\n", chapter.URL)
 				}

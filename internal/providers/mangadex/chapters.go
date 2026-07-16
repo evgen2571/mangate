@@ -109,6 +109,7 @@ func (mdc *mangaDexChapter) toSource() *source.Chapter {
 		URL:       mdc.URL,
 		Index:     mdc.getIndex(),
 		Title:     mdc.getTitle(),
+		Language:  mdc.Attributes.Language,
 		PageCount: mdc.Attributes.Pages,
 	}
 }

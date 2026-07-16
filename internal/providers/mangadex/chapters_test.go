@@ -93,6 +93,9 @@ func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	if chapters[0].PageCount != 23 {
 		t.Fatalf("chapter PageCount = %d, want 23", chapters[0].PageCount)
 	}
+	if chapters[0].Language != "en" {
+		t.Fatalf("chapter Language = %q, want en", chapters[0].Language)
+	}
 }
 
 func newTestProvider(t *testing.T, baseURL, language string) *Provider {
