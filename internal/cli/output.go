@@ -34,8 +34,34 @@ func isQuiet(cmd *cobra.Command) bool {
 }
 
 func writeJSON(cmd *cobra.Command, operation string, data any) error {
+	return writeJSONStatus(cmd, operation, "success", data)
+}
+
+func writeJSONStatus(cmd *cobra.Command, operation, status string, data any) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
-	return encoder.Encode(envelope{FormatVersion: outputFormatVersion, Operation: operation, Status: "success", Data: data})
+	return encoder.Encode(envelope{FormatVersion: outputFormatVersion, Operation: operation, Status: status, Data: data})
+}
+
+// ReportedError marks an error whose structured result was already written to
+// standard output. Callers use it to retain a meaningful exit status without
+// corrupting JSON with a second error envelope.
+type ReportedError struct {
+	Cause error
+	Code  int
+}
+
+func (e *ReportedError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "operation failed"
+	}
+	return e.Cause.Error()
+}
+
+func (e *ReportedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
 }
 
 // WriteError writes the documented JSON error envelope. It is used by main

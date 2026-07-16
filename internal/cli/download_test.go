@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/spf13/cobra"
 )
 
 func TestSelectChaptersUsesNumericRangeAndStableIDs(t *testing.T) {
@@ -24,6 +28,41 @@ func TestSelectChaptersUsesNumericRangeAndStableIDs(t *testing.T) {
 	selected, err = selectChapters(chapters, chapterSelection{IDs: []string{"ten"}})
 	if err != nil || len(selected) != 1 || selected[0].ID != "ten" {
 		t.Fatalf("stable ID selection = %#v, %v", selected, err)
+	}
+}
+
+func TestReportDownloadResultWritesPartialJSONAndPreservesExitCode(t *testing.T) {
+	var output bytes.Buffer
+	root := newJSONTestCommand(&output)
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "complete", Status: "complete"}, {ID: "failed", Status: "incomplete"}}}
+	err := reportDownloadResult(root, &record, errors.New("download page failed"))
+	var reported *ReportedError
+	if !errors.As(err, &reported) || reported.Code != 5 {
+		t.Fatalf("error = %#v, want partial reported error", err)
+	}
+	var response envelope
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatalf("JSON output = %q: %v", output.String(), err)
+	}
+	if response.Status != "partial" || record.Status != "partial" {
+		t.Fatalf("status = %q, record = %#v", response.Status, record)
+	}
+}
+
+func newJSONTestCommand(output *bytes.Buffer) *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.SetOut(output)
+	cmd.Flags().Bool("json", true, "")
+	return cmd
+}
+
+func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.T) {
+	root := newJSONTestCommand(&bytes.Buffer{})
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "failed", Status: "archive_failed"}}}
+	err := reportDownloadResult(root, &record, errors.New("create archive: validation failed"))
+	var reported *ReportedError
+	if !errors.As(err, &reported) || reported.Code != 8 {
+		t.Fatalf("error = %#v, want archive reported error", err)
 	}
 }
 

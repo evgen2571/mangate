@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -31,6 +32,13 @@ func main() {
 	defer cancel()
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		jsonOutput, _ := rootCmd.Flags().GetBool("json")
+		var reported *cli.ReportedError
+		if errors.As(err, &reported) {
+			if !jsonOutput {
+				fmt.Fprintln(os.Stderr, err)
+			}
+			os.Exit(reported.Code)
+		}
 		if jsonOutput {
 			_ = cli.WriteError(os.Stdout, "command", err)
 		} else {
