@@ -89,13 +89,17 @@ func TestDownloadChapterKeepsCompletedPagesAndMarksPartialState(t *testing.T) {
 		t.Fatalf("read incomplete state: %v", err)
 	}
 	var state struct {
-		Complete bool `json:"complete"`
+		Complete bool   `json:"complete"`
+		Provider string `json:"provider"`
 	}
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		t.Fatalf("decode state: %v", err)
 	}
 	if state.Complete {
 		t.Fatal("incomplete chapter was marked complete")
+	}
+	if state.Provider != cfg.Provider {
+		t.Fatalf("state provider = %q, want %q", state.Provider, cfg.Provider)
 	}
 }
 

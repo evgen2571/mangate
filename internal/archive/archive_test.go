@@ -94,6 +94,45 @@ func TestCreateFromDirectoryExistingArchivePolicies(t *testing.T) {
 	}
 }
 
+func TestCreateFromDirectoryCarriesProviderFromLocalState(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.jpg", jpegPage())
+	state := []byte(`{"provider":"mangadex","titleId":"title-id","chapterId":"chapter-id","expectedPages":1,"complete":true}`)
+	if err := os.WriteFile(filepath.Join(source, ".mangate.json"), state, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "chapter.zip")
+	if _, err := CreateFromDirectory(Options{Format: FormatZIP, SourceDir: source, OutputPath: output}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	for _, file := range reader.File {
+		if file.Name != ".mangate.json" {
+			continue
+		}
+		in, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var metadata Metadata
+		if err := json.NewDecoder(in).Decode(&metadata); err != nil {
+			t.Fatal(err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if metadata.Provider != "mangadex" {
+			t.Fatalf("provider = %q, want mangadex", metadata.Provider)
+		}
+		return
+	}
+	t.Fatal("archive metadata entry not found")
+}
+
 func TestInspectRejectsUnsafeAndDuplicateEntries(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "unsafe.zip")
 	out, err := os.Create(path)

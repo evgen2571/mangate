@@ -111,6 +111,7 @@ type Inspection struct {
 }
 
 type chapterState struct {
+	Provider      string `json:"provider"`
 	TitleID       string `json:"titleId"`
 	ChapterID     string `json:"chapterId"`
 	ExpectedPages int    `json:"expectedPages"`
@@ -143,6 +144,9 @@ func CreateFromDirectory(options Options) (Result, error) {
 		}
 		if options.Metadata.TitleID == "" {
 			options.Metadata.TitleID = state.TitleID
+		}
+		if options.Metadata.Provider == "" {
+			options.Metadata.Provider = state.Provider
 		}
 		if options.Metadata.ChapterID == "" {
 			options.Metadata.ChapterID = state.ChapterID

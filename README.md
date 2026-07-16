@@ -66,7 +66,7 @@ The title ID keeps same-named titles apart. A page first lands in a `.part` file
 
 ## Output formats and archives
 
-`directory` is the default. It stores ordered image files in a chapter directory and writes `.mangate.json` after every chapter attempt. This state file records the remote identity, expected page count, and completion state.
+`directory` is the default. It stores ordered image files in a chapter directory and writes `.mangate.json` after every chapter attempt. This state file records provider, remote identity, expected page count, and completion state.
 
 `cbz` creates one standard ZIP-compatible comic archive per chapter, with a `.cbz` extension. Page images are at the archive root in download order, followed by `ComicInfo.xml` and `.mangate.json`. Mangate copies image bytes unchanged. `ComicInfo.xml` contains only known chapter data, and `.mangate.json` records the archive schema, provider and chapter identity, page count, and completion state.
 

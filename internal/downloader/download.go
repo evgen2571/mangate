@@ -130,11 +130,11 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 	}
 
 	if err := g.Wait(); err != nil {
-		_ = writeChapterState(chapterDir, c, false)
+		_ = writeChapterState(chapterDir, c, d.cfg.Provider, false)
 		return err
 	}
 
-	if err := writeChapterState(chapterDir, c, true); err != nil {
+	if err := writeChapterState(chapterDir, c, d.cfg.Provider, true); err != nil {
 		return err
 	}
 
@@ -201,8 +201,8 @@ type chapterState struct {
 	UpdatedAt     string `json:"updatedAt"`
 }
 
-func writeChapterState(chapterDir string, chapter *source.Chapter, complete bool) error {
-	state := chapterState{FormatVersion: "1", ChapterID: chapter.ID, ExpectedPages: len(chapter.Pages), Complete: complete, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+func writeChapterState(chapterDir string, chapter *source.Chapter, provider string, complete bool) error {
+	state := chapterState{FormatVersion: "1", Provider: strings.TrimSpace(provider), ChapterID: chapter.ID, ExpectedPages: len(chapter.Pages), Complete: complete, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
 	if chapter.From != nil {
 		state.TitleID = chapter.From.ID
 	}
