@@ -36,6 +36,9 @@ mangate download <title-id> --first
 mangate download <title-id> --latest
 mangate download <title-id> --all --chapter-language en
 
+# Broad downloads, replacement, and source-page deletion require an explicit acknowledgement.
+mangate --format cbz --existing-files replace download <title-id> --latest --yes
+
 # Choose a per-chapter archive. CBZ is for comic readers, ZIP is a general archive.
 mangate --format cbz download <title-id> --chapter 1
 mangate --format zip download <title-id> --latest
@@ -75,7 +78,7 @@ The title ID keeps same-named titles apart. A page first lands in a `.part` file
 
 Mangate writes every archive to a temporary sibling file, reopens and verifies it, then renames it to its final path. A failed or cancelled archive never appears at its requested final path. The default `--existing-files skip` policy reuses an existing archive only after it validates and its stored title and chapter identity match. `replace` builds and validates a new temporary archive before replacing the old one. `fail` stops on any existing destination.
 
-Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised. Every human-readable download completion (including archive reuse and partial failure) reports completed, skipped/reused, failed, and archive-failure counts plus the resulting output paths.
+Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised. Every human-readable download completion (including archive reuse and partial failure) reports completed, skipped/reused, failed, and archive-failure counts plus the resulting output paths. Downloads selecting 25 or more chapters, replacing outputs, or deleting archive source pages require `--yes`; use `--dry-run` first to inspect the resolved plan.
 
 `archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, and completion state without extracting anything.
 
@@ -142,4 +145,4 @@ except MangateError as error:
 
 `Client` methods block and return structured dictionaries. Each call runs independently and may be used from different Python threads. Pass a `threading.Event` as `cancel_event` to `download` to interrupt the process. The same durable-page guarantees apply.
 
-`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan, and returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning; `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.
+`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan and `assume_yes=True` for broad or destructive operations that require explicit acknowledgement. It returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning; `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.

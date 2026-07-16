@@ -49,6 +49,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	var first, latest, all bool
 	var before, after, language string
 	var dryRun bool
+	var assumeYes bool
 
 	cmd := &cobra.Command{
 		Use:     "download <title-id>",
@@ -86,14 +87,12 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 
 			started := time.Now().UTC()
 			record := downloadRecord{Provider: provider.Name(), Title: title, Format: format, OutputRoot: a.Cfg.Download.Dir, Status: "in_progress", StartedAt: started, Chapters: chapterRecords(a.Cfg.Download.Dir, title, selection, format, "pending")}
-			pendingSelection := selection
-			if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
-				pendingSelection, err = reusableArchiveSelection(&record, selection, title)
-				if err != nil {
-					return err
-				}
-			}
 			if dryRun {
+				if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
+					if _, err := reusableArchiveSelection(&record, selection, title); err != nil {
+						return err
+					}
+				}
 				record.Status = "planned"
 				record.CompletedAt = time.Now().UTC()
 				for index := range record.Chapters {
@@ -113,6 +112,19 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 					writeHuman(cmd.OutOrStdout(), "  %s [%s] -> %s\n", chapter.ID, chapter.Status, path)
 				}
 				return nil
+			}
+			if requirement := downloadConfirmationRequirement(selection, format, a.Cfg.Download.ExistingFileMode, a.Cfg.Download.RetainSource); requirement != "" && !assumeYes {
+				return fmt.Errorf("download: %s; review with --dry-run, then rerun with --yes to continue", requirement)
+			}
+			if !wantsJSON(cmd) && !isQuiet(cmd) {
+				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, a.Cfg.Download.Dir, a.Cfg.Download.ExistingFileMode, a.Cfg.Download.RetainSource)
+			}
+			pendingSelection := selection
+			if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
+				pendingSelection, err = reusableArchiveSelection(&record, selection, title)
+				if err != nil {
+					return err
+				}
 			}
 			notify := func(progress usecase.DownloadProgress) {
 				if wantsJSON(cmd) || isQuiet(cmd) {
@@ -171,7 +183,35 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	flags.StringVar(&after, "after", "", "Only chapters after this chapter number")
 	flags.StringVar(&language, "chapter-language", "", "Only chapters in this provider language")
 	flags.BoolVar(&dryRun, "dry-run", false, "Show selected chapters and output paths without downloading")
+	flags.BoolVar(&assumeYes, "yes", false, "Confirm broad or destructive downloads without prompting")
 	return cmd
+}
+
+const broadDownloadChapterThreshold = 25
+
+func downloadConfirmationRequirement(chapters []*source.Chapter, format archive.Format, existingFileMode string, retainSource bool) string {
+	switch {
+	case existingFileMode == string(archive.ExistingReplace):
+		return "replacing existing output may discard data"
+	case format != archive.FormatDirectory && !retainSource:
+		return "removing source page directories after archive creation changes local files"
+	case len(chapters) >= broadDownloadChapterThreshold:
+		return fmt.Sprintf("downloading %d chapters is a broad operation", len(chapters))
+	default:
+		return ""
+	}
+}
+
+func writeDownloadPreflight(out io.Writer, title *source.Manga, provider string, chapters []*source.Chapter, format archive.Format, outputRoot, existingFileMode string, retainSource bool) {
+	titleName := "Unknown title"
+	if title != nil && title.Title != "" {
+		titleName = title.Title
+	}
+	sourcePages := "kept"
+	if format != archive.FormatDirectory && !retainSource {
+		sourcePages = "removed after archive validation"
+	}
+	writeHuman(out, "Download plan\nTitle: %s\nProvider: %s\nChapters: %d selected\nFormat: %s\nOutput: %s\nExisting files: %s\nSource pages: %s\n", titleName, provider, len(chapters), format, outputRoot, existingFileMode, sourcePages)
 }
 
 func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause error) error {

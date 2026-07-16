@@ -71,9 +71,10 @@ class ClientTests(unittest.TestCase):
         }
         process = _CompletedProcess(payload, 0)
         with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
-            result = Client().download("title-id", latest=True, output_format="zip", dry_run=True)
+            result = Client().download("title-id", latest=True, output_format="zip", dry_run=True, assume_yes=True)
         command = popen.call_args.args[0]
         self.assertIn("--dry-run", command)
+        self.assertIn("--yes", command)
         self.assertIn("zip", command)
         self.assertEqual(result["status"], "planned")
 

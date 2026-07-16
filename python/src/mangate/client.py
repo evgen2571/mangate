@@ -104,6 +104,7 @@ class Client:
         output_format: str | None = None,
         retain_source: bool | None = None,
         dry_run: bool = False,
+        assume_yes: bool = False,
         cancel_event: Event | None = None,
     ) -> dict[str, Any]:
         args = ["--provider", provider or self.provider, "download"]
@@ -129,6 +130,8 @@ class Client:
             args.append("--retain-source" if retain_source else "--retain-source=false")
         if dry_run:
             args.append("--dry-run")
+        if assume_yes:
+            args.append("--yes")
         args.append(title_id)
         return self._json(args, cancel_event=cancel_event)["data"]
 
