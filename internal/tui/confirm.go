@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -82,9 +83,17 @@ func (m confirmModel) View() string {
 		title = util.SanitizeTerminalText(m.manga.Title)
 	}
 	labels := make([]string, 0, len(m.chapters))
+	languages := make(map[string]struct{})
+	releaseGroups := make(map[string]struct{})
 	for _, chapter := range m.chapters {
 		if chapter != nil {
 			labels = append(labels, chapter.DisplayName())
+			if language := strings.TrimSpace(chapter.Language); language != "" {
+				languages[language] = struct{}{}
+			}
+			if group := strings.TrimSpace(chapter.ReleaseGroup); group != "" {
+				releaseGroups[group] = struct{}{}
+			}
 		}
 	}
 	lines := []string{
@@ -96,6 +105,12 @@ func (m confirmModel) View() string {
 		fmt.Sprintf("Format: %s", m.format),
 		fmt.Sprintf("Output: %s", util.SanitizeTerminalText(m.output)),
 		fmt.Sprintf("Existing files: %s", util.SanitizeTerminalText(m.existing)),
+	}
+	if values := sortedKeys(languages); len(values) > 0 {
+		lines = append(lines, "Languages: "+strings.Join(values, ", "))
+	}
+	if values := sortedKeys(releaseGroups); len(values) > 0 {
+		lines = append(lines, "Release groups: "+strings.Join(values, ", "))
 	}
 	if m.expectedPages > 0 {
 		line := fmt.Sprintf("Known pages: %d", m.expectedPages)
@@ -133,4 +148,13 @@ func (m confirmModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(constant.OuterBorderColor).
 		Render(strings.Join(lines, "\n"))
+}
+
+func sortedKeys(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, util.SanitizeTerminalText(value))
+	}
+	sort.Strings(keys)
+	return keys
 }
