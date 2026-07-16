@@ -324,20 +324,19 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "r":
 		if len(visible) > 0 {
 			current := visible[m.chapterCursor]
-			start := -1
+			anchor := -1
 			for position, index := range visible {
 				if index == m.rangeAnchor {
-					start = position
+					anchor = position
 				}
-				if index == current && start >= 0 {
-					end := position
-					if start > end {
-						start, end = end, start
-					}
-					for _, selected := range visible[start : end+1] {
-						m.selected[selected] = true
-					}
-					break
+			}
+			if anchor >= 0 {
+				start, end := anchor, m.chapterCursor
+				if start > end {
+					start, end = end, start
+				}
+				for _, selected := range visible[start : end+1] {
+					m.selected[selected] = true
 				}
 			}
 			m.rangeAnchor = current
@@ -504,7 +503,7 @@ func move(value, delta, length int) int {
 	if length <= 0 {
 		return 0
 	}
-	return (value + delta + length) % length
+	return min(max(0, value+delta), length-1)
 }
 func max(a, b int) int {
 	if a > b {

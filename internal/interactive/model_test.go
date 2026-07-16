@@ -143,6 +143,38 @@ func TestChapterSpaceTogglesExactlyOnceWithoutMoving(t *testing.T) {
 	}
 }
 
+func TestChapterNavigationClampsAndRangeSelectsInEitherDirection(t *testing.T) {
+	m := testModel(t)
+	m.screen, m.manga = chaptersScreen, &source.Manga{Title: "Test"}
+	m.chapters = []*source.Chapter{{Index: "1"}, {Index: "2"}, {Index: "3"}}
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.chapterCursor != 0 {
+		t.Fatalf("up wrapped chapter cursor to %d", m.chapterCursor)
+	}
+	m.chapterCursor = 2
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.chapterCursor != 2 {
+		t.Fatalf("down wrapped chapter cursor to %d", m.chapterCursor)
+	}
+	m.rangeAnchor, m.chapterCursor = 2, 0
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	for i := range m.chapters {
+		if !m.selected[i] {
+			t.Fatalf("reverse range did not select chapter %d", i)
+		}
+	}
+}
+
+func TestChapterEnterRequiresASelection(t *testing.T) {
+	m := testModel(t)
+	m.screen, m.manga = chaptersScreen, &source.Manga{Title: "Test"}
+	m.chapters = []*source.Chapter{{Index: "1"}}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.screen != chaptersScreen || m.status != "Select at least one chapter" {
+		t.Fatalf("enter advanced without selection: screen=%v status=%q", m.screen, m.status)
+	}
+}
+
 func TestFocusedInputReceivesGlobalShortcutCharacters(t *testing.T) {
 	m := testModel(t)
 	resize(t, m, 80, 24)

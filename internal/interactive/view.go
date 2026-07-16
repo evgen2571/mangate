@@ -53,7 +53,7 @@ func (m *model) header() string {
 		context = util.SanitizeTerminalText(m.manga.Title)
 	}
 	line := s.brand.Render("MANGATE") + s.muted.Render("  /  ") + s.heading.Render(title)
-	if context != "" {
+	if context != "" && m.screen != chaptersScreen {
 		line += "\n" + s.muted.Render(context)
 	}
 	if m.screen >= resultsScreen && m.screen <= reviewScreen && m.width >= 70 {
