@@ -372,6 +372,9 @@ func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chap
 }
 
 func (m model) View() string {
+	if m.width > 0 && m.height > 0 && (m.width < 40 || m.height < 12) {
+		return "Terminal is too small for Mangate. Resize to at least 40 columns by 12 rows.\n"
+	}
 	var body string
 
 	switch m.state {

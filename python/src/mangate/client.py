@@ -219,6 +219,8 @@ def _category(message: str) -> str:
         return "unsupported_operation"
     if "timeout" in lower or "deadline exceeded" in lower:
         return "timeout"
+    if "archive" in lower:
+        return "archive"
     if "permission" in lower or "create" in lower or "write" in lower:
         return "filesystem"
     if "cancel" in lower or "interrupt" in lower:

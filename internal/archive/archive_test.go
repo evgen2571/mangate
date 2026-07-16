@@ -12,7 +12,8 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	source := t.TempDir()
 	writePage(t, source, "0001.jpg", "first")
 	writePage(t, source, "0010.png", "tenth")
-	writeState(t, source, "title-id", "chapter-id", 2, true)
+	writePage(t, source, "0100.gif", "hundredth")
+	writeState(t, source, "title-id", "chapter-id", 3, true)
 
 	output := filepath.Join(t.TempDir(), "chapter.cbz")
 	result, err := CreateFromDirectory(Options{
@@ -24,7 +25,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFromDirectory() error = %v", err)
 	}
-	if result.Status != StatusComplete || result.OutputPath != output || result.IncludedPages != 2 {
+	if result.Status != StatusComplete || result.OutputPath != output || result.IncludedPages != 3 {
 		t.Fatalf("result = %#v", result)
 	}
 
@@ -37,7 +38,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	for _, file := range reader.File {
 		got = append(got, file.Name)
 	}
-	want := []string{"0001.jpg", "0010.png", "ComicInfo.xml", ".mangate.json"}
+	want := []string{"0001.jpg", "0010.png", "0100.gif", "ComicInfo.xml", ".mangate.json"}
 	if len(got) != len(want) {
 		t.Fatalf("entries = %v, want %v", got, want)
 	}
@@ -51,7 +52,7 @@ func TestCreateFromDirectoryCreatesOrderedCBZWithMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Inspect() error = %v", err)
 	}
-	if !inspection.Valid || !inspection.Complete || inspection.PageCount != 2 || inspection.Format != FormatCBZ {
+	if !inspection.Valid || !inspection.Complete || inspection.PageCount != 3 || inspection.Format != FormatCBZ {
 		t.Fatalf("inspection = %#v", inspection)
 	}
 }

@@ -60,6 +60,8 @@ func ErrorCategory(message string) string {
 		return "unsupported_capability"
 	case strings.Contains(message, "deadline"), strings.Contains(message, "timeout"):
 		return "timeout"
+	case strings.Contains(message, "archive"):
+		return "archive"
 	case strings.Contains(message, "permission"), strings.Contains(message, "create file"), strings.Contains(message, "write file"):
 		return "filesystem"
 	case strings.Contains(message, "context canceled"), strings.Contains(message, "interrupted"):
@@ -81,6 +83,8 @@ func ExitCode(message string) int {
 		return 2
 	case "filesystem":
 		return 6
+	case "archive":
+		return 8
 	case "cancelled":
 		return 7
 	case "unknown_provider", "not_found", "unsupported_capability", "timeout":

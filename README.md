@@ -82,7 +82,7 @@ Archive downloads retain the page directory by default. Use `--retain-source=fal
 
 Every core command accepts `--json`. Standard output then contains exactly one JSON object with `formatVersion`, `operation`, `status`, and `data`. Error output uses the same envelope and carries a stable category such as `invalid_input`, `unknown_provider`, `not_found`, `unsupported_capability`, `timeout`, `filesystem`, or `cancelled`.
 
-`0` means complete success. `2` means invalid command usage, `3` configuration failure, `4` provider or content failure, `5` partial download, `6` filesystem or archive failure, `7` cancellation, and `10` internal failure. A multi-chapter partial result uses `5` and its structured chapter result identifies the completed and incomplete chapters. A successful search with no results returns `0`.
+`0` means complete success. `2` means invalid command usage, `3` configuration failure, `4` provider or content failure, `5` partial download, `6` filesystem failure, `7` cancellation, `8` archive creation or validation failure, and `10` internal failure. A multi-chapter partial result uses `5` and its structured chapter result identifies the completed and incomplete chapters. A successful search with no results returns `0`.
 
 Use `--quiet` to suppress progress. `--verbose` writes limited diagnostic context to standard error and never prints credentials. JSON output never mixes progress into standard output.
 
