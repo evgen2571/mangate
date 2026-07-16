@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/evgen2571/mangate/internal/app"
@@ -59,6 +60,16 @@ func TestModelSearchFailureReturnsToEditableSearch(t *testing.T) {
 	}
 	if got.search.status == "" || got.search.input.Focused() == false {
 		t.Fatalf("search = %#v, want visible editable error", got.search)
+	}
+}
+
+func TestModelSanitizesProviderTextBeforeRendering(t *testing.T) {
+	manga := &source.Manga{ID: "id\x1b[2J", Title: "title\nnext", Metadata: source.MangaMetadata{Description: map[string]string{"en": "body\ttext"}}}
+	chapter := &source.Chapter{ID: "chapter\x1b[2J", Title: "part\nnext"}
+	sanitizeManga(manga)
+	sanitizeChapter(chapter)
+	if strings.Contains(manga.Title, "\x1b") || strings.Contains(manga.Title, "\n") || strings.Contains(chapter.Title, "\n") {
+		t.Fatalf("sanitized values still contain controls: %#v %#v", manga, chapter)
 	}
 }
 

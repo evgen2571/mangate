@@ -32,7 +32,7 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 				if wantsJSON(cmd) {
 					return writeJSON(cmd, "chapters.list", chapterListRecord{Provider: a.Cfg.Provider, TitleID: mangaID, Order: "ascending provider chapter sequence", Chapters: []*source.Chapter{}})
 				}
-				fmt.Fprintf(out, "no chapters found for manga %s\n", mangaID)
+				writeHuman(out, "no chapters found for manga %s\n", mangaID)
 				return nil
 			}
 			if limit > 0 && len(chapters) > limit {
@@ -42,23 +42,23 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 				return writeJSON(cmd, "chapters.list", chapterListRecord{Provider: a.Cfg.Provider, TitleID: mangaID, Order: "ascending provider chapter sequence", Chapters: chapters})
 			}
 
-			fmt.Fprintf(out, "Chapters for %s\n\n", mangaID)
+			writeHuman(out, "Chapters for %s\n\n", mangaID)
 			for i, chapter := range chapters {
 				if chapter == nil {
 					return fmt.Errorf("chapter #%d is nil", i+1)
 				}
 
-				fmt.Fprintf(out, "%d. %s\n", i+1, chapter.DisplayTitle(i))
+				writeHuman(out, "%d. %s\n", i+1, chapter.DisplayTitle(i))
 				if chapter.ID != "" {
-					fmt.Fprintf(out, "   ID:    %s\n", chapter.ID)
+					writeHuman(out, "   ID:    %s\n", chapter.ID)
 				}
 				if chapter.PageCount > 0 {
-					fmt.Fprintf(out, "   Pages: %d\n", chapter.PageCount)
+					writeHuman(out, "   Pages: %d\n", chapter.PageCount)
 				}
 				if chapter.URL != "" {
-					fmt.Fprintf(out, "   URL:   %s\n", chapter.URL)
+					writeHuman(out, "   URL:   %s\n", chapter.URL)
 				}
-				fmt.Fprintln(out)
+				writeHuman(out, "\n")
 			}
 
 			return nil

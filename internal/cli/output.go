@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/evgen2571/mangate/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -121,5 +122,10 @@ func ExitCode(message string) int {
 }
 
 func writeHuman(out io.Writer, format string, args ...any) {
+	for index, value := range args {
+		if text, ok := value.(string); ok {
+			args[index] = util.SanitizeTerminalText(text)
+		}
+	}
 	_, _ = fmt.Fprintf(out, format, args...)
 }

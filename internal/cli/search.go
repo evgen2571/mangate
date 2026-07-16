@@ -30,7 +30,7 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 				if wantsJSON(cmd) {
 					return writeJSON(cmd, "search", searchRecord{Provider: a.Cfg.Provider, Query: title, Results: []*source.Manga{}})
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "no results found for %q\n", title)
+				writeHuman(cmd.OutOrStdout(), "no results found for %q\n", title)
 				return nil
 			}
 			if limit > 0 && len(results) > limit {
@@ -41,17 +41,17 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 			}
 
 			for i, manga := range results {
-				fmt.Fprintf(cmd.OutOrStdout(), "%d. %s\n", i+1, manga.Title)
+				writeHuman(cmd.OutOrStdout(), "%d. %s\n", i+1, manga.Title)
 
 				if manga.URL != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "   URL: %s\n", manga.URL)
+					writeHuman(cmd.OutOrStdout(), "   URL: %s\n", manga.URL)
 				}
 
 				if manga.ID != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "   ID:  %s\n", manga.ID)
+					writeHuman(cmd.OutOrStdout(), "   ID:  %s\n", manga.ID)
 				}
 
-				fmt.Fprintln(cmd.OutOrStdout())
+				writeHuman(cmd.OutOrStdout(), "\n")
 			}
 
 			return nil

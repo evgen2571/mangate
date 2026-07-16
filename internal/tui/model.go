@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/util"
 )
 
 type state int
@@ -99,6 +100,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loading.spinner.Tick, m.searchMangaCmd(msg.Query))
 
 	case searchSucceededMsg:
+		for _, manga := range msg.Results {
+			sanitizeManga(manga)
+		}
 		m.results = newResultsModel(msg.Query, msg.Results)
 		m.state = stateResults
 		m.resizeActiveModel()
@@ -183,6 +187,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loading.spinner.Tick, m.loadChaptersCmd(msg.Manga))
 
 	case chaptersLoadedMsg:
+		for _, chapter := range msg.Chapters {
+			sanitizeChapter(chapter)
+		}
 		if msg.Manga != nil {
 			msg.Manga.Chapters = msg.Chapters
 			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
@@ -380,6 +387,29 @@ func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chap
 	m.pendingFullMangaDownload = nil
 	m.confirm = confirmModel{manga: manga, chapters: chapters, provider: m.app.Cfg.Provider, output: m.app.Cfg.Download.Dir, existing: m.app.Cfg.Download.ExistingFileMode}
 	m.state = stateFormat
+}
+
+func sanitizeManga(manga *source.Manga) {
+	if manga == nil {
+		return
+	}
+	manga.ID = util.SanitizeTerminalText(manga.ID)
+	manga.Title = util.SanitizeTerminalText(manga.Title)
+	manga.URL = util.SanitizeTerminalText(manga.URL)
+	for language, description := range manga.Metadata.Description {
+		manga.Metadata.Description[language] = util.SanitizeTerminalText(description)
+	}
+}
+
+func sanitizeChapter(chapter *source.Chapter) {
+	if chapter == nil {
+		return
+	}
+	chapter.ID = util.SanitizeTerminalText(chapter.ID)
+	chapter.Index = util.SanitizeTerminalText(chapter.Index)
+	chapter.Title = util.SanitizeTerminalText(chapter.Title)
+	chapter.URL = util.SanitizeTerminalText(chapter.URL)
+	chapter.Language = util.SanitizeTerminalText(chapter.Language)
 }
 
 func (m model) View() string {

@@ -66,6 +66,14 @@ func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.
 	}
 }
 
+func TestWriteHumanEscapesTerminalControlText(t *testing.T) {
+	var output bytes.Buffer
+	writeHuman(&output, "Title: %s\n", "Bad\x1b[2J\nTitle")
+	if strings.Contains(output.String(), "\x1b") || strings.Contains(output.String(), "\nTitle\n") {
+		t.Fatalf("writeHuman() output = %q, want control text escaped", output.String())
+	}
+}
+
 func TestSelectChaptersRejectsAmbiguousNumber(t *testing.T) {
 	_, err := selectChapters([]*source.Chapter{{ID: "a", Index: "1"}, {ID: "b", Index: "1"}}, chapterSelection{Numbers: []string{"1"}})
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
