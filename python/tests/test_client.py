@@ -62,6 +62,21 @@ class ClientTests(unittest.TestCase):
         self.assertIn("--dry-run", command)
         self.assertEqual(result["format"], "cbz")
 
+    def test_download_dry_run_uses_requested_format_without_writes(self) -> None:
+        payload = {
+            "formatVersion": "1",
+            "operation": "download.plan",
+            "status": "success",
+            "data": {"format": "zip", "status": "planned"},
+        }
+        process = _CompletedProcess(payload, 0)
+        with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
+            result = Client().download("title-id", latest=True, output_format="zip", dry_run=True)
+        command = popen.call_args.args[0]
+        self.assertIn("--dry-run", command)
+        self.assertIn("zip", command)
+        self.assertEqual(result["status"], "planned")
+
 
 if __name__ == "__main__":
     unittest.main()
