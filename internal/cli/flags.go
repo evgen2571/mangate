@@ -44,6 +44,9 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Refuse prompts and the terminal interface",
 	)
 
+	f.Bool("color", false, "Force color output when supported")
+	f.Bool("no-color", false, "Disable terminal color output")
+
 	f.StringVar(
 		&cfg.Language,
 		"language",

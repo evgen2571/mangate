@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-isatty"
+	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 
 	"github.com/evgen2571/mangate/internal/app"
@@ -70,12 +72,36 @@ func runInteractive(cmd *cobra.Command, a *app.App) error {
 	if isNonInteractive(cmd) {
 		return fmt.Errorf("tui cannot run with --non-interactive")
 	}
+	if err := configureTUIColor(cmd); err != nil {
+		return err
+	}
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
 	p := tea.NewProgram(tui.New(a))
 	_, err := p.Run()
 	return err
+}
+
+func configureTUIColor(cmd *cobra.Command) error {
+	color, err := cmd.Flags().GetBool("color")
+	if err != nil {
+		return err
+	}
+	noColor, err := cmd.Flags().GetBool("no-color")
+	if err != nil {
+		return err
+	}
+	if color && noColor {
+		return fmt.Errorf("--color and --no-color cannot be combined")
+	}
+	if noColor {
+		lipgloss.SetColorProfile(termenv.Ascii)
+	}
+	if color {
+		lipgloss.SetColorProfile(termenv.TrueColor)
+	}
+	return nil
 }
 
 func isNonInteractive(cmd *cobra.Command) bool {

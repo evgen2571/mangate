@@ -68,6 +68,19 @@ func TestTUIRejectsNonInteractiveMode(t *testing.T) {
 	}
 }
 
+func TestTUIRejectsConflictingColorFlagsBeforeOpeningTerminal(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCmd(a)
+	cmd.SetArgs([]string{"--color", "--no-color", "tui"})
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("Execute() error = %v, want color conflict", err)
+	}
+}
+
 func TestMissingTitleArgumentExplainsStableReference(t *testing.T) {
 	a, err := app.New(config.DefaultConfig())
 	if err != nil {

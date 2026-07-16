@@ -50,7 +50,7 @@ mangate archive verify ./library/Example-123/Chapter-1.cbz
 
 `--chapter` rejects ambiguous releases. Use `--chapter-id` in that case. Chapters are listed in ascending provider chapter sequence. `--range`, `--before`, and `--after` currently compare provider chapter labels, so stable chapter IDs are the safe choice for special labels such as `Prologue`.
 
-Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead. Pass `--non-interactive` in scripts to refuse TUI entry explicitly.
+Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead. Pass `--non-interactive` in scripts to refuse TUI entry explicitly. TUI colors follow terminal defaults; use `--no-color` to disable them or `--color` to force them. Those two flags conflict.
 
 The TUI is a sequential keyboard flow: search, choose a title, select one or more chapters, choose Directory, CBZ, or ZIP, then review the operation before it starts. Use arrows or `j` and `k` to move, `space` to toggle chapters, `a` to select all visible chapters, `d` to clear them, `enter` to continue, and `esc` to go back. `ctrl+g` opens configuration, including output root, default format, existing-file policy, and source retention. It has no mouse requirement. `ctrl+c` or `q` exits before a download begins.
 
