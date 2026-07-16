@@ -9,14 +9,19 @@ import (
 	"github.com/evgen2571/mangate/internal/source"
 )
 
-func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testing.T) {
+func TestModelFullMangaDownloadOpensFormatSelectionAfterMatchingChaptersLoad(t *testing.T) {
 	manga := &source.Manga{ID: "manga-a", Title: "Manga A"}
 	chapters := []*source.Chapter{
 		{ID: "chapter-a", Index: "1"},
 		nil,
 		{ID: "chapter-b", Index: "2"},
 	}
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := model{
+		app:                      a,
 		state:                    stateLoading,
 		pendingFullMangaDownload: manga,
 	}
@@ -27,17 +32,17 @@ func TestModelFullMangaDownloadStartsDownloadAfterMatchingChaptersLoad(t *testin
 		t.Fatalf("Update() returned %T, want model", updated)
 	}
 
-	if got.state != stateDownloading {
-		t.Fatalf("state = %v, want stateDownloading", got.state)
+	if got.state != stateFormat {
+		t.Fatalf("state = %v, want stateFormat", got.state)
 	}
 	if got.pendingFullMangaDownload != nil {
 		t.Fatalf("pendingFullMangaDownload = %#v, want nil", got.pendingFullMangaDownload)
 	}
-	if cmd == nil {
-		t.Fatalf("Update() returned nil command")
+	if cmd != nil {
+		t.Fatalf("Update() returned unexpected command")
 	}
-	if got.downloading.detail != "2 chapters selected" {
-		t.Fatalf("downloading detail = %q, want %q", got.downloading.detail, "2 chapters selected")
+	if len(got.confirm.chapters) != 2 {
+		t.Fatalf("confirmation chapters = %#v", got.confirm.chapters)
 	}
 }
 

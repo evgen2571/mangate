@@ -52,6 +52,8 @@ mangate archive verify ./library/Example-123/Chapter-1.cbz
 
 Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead.
 
+The TUI is a sequential keyboard flow: search, choose a title, select one or more chapters, choose Directory, CBZ, or ZIP, then review the operation before it starts. Use arrows or `j` and `k` to move, `space` to toggle chapters, `a` to select all visible chapters, `d` to clear them, `enter` to continue, and `esc` to go back. It has no mouse requirement. `ctrl+c` or `q` exits before a download begins.
+
 ## Files and repeated downloads
 
 The default output root is `~/downloads/mangate`. Existing non-empty pages use the default `skip` behavior. Pass `--existing-files replace` to fetch them again, or `--existing-files fail` to stop on a conflict. Mangate writes to:

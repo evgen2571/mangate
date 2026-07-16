@@ -2,8 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/usecase"
 )
@@ -60,12 +63,52 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
 				return
 			}
+			if err := m.archiveChapters(manga, chapters); err != nil {
+				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Err: err}
+				return
+			}
 
 			progressCh <- downloadSucceededMsg{Manga: manga, Chapters: chapters}
 		}()
 
 		return nil
 	}
+}
+
+func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) error {
+	format, err := archive.ParseFormat(m.app.Cfg.Download.Format)
+	if err != nil || format == archive.FormatDirectory {
+		return err
+	}
+	names := downloader.ChapterDirectoryNames(chapters)
+	titleDir := downloader.TitleDirectoryName(manga)
+	for index, chapter := range chapters {
+		if chapter == nil {
+			return fmt.Errorf("archive chapter: selected chapter is nil")
+		}
+		sourceDir := filepath.Join(m.app.Cfg.Download.Dir, titleDir, names[index])
+		_, err := archive.CreateFromDirectory(archive.Options{
+			Format:           format,
+			SourceDir:        sourceDir,
+			OutputPath:       sourceDir + format.Extension(),
+			ExistingFileMode: archive.ExistingFileMode(m.app.Cfg.Download.ExistingFileMode),
+			RemoveSource:     !m.app.Cfg.Download.RetainSource,
+			Metadata: archive.Metadata{
+				Provider:      m.app.Cfg.Provider,
+				TitleID:       manga.ID,
+				Title:         manga.Title,
+				ChapterID:     chapter.ID,
+				ChapterNumber: chapter.Index,
+				ChapterTitle:  chapter.Title,
+				Language:      chapter.Language,
+				ExpectedPages: chapter.PageCount,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("create %s for %s: %w", format, chapter.LogName(), err)
+		}
+	}
+	return nil
 }
 
 func (m model) loadCoverCmd(manga *source.Manga, width, height int) tea.Cmd {

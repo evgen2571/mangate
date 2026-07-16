@@ -169,6 +169,11 @@ func titleDirName(manga *source.Manga) string {
 	return title
 }
 
+// TitleDirectoryName returns the stable local directory name used for a title.
+func TitleDirectoryName(manga *source.Manga) string {
+	return titleDirName(manga)
+}
+
 func existingPage(base string) bool {
 	paths, err := filepath.Glob(base + ".*")
 	if err != nil {
@@ -284,6 +289,12 @@ func uniqueChapterDirNames(chapters []*source.Chapter) []string {
 	}
 
 	return names
+}
+
+// ChapterDirectoryNames returns the collision-safe local directory names used
+// for a selected chapter sequence.
+func ChapterDirectoryNames(chapters []*source.Chapter) []string {
+	return uniqueChapterDirNames(chapters)
 }
 
 func chapterDirBaseName(chapter *source.Chapter) string {
