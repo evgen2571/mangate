@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -59,10 +58,6 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 		return nil
 	}
 
-	var applyErr error
-	if a.Downloader != nil {
-		applyErr = errors.Join(applyErr, a.Downloader.Close())
-	}
 	if a.Registry == nil {
 		a.Registry = providers.NewDefaultRegistry()
 	}
@@ -73,7 +68,7 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 	a.Downloader = downloader.New(cfg, client)
 	a.Cache = cache.New(cfg, client)
 
-	return applyErr
+	return nil
 }
 
 func (a *App) ApplyAndSaveConfig(cfg config.Config) error {
@@ -113,14 +108,4 @@ func (a *App) AddSearchQuery(query string) error {
 		return nil
 	}
 	return a.Cache.AddSearchQuery(query)
-}
-
-func (a *App) Close() error {
-	var closeErr error
-
-	if a.Downloader != nil {
-		closeErr = errors.Join(closeErr, a.Downloader.Close())
-	}
-
-	return closeErr
 }

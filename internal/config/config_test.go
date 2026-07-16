@@ -51,17 +51,13 @@ func TestLoadMergesOverridesFromConfigFile(t *testing.T) {
     "timeout": "45s"
   },
   "download": {
-    "dir": "/tmp/custom-downloads",
-    "type": "cbz"
+    "dir": "/tmp/custom-downloads"
   },
   "concurrency": {
     "pageDownloads": 3
   },
   "search": {
     "historyMax": 25
-  },
-  "dirs": {
-    "temp": "/tmp/custom-temp"
   }
 }`
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
@@ -82,17 +78,11 @@ func TestLoadMergesOverridesFromConfigFile(t *testing.T) {
 	if cfg.Download.Dir != "/tmp/custom-downloads" {
 		t.Fatalf("Download.Dir = %q, want %q", cfg.Download.Dir, "/tmp/custom-downloads")
 	}
-	if cfg.Download.Type != "cbz" {
-		t.Fatalf("Download.Type = %q, want %q", cfg.Download.Type, "cbz")
-	}
 	if cfg.Concurrency.PageDownloads != 3 {
 		t.Fatalf("Concurrency.PageDownloads = %d, want %d", cfg.Concurrency.PageDownloads, 3)
 	}
 	if cfg.Search.HistoryMax != 25 {
 		t.Fatalf("Search.HistoryMax = %d, want %d", cfg.Search.HistoryMax, 25)
-	}
-	if cfg.Dirs.Temp != "/tmp/custom-temp" {
-		t.Fatalf("Dirs.Temp = %q, want %q", cfg.Dirs.Temp, "/tmp/custom-temp")
 	}
 
 	defaults := DefaultConfig()
@@ -110,7 +100,6 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Language = "ja"
 	cfg.HTTP.Timeout = 90 * time.Second
-	cfg.Download.Type = "zip"
 	cfg.Concurrency.ChapterDownloads = 4
 
 	if err := Save(configPath, cfg); err != nil {
@@ -136,6 +125,18 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 	if got != cfg {
 		t.Fatalf("Load() cfg = %#v, want %#v", got, cfg)
+	}
+}
+
+func TestLoadRejectsLegacyDownloadType(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"download":{"type":"cbz"}}`), 0o644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	_, err := LoadFromPath(configPath)
+	if err == nil || !strings.Contains(err.Error(), "only plain is supported") {
+		t.Fatalf("LoadFromPath() error = %v, want plain-format rejection", err)
 	}
 }
 

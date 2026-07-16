@@ -35,7 +35,6 @@ func NewRootCmd(a *app.App) *cobra.Command {
 
 	cmd.AddCommand(
 		NewChaptersCmd(a),
-		NewConfigCmd(a),
 		NewDownloadCmd(a),
 		NewInteractiveCmd(a),
 		NewProviderCmd(a),

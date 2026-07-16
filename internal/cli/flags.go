@@ -39,13 +39,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Directory where manga will be downloaded",
 	)
 
-	f.StringVar(
-		&cfg.Download.Type,
-		"download-type",
-		cfg.Download.Type,
-		"Download type (plain image directory)",
-	)
-
 	// Concurrency
 	f.IntVar(
 		&cfg.Concurrency.PageDownloads,
@@ -77,10 +70,4 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Cache directory",
 	)
 
-	f.StringVar(
-		&cfg.Dirs.Temp,
-		"temp-dir",
-		cfg.Dirs.Temp,
-		"Temporary directory",
-	)
 }
