@@ -121,6 +121,16 @@ func ExitCode(message string) int {
 	}
 }
 
+// ErrorDiagnostic returns safe, stable context for verbose error reporting.
+// It deliberately omits provider responses, paths, and request details.
+func ErrorDiagnostic(err error) string {
+	message := "operation failed"
+	if err != nil {
+		message = err.Error()
+	}
+	return fmt.Sprintf("error category: %s; exit code: %d", ErrorCategory(message), ExitCode(message))
+}
+
 func writeHuman(out io.Writer, format string, args ...any) {
 	for index, value := range args {
 		if text, ok := value.(string); ok {

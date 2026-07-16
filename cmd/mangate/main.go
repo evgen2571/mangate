@@ -32,6 +32,10 @@ func main() {
 	defer cancel()
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		jsonOutput, _ := rootCmd.Flags().GetBool("json")
+		verbose, _ := rootCmd.Flags().GetBool("verbose")
+		if verbose {
+			fmt.Fprintf(os.Stderr, "mangate: %s\n", cli.ErrorDiagnostic(err))
+		}
 		var reported *cli.ReportedError
 		if errors.As(err, &reported) {
 			if !jsonOutput {
