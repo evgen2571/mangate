@@ -84,11 +84,17 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 
 			started := time.Now().UTC()
 			record := downloadRecord{Provider: provider.Name(), Title: title, Format: format, OutputRoot: a.Cfg.Download.Dir, Status: "in_progress", StartedAt: started, Chapters: chapterRecords(a.Cfg.Download.Dir, title, selection, format, "pending")}
+			pendingSelection := selection
+			if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
+				pendingSelection = reusableArchiveSelection(&record, selection, title)
+			}
 			if dryRun {
 				record.Status = "planned"
 				record.CompletedAt = time.Now().UTC()
 				for index := range record.Chapters {
-					record.Chapters[index].Status = "planned"
+					if record.Chapters[index].Status != "skipped" {
+						record.Chapters[index].Status = "planned"
+					}
 				}
 				if wantsJSON(cmd) {
 					return writeJSON(cmd, "download.plan", record)
@@ -99,7 +105,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 					if chapter.ArchivePath != "" {
 						path = chapter.ArchivePath
 					}
-					writeHuman(cmd.OutOrStdout(), "  %s -> %s\n", chapter.ID, path)
+					writeHuman(cmd.OutOrStdout(), "  %s [%s] -> %s\n", chapter.ID, chapter.Status, path)
 				}
 				return nil
 			}
@@ -109,7 +115,18 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				}
 				writeHuman(cmd.ErrOrStderr(), "Downloaded %d/%d pages, %d/%d chapters\r", progress.CompletedPages, progress.TotalPages, progress.CompletedChapters, progress.TotalChapters)
 			}
-			err = a.UseCases().DownloadChapters(cmd.Context(), title, selection, notify)
+			if len(pendingSelection) == 0 {
+				record.CompletedAt = time.Now().UTC()
+				record.Status = "complete"
+				if wantsJSON(cmd) {
+					return writeJSON(cmd, "download", record)
+				}
+				if !isQuiet(cmd) {
+					writeHuman(cmd.OutOrStdout(), "Reused %d existing %s archive(s)\n", len(selection), format)
+				}
+				return nil
+			}
+			err = a.UseCases().DownloadChapters(cmd.Context(), title, pendingSelection, notify)
 			record.CompletedAt = time.Now().UTC()
 			updateChapterRecordStates(&record)
 			if err != nil {
@@ -120,9 +137,6 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 					}
 				}
 				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
-			}
-			for index := range record.Chapters {
-				record.Chapters[index].Status = "complete"
 			}
 			if format != archive.FormatDirectory {
 				if err := finalizeArchives(record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); err != nil {
@@ -181,6 +195,9 @@ func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause erro
 
 func updateChapterRecordStates(record *downloadRecord) {
 	for index := range record.Chapters {
+		if record.Chapters[index].Status == "skipped" {
+			continue
+		}
 		stateData, err := os.ReadFile(filepath.Join(record.Chapters[index].OutputPath, ".mangate.json"))
 		if err != nil {
 			record.Chapters[index].Status = "incomplete"
@@ -195,6 +212,21 @@ func updateChapterRecordStates(record *downloadRecord) {
 			record.Chapters[index].Status = "incomplete"
 		}
 	}
+}
+
+func reusableArchiveSelection(record *downloadRecord, selection []*source.Chapter, title *source.Manga) []*source.Chapter {
+	pending := make([]*source.Chapter, 0, len(selection))
+	for index, chapter := range selection {
+		chapterRecord := &record.Chapters[index]
+		inspection, err := archive.Inspect(chapterRecord.ArchivePath)
+		if err == nil && inspection.Complete && inspection.TitleID == title.ID && inspection.ChapterID == chapter.ID {
+			chapterRecord.Status = "skipped"
+			chapterRecord.Validation = &inspection.Validation
+			continue
+		}
+		pending = append(pending, chapter)
+	}
+	return pending
 }
 
 type chapterSelection struct {

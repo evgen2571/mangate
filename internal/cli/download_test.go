@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +67,33 @@ func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.
 	if !errors.As(err, &reported) || reported.Code != 8 {
 		t.Fatalf("error = %#v, want archive reported error", err)
 	}
+}
+
+func TestReusableArchiveSelectionSkipsValidatedMatchingArchives(t *testing.T) {
+	directory := t.TempDir()
+	archivePath := filepath.Join(directory, "chapter.cbz")
+	result, err := archive.CreateFromDirectory(archive.Options{Format: archive.FormatCBZ, SourceDir: writeArchiveSource(t), OutputPath: archivePath, Metadata: archive.Metadata{TitleID: "title", ChapterID: "chapter"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Validation.Complete {
+		t.Fatal("test archive is incomplete")
+	}
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", ArchivePath: archivePath, Status: "pending"}}}
+	selection := []*source.Chapter{{ID: "chapter"}}
+	pending := reusableArchiveSelection(&record, selection, &source.Manga{ID: "title"})
+	if len(pending) != 0 || record.Chapters[0].Status != "skipped" || record.Chapters[0].Validation == nil {
+		t.Fatalf("pending = %#v, record = %#v", pending, record)
+	}
+}
+
+func writeArchiveSource(t *testing.T) string {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "0001.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }
 
 func TestWriteHumanEscapesTerminalControlText(t *testing.T) {
