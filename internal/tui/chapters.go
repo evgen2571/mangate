@@ -28,6 +28,9 @@ func (i chapterItem) FilterValue() string {
 }
 
 func (i chapterItem) Title() string {
+	if i.value == nil {
+		return "Unknown chapter"
+	}
 	text := i.value.DisplayTitle(i.idx)
 
 	if i.selected {
@@ -79,7 +82,7 @@ func newChaptersModel(manga *source.Manga, chapters []*source.Chapter) chaptersM
 	l := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.SetShowHelp(false)
 	l.SetShowPagination(true)
 
@@ -103,20 +106,23 @@ func (m *chaptersModel) SetSize(width, height int) {
 func (m chaptersModel) Update(msg tea.Msg) (chaptersModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.list.SettingFilter() {
+			break
+		}
 		switch {
 		case key.Matches(msg, m.keys.Back):
 			return m, func() tea.Msg { return goBackMsg{} }
 		case key.Matches(msg, m.keys.Toggle):
-			m.toggleSelectionAt(m.list.Index())
+			m.toggleSelectedChapter()
 			return m, nil
 		case key.Matches(msg, m.keys.SelectAll):
-			if m.allChaptersSelected() {
+			if m.allVisibleChaptersSelected() {
 				m.deselectAll()
 				m.setStatus("cleared selection")
 				return m, nil
 			}
-			m.selectAll()
-			m.setStatus("selected all chapters")
+			m.selectAllVisible()
+			m.setStatus("selected all visible chapters")
 			return m, nil
 		case key.Matches(msg, m.keys.DeselectAll):
 			m.deselectAll()
@@ -232,17 +238,21 @@ func (m *chaptersModel) clearSelection() {
 }
 
 func (m *chaptersModel) selectAll() {
-	if m.allChaptersSelected() {
+	m.selectAllVisible()
+}
+
+func (m *chaptersModel) selectAllVisible() {
+	if m.allVisibleChaptersSelected() {
 		m.deselectAll()
 		return
 	}
 
-	m.selected = make(map[string]bool)
-	for idx, chapter := range m.chapters {
-		if chapter == nil {
+	for _, item := range m.list.VisibleItems() {
+		chapterItem, ok := item.(chapterItem)
+		if !ok || chapterItem.value == nil {
 			continue
 		}
-		m.selected[chapterSelectionKey(chapter, idx)] = true
+		m.selected[chapterSelectionKey(chapterItem.value, chapterItem.idx)] = true
 	}
 	m.syncListItems()
 }
@@ -266,13 +276,26 @@ func (m *chaptersModel) toggleSelectionAt(index int) {
 	m.syncListItems()
 }
 
+func (m *chaptersModel) toggleSelectedChapter() {
+	item, ok := m.list.SelectedItem().(chapterItem)
+	if !ok || item.value == nil {
+		return
+	}
+	key := chapterSelectionKey(item.value, item.idx)
+	m.selected[key] = !m.selected[key]
+	if !m.selected[key] {
+		delete(m.selected, key)
+	}
+	m.syncListItems()
+}
+
 func (m chaptersModel) chaptersForDownload() []*source.Chapter {
 	if m.selectedCount() == 0 {
-		chapter := m.chapterAt(m.list.Index())
-		if chapter == nil {
+		item, ok := m.list.SelectedItem().(chapterItem)
+		if !ok || item.value == nil {
 			return nil
 		}
-		return []*source.Chapter{chapter}
+		return []*source.Chapter{item.value}
 	}
 
 	chapters := make([]*source.Chapter, 0, len(m.selected))
@@ -292,16 +315,18 @@ func (m chaptersModel) selectedCount() int {
 	return len(m.selected)
 }
 
-func (m chaptersModel) allChaptersSelected() bool {
-	if m.chapterCount() == 0 {
+func (m chaptersModel) allVisibleChaptersSelected() bool {
+	visible := m.list.VisibleItems()
+	if len(visible) == 0 {
 		return false
 	}
 
-	for idx, chapter := range m.chapters {
-		if chapter == nil {
+	for _, item := range visible {
+		chapterItem, ok := item.(chapterItem)
+		if !ok || chapterItem.value == nil {
 			continue
 		}
-		if !m.selected[chapterSelectionKey(chapter, idx)] {
+		if !m.selected[chapterSelectionKey(chapterItem.value, chapterItem.idx)] {
 			return false
 		}
 	}

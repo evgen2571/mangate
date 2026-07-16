@@ -124,3 +124,17 @@ func TestChapterItemDescriptionShowsLanguagePagesAndStableID(t *testing.T) {
 		}
 	}
 }
+
+func TestChaptersModelFiltersByLanguageAndSelectsVisibleChapters(t *testing.T) {
+	chapters := []*source.Chapter{
+		{ID: "english", Index: "1", Language: "en"},
+		{ID: "russian", Index: "1", Language: "ru"},
+	}
+	m := newChaptersModel(&source.Manga{Title: "Test"}, chapters)
+	m.list.SetFilterText("ru")
+	m.selectAllVisible()
+	selected := m.chaptersForDownload()
+	if len(selected) != 1 || selected[0].ID != "russian" {
+		t.Fatalf("chaptersForDownload() = %#v, want only russian chapter", selected)
+	}
+}

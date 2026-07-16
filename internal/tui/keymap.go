@@ -188,6 +188,7 @@ type chaptersKeyMap struct {
 	Up          key.Binding
 	Down        key.Binding
 	Toggle      key.Binding
+	Filter      key.Binding
 	SelectAll   key.Binding
 	DeselectAll key.Binding
 	Download    key.Binding
@@ -207,6 +208,10 @@ func newChaptersKeyMap() chaptersKeyMap {
 		Toggle: key.NewBinding(
 			key.WithKeys(" "),
 			key.WithHelp("space", "toggle chapter"),
+		),
+		Filter: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "filter"),
 		),
 		SelectAll: key.NewBinding(
 			key.WithKeys("a"),
@@ -232,6 +237,7 @@ func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 		k.local.Up,
 		k.local.Down,
 		k.local.Toggle,
+		k.local.Filter,
 		k.local.SelectAll,
 		k.local.DeselectAll,
 		k.local.Download,
@@ -242,7 +248,7 @@ func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k chaptersHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Toggle, k.local.SelectAll, k.local.DeselectAll},
+		{k.local.Up, k.local.Down, k.local.Toggle, k.local.Filter, k.local.SelectAll, k.local.DeselectAll},
 		{k.local.Download, k.local.Back},
 		{k.global.Config, k.global.Help, k.global.Suspend, k.global.Quit},
 	}
