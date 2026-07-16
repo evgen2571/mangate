@@ -1,8 +1,16 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/downloader"
+	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/usecase"
 )
 
@@ -60,6 +68,54 @@ func TestProgressSummaryDetailUsesChapterProgressViews(t *testing.T) {
 				t.Fatalf("progressSummaryDetail() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestArchiveChaptersFinalizesCompletedDirectoriesAfterPartialDownload(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Download.Format = "cbz"
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manga := &source.Manga{ID: "title", Title: "Example"}
+	chapters := []*source.Chapter{{ID: "one", Index: "1", PageCount: 1}, {ID: "two", Index: "2", PageCount: 2}}
+	names := downloader.ChapterDirectoryNames(chapters)
+	titleDir := filepath.Join(cfg.Download.Dir, downloader.TitleDirectoryName(manga))
+	writeChapterStateForTUI(t, filepath.Join(titleDir, names[0]), 1, true)
+	writeChapterStateForTUI(t, filepath.Join(titleDir, names[1]), 2, false)
+
+	m := model{app: a}
+	outcomes, err := m.archiveChapters(manga, chapters)
+	if err != nil {
+		t.Fatalf("archiveChapters() error = %v", err)
+	}
+	if outcomes[0].Status != "complete" || !strings.HasSuffix(outcomes[0].Path, ".cbz") || outcomes[1].Status != "incomplete" || !strings.HasSuffix(outcomes[1].Path, names[1]) {
+		t.Fatalf("outcomes = %#v", outcomes)
+	}
+	if _, err := os.Stat(outcomes[0].Path); err != nil {
+		t.Fatalf("completed chapter archive was not created: %v", err)
+	}
+	if _, err := os.Stat(outcomes[1].Path + ".cbz"); !os.IsNotExist(err) {
+		t.Fatalf("incomplete chapter archive exists: %v", err)
+	}
+}
+
+func writeChapterStateForTUI(t *testing.T, directory string, expectedPages int, complete bool) {
+	t.Helper()
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "0001.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, err := json.Marshal(map[string]any{"expectedPages": expectedPages, "complete": complete})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), state, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

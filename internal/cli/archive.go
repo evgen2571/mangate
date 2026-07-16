@@ -13,9 +13,10 @@ import (
 
 func NewArchiveCmd(a *app.App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "archive",
-		Short: "Convert, inspect, and verify chapter archives",
-		Long:  "Create CBZ or ZIP archives from local chapter directories, then inspect or verify them without extracting files.",
+		Use:     "archive",
+		Short:   "Convert, inspect, and verify chapter archives",
+		Long:    "Create CBZ or ZIP archives from local chapter directories, then inspect or verify them without extracting files.",
+		Example: "  mangate --format cbz archive convert ./library/Example/Chapter-1\n  mangate archive inspect ./library/Example/Chapter-1.cbz",
 	}
 	cmd.AddCommand(newArchiveConvertCmd(a), newArchiveInspectCmd("inspect"), newArchiveInspectCmd("verify"))
 	return cmd

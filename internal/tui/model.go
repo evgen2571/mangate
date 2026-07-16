@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -10,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
@@ -25,16 +29,19 @@ const (
 	stateDownloading
 	stateConfig
 	stateFormat
+	stateOutput
 	stateConfirm
 	stateCompletion
 )
 
 type model struct {
-	app *app.App
+	app         *app.App
+	baseContext context.Context
 
 	state                    state
 	previousState            state
 	pendingFullMangaDownload *source.Manga
+	downloadCancel           context.CancelFunc
 	width                    int
 	height                   int
 
@@ -48,11 +55,21 @@ type model struct {
 	downloading downloadingModel
 	config      configModel
 	format      formatModel
+	output      outputModel
 	confirm     confirmModel
 	completion  completionModel
 }
 
 func New(a *app.App) tea.Model {
+	return NewWithContext(a, context.Background())
+}
+
+// NewWithContext creates the TUI using the caller's lifecycle context. Active
+// downloads inherit it, so process interruption cancels provider work too.
+func NewWithContext(a *app.App, baseContext context.Context) tea.Model {
+	if baseContext == nil {
+		baseContext = context.Background()
+	}
 	h := help.New()
 	h.ShowAll = false
 
@@ -64,12 +81,13 @@ func New(a *app.App) tea.Model {
 	}
 
 	model := &model{
-		app:    a,
-		state:  stateSearch,
-		keys:   newKeyMap(),
-		help:   h,
-		search: newSearchModel(searchHistory),
-		config: newConfigModel(a.Cfg),
+		app:         a,
+		baseContext: baseContext,
+		state:       stateSearch,
+		keys:        newKeyMap(),
+		help:        h,
+		search:      newSearchModel(searchHistory),
+		config:      newConfigModel(a.Cfg),
 	}
 	model.search.SetProvider(a.Cfg.Provider)
 	return model
@@ -155,6 +173,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.state == stateConfirm {
+			m.state = stateOutput
+		} else if m.state == stateOutput {
 			m.state = stateFormat
 		} else if m.state == stateFormat {
 			m.state = stateChapters
@@ -194,6 +214,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Manga.Metadata.ChapterCount = nonNilChapterCount(msg.Chapters)
 		}
 		m.chapters = newChaptersModel(msg.Manga, msg.Chapters)
+		if m.app != nil {
+			m.chapters.setLocalStatuses(localChapterStatuses(m.app.Cfg, msg.Manga, msg.Chapters))
+		}
 		if m.pendingFullMangaDownload == msg.Manga {
 			m.pendingFullMangaDownload = nil
 			chapters := nonNilChapters(msg.Chapters)
@@ -227,6 +250,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeActiveModel()
 		return m, nil
 
+	case outputPathSelectedMsg:
+		path := strings.TrimSpace(msg.Path)
+		if path == "" {
+			m.output.status = "output root cannot be empty"
+			return m, nil
+		}
+		cfg := m.app.Cfg.Clone()
+		cfg.Download.Dir = filepath.Clean(path)
+		if err := m.app.ApplyConfig(cfg); err != nil {
+			m.output.status = fmt.Sprintf("apply output root: %v", err)
+			return m, nil
+		}
+		m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
+		m.state = stateConfirm
+		m.resizeActiveModel()
+		return m, nil
+
 	case downloadConfirmedMsg:
 		if msg.Manga == nil || len(msg.Chapters) == 0 {
 			return m, nil
@@ -238,11 +278,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateChapters
 			return m, nil
 		}
+		ctx, cancel := context.WithCancel(m.baseContext)
+		m.downloadCancel = cancel
 		progressCh := make(chan tea.Msg, 1024)
 		m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(msg.Chapters), progressCh)
 		m.state = stateDownloading
 		m.resizeActiveModel()
-		return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(msg.Manga, msg.Chapters, progressCh))
+		return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(ctx, msg.Manga, msg.Chapters, progressCh))
 
 	case downloadProgressMsg:
 		if m.state != stateDownloading {
@@ -254,16 +296,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(progressCmd, m.downloading.waitForMsgCmd())
 
 	case downloadSucceededMsg:
+		m.downloadCancel = nil
 		m.chapters.clearSelection()
 		m.chapters.setStatus(fmt.Sprintf("downloaded %d chapter(s)", len(msg.Chapters)))
-		m.completion = newCompletionModel(m.app, msg.Manga, msg.Chapters, nil)
+		m.completion = newCompletionModelWithOutcomes(m.app, msg.Manga, msg.Chapters, msg.Outcomes, nil)
 		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
 
 	case downloadFailedMsg:
-		m.chapters.setStatus(fmt.Sprintf("download failed: %v", msg.Err))
-		m.completion = newCompletionModel(m.app, msg.Manga, msg.Chapters, msg.Err)
+		m.downloadCancel = nil
+		if msg.Cancelled {
+			m.chapters.setStatus("download cancelled")
+		} else {
+			m.chapters.setStatus(fmt.Sprintf("download failed: %v", msg.Err))
+		}
+		m.completion = newCompletionModelWithOutcomes(m.app, msg.Manga, msg.Chapters, msg.Outcomes, msg.Err)
+		m.completion.cancelled = msg.Cancelled
+		if msg.Cancelled {
+			m.completion.error = "Download cancelled; completed data has been kept."
+		}
 		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
@@ -276,6 +328,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.config.draft = m.app.Cfg.Clone()
 		m.config.syncInput()
 		m.config.setStatus("applied for this session")
+		if m.previousState == stateConfirm {
+			m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
+		}
 		return m, nil
 
 	case configSaveRequestedMsg:
@@ -297,6 +352,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
+			if m.state == stateDownloading && m.downloadCancel != nil {
+				m.downloadCancel()
+				m.downloadCancel = nil
+				m.downloading.status = "Cancelling download..."
+				return m, nil
+			}
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Suspend):
 			return m, tea.Suspend
@@ -323,10 +384,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.format.move(1)
 				return m, nil
 			case "enter":
-				m.confirm.format = m.format.selected()
-				m.state = stateConfirm
+				m.output = newOutputModel(m.app.Cfg.Download.Dir)
+				m.state = stateOutput
 				m.resizeActiveModel()
-				return m, nil
+				return m, m.output.Init()
 			case "esc", "backspace":
 				m.state = stateChapters
 				m.resizeActiveModel()
@@ -338,7 +399,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				return m, func() tea.Msg { return downloadConfirmedMsg{Manga: m.confirm.manga, Chapters: m.confirm.chapters} }
 			case "esc", "backspace":
-				m.state = stateFormat
+				m.state = stateOutput
 				m.resizeActiveModel()
 				return m, nil
 			}
@@ -384,6 +445,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.config, cmd = m.config.Update(msg)
 		return m, cmd
 
+	case stateOutput:
+		var cmd tea.Cmd
+		m.output, cmd = m.output.Update(msg)
+		return m, cmd
+
 	case stateFormat, stateConfirm:
 		return m, nil
 
@@ -397,11 +463,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chapter) {
 	m.format = newFormatModel(m.app.Cfg.Download.Format)
 	m.pendingFullMangaDownload = nil
-	m.confirm = confirmModel{manga: manga, chapters: chapters, provider: m.app.Cfg.Provider, output: m.app.Cfg.Download.Dir, existing: m.app.Cfg.Download.ExistingFileMode}
+	m.confirm = newConfirmModel(m.app.Cfg, manga, chapters, m.format.selected())
+	m.output = newOutputModel(m.app.Cfg.Download.Dir)
 	m.state = stateFormat
 }
 
 func newCompletionModel(application *app.App, manga *source.Manga, chapters []*source.Chapter, operationErr error) completionModel {
+	return newCompletionModelWithOutcomes(application, manga, chapters, nil, operationErr)
+}
+
+func newCompletionModelWithOutcomes(application *app.App, manga *source.Manga, chapters []*source.Chapter, outcomes []chapterOutcome, operationErr error) completionModel {
 	completion := completionModel{success: operationErr == nil}
 	if application == nil {
 		completion.summary = "Download finished."
@@ -411,24 +482,45 @@ func newCompletionModel(application *app.App, manga *source.Manga, chapters []*s
 	if err != nil {
 		format = archive.FormatDirectory
 	}
-	completion.summary = completionSummary(len(chapters), string(format))
-	if operationErr != nil {
-		completion.summary = fmt.Sprintf("Download finished with failures across %d selected chapter(s).", len(chapters))
-		completion.error = operationErr.Error()
-		return completion
-	}
 	if manga == nil {
+		if operationErr != nil {
+			completion.error = operationErr.Error()
+		}
+		completion.summary = "Download finished."
 		return completion
 	}
 	names := downloader.ChapterDirectoryNames(chapters)
 	root := filepath.Join(application.Cfg.Download.Dir, downloader.TitleDirectoryName(manga))
-	for index := range chapters {
-		path := filepath.Join(root, names[index])
-		if format != archive.FormatDirectory {
-			path += format.Extension()
+	if len(outcomes) == 0 {
+		outcomes = make([]chapterOutcome, len(chapters))
+		for index, chapter := range chapters {
+			path := filepath.Join(root, names[index])
+			if format != archive.FormatDirectory {
+				path += format.Extension()
+			}
+			name := "Unknown chapter"
+			if chapter != nil {
+				name = chapter.DisplayName()
+			}
+			outcomes[index] = chapterOutcome{Name: name, Status: "complete", Path: path}
 		}
-		completion.paths = append(completion.paths, path)
 	}
+	completion.outcomes = outcomes
+	for _, outcome := range outcomes {
+		if outcome.Path != "" {
+			completion.paths = append(completion.paths, outcome.Path)
+		}
+	}
+	completed, skipped, incomplete, archiveFailures := completionCounts(outcomes)
+	if operationErr != nil {
+		completion.summary = fmt.Sprintf("Download finished: %d completed, %d skipped/reused, %d failed or incomplete.", completed, skipped, incomplete)
+		if archiveFailures > 0 {
+			completion.summary += fmt.Sprintf(" %d archive failure(s).", archiveFailures)
+		}
+		completion.error = operationErr.Error()
+		return completion
+	}
+	completion.summary = completionSummary(completed+skipped, string(format))
 	return completion
 }
 
@@ -453,6 +545,8 @@ func (m model) View() string {
 		body = m.config.View()
 	case stateFormat:
 		body = m.format.View()
+	case stateOutput:
+		body = m.output.View()
 	case stateConfirm:
 		body = m.confirm.View()
 	case stateCompletion:
@@ -487,6 +581,8 @@ func (m model) currentHelp() help.KeyMap {
 		return m.config.HelpKeys(m.keys)
 	case stateFormat, stateConfirm:
 		return m.chapters.HelpKeys(m.keys)
+	case stateOutput:
+		return m.output.HelpKeys(m.keys)
 	case stateCompletion:
 		return m.chapters.HelpKeys(m.keys)
 	default:
@@ -519,6 +615,8 @@ func (m *model) resizeActiveModel() {
 		m.config.SetSize(m.width, bodyHeight)
 	case stateFormat:
 		m.format.SetSize(m.width, bodyHeight)
+	case stateOutput:
+		m.output.SetSize(m.width, bodyHeight)
 	case stateConfirm:
 		m.confirm.SetSize(m.width, bodyHeight)
 	case stateCompletion:
@@ -561,4 +659,41 @@ func nonNilChapters(chapters []*source.Chapter) []*source.Chapter {
 		result = append(result, chapter)
 	}
 	return result
+}
+
+func localChapterStatuses(cfg config.Config, manga *source.Manga, chapters []*source.Chapter) map[string]string {
+	statuses := make(map[string]string, len(chapters))
+	if manga == nil {
+		return statuses
+	}
+	format, err := archive.ParseFormat(cfg.Download.Format)
+	if err != nil {
+		format = archive.FormatDirectory
+	}
+	names := downloader.ChapterDirectoryNames(chapters)
+	titleDir := filepath.Join(cfg.Download.Dir, downloader.TitleDirectoryName(manga))
+	for index, chapter := range chapters {
+		key := chapterSelectionKey(chapter, index)
+		if chapter == nil {
+			statuses[key] = "missing"
+			continue
+		}
+		directory := filepath.Join(titleDir, names[index])
+		if format != archive.FormatDirectory {
+			if info, statErr := os.Stat(directory + format.Extension()); statErr == nil && !info.IsDir() && info.Size() > 0 {
+				statuses[key] = "archive"
+				continue
+			}
+		}
+		if chapterDirectoryComplete(directory) {
+			statuses[key] = "complete"
+			continue
+		}
+		if _, statErr := os.Stat(filepath.Join(directory, ".mangate.json")); statErr == nil {
+			statuses[key] = "incomplete"
+			continue
+		}
+		statuses[key] = "missing"
+	}
+	return statuses
 }

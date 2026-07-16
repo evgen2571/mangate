@@ -21,6 +21,7 @@ The default configuration is `~/.config/mangate/config.json`, or `MANGATE_CONFIG
 # Discover what is installed without making a provider request.
 mangate providers
 mangate provider mangadex
+mangate diagnostics
 
 # Find a title, then inspect it and its chapters.
 mangate search "example title" --limit 10
@@ -34,6 +35,9 @@ mangate download <title-id> --range 1-10
 mangate download <title-id> --first
 mangate download <title-id> --latest
 mangate download <title-id> --all --chapter-language en
+
+# Broad downloads, replacement, and source-page deletion require an explicit acknowledgement.
+mangate --format cbz --existing-files replace download <title-id> --latest --yes
 
 # Choose a per-chapter archive. CBZ is for comic readers, ZIP is a general archive.
 mangate --format cbz download <title-id> --chapter 1
@@ -52,7 +56,7 @@ mangate archive verify ./library/Example-123/Chapter-1.cbz
 
 Run `mangate tui` to opt into the terminal UI. `interactive` remains an alias. With no arguments Mangate opens the TUI only when standard input and output are terminals. In a pipe or redirected shell it prints help instead. Pass `--non-interactive` in scripts to refuse TUI entry explicitly. TUI colors follow terminal defaults; use `--no-color` to disable them or `--color` to force them. Those two flags conflict.
 
-The TUI is a sequential keyboard flow: search, choose a title, select one or more chapters, choose Directory, CBZ, or ZIP, then review the operation before it starts. A final result screen reports the outcome and output paths. Use arrows or `j` and `k` to move, `/` to filter chapters by label, language, or ID, `space` to toggle chapters, `a` to select all visible chapters, `d` to clear them, `enter` to continue, and `esc` to go back. `ctrl+g` opens configuration, including output root, default format, existing-file policy, and source retention. It has no mouse requirement. `ctrl+c` or `q` exits before a download begins.
+The TUI is a sequential keyboard flow: search, choose a title, select one or more chapters, choose Directory, CBZ, or ZIP, choose or edit the output root, then review the operation before it starts. The chapter selector labels local state as complete pages, incomplete pages, archive present, or not downloaded; `/` can filter metadata and local state with terms such as `local:complete` or `local:archive`. The review shows known page totals, every planned output path, existing-output policy decisions, and whether source pages are retained after archive validation. A final result screen separates completed, reused, incomplete, and archive-failed chapters with their actual output paths; a partial page failure still finalizes any sibling chapters that completed safely. Use arrows or `j` and `k` to move, `space` to toggle chapters, `a` to select all visible chapters, `l` to select the latest visible chapter, `r` to select the filtered range from the previous range anchor to the current row, `d` to clear them, `enter` to continue, and `esc` to go back. `ctrl+g` opens configuration, including output root, default format, existing-file policy, and source retention; applying it while reviewing immediately refreshes the plan. It has no mouse requirement. `ctrl+c` or `q` exits before a download begins; while a download is active it cancels the operation and keeps completed page data intact.
 
 ## Files and repeated downloads
 
@@ -74,7 +78,7 @@ The title ID keeps same-named titles apart. A page first lands in a `.part` file
 
 Mangate writes every archive to a temporary sibling file, reopens and verifies it, then renames it to its final path. A failed or cancelled archive never appears at its requested final path. The default `--existing-files skip` policy reuses an existing archive only after it validates and its stored title and chapter identity match. `replace` builds and validates a new temporary archive before replacing the old one. `fail` stops on any existing destination.
 
-Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised.
+Archive downloads retain the page directory by default. Use `--retain-source=false` on a download, or `--remove-source` with `archive convert`, to remove the source directory only after a valid archive is finalized. Archive entries never contain absolute paths or parent-directory traversal. Archive timestamps reflect creation time, so byte-for-byte reproducibility is not promised. Every human-readable download completion (including archive reuse and partial failure) reports completed, skipped/reused, failed, and archive-failure counts plus the resulting output paths. Downloads selecting 25 or more chapters, replacing outputs, or deleting archive source pages require `--yes`; use `--dry-run` first to inspect the resolved plan.
 
 `archive convert` accepts a local chapter directory and creates a CBZ or ZIP without provider requests. It requires at least one recognized image page and rejects a present but incomplete `.mangate.json` state file. Directories with pages but no local state can still be converted, with limited metadata. `archive inspect` and `archive verify` read entries in place and report format, pages, metadata, safe paths, unexpected non-page entries, and completion state without extracting anything.
 
@@ -141,4 +145,4 @@ except MangateError as error:
 
 `Client` methods block and return structured dictionaries. Each call runs independently and may be used from different Python threads. Pass a `threading.Event` as `cancel_event` to `download` to interrupt the process. The same durable-page guarantees apply.
 
-`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"` and returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning; `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.
+`Client.download` accepts `output_format="directory"`, `"cbz"`, or `"zip"`, plus `dry_run=True` for a no-write download plan and `assume_yes=True` for broad or destructive operations that require explicit acknowledgement. It returns the requested format, output paths, and archive validation state. A partial download returns its completed and failed chapter records instead of discarding completed archive paths. `Client.convert` accepts `dry_run=True` for local conversion planning; `inspect_archive` and `verify_archive` expose archive inspection. CLI and Python version `0.1.x` are compatible. The Python API exports `Client`, `MangateError`, and `__version__`.

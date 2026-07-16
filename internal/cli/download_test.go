@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -66,6 +67,61 @@ func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.
 	var reported *ReportedError
 	if !errors.As(err, &reported) || reported.Code != 8 {
 		t.Fatalf("error = %#v, want archive reported error", err)
+	}
+}
+
+func TestWriteDownloadSummaryDistinguishesOutcomesAndPaths(t *testing.T) {
+	var output bytes.Buffer
+	writeDownloadSummary(&output, downloadRecord{Chapters: []chapterDownload{
+		{ID: "completed", Status: "complete", OutputPath: "pages", ExpectedPages: 2},
+		{ID: "reused", Status: "skipped", OutputPath: "source", ArchivePath: "archive.cbz", ExpectedPages: 3},
+		{ID: "failed", Status: "archive_failed", OutputPath: "failed-pages", ArchivePath: "failed.cbz", ExpectedPages: 4},
+	}})
+	for _, want := range []string{"Completed: 1", "Skipped/reused: 1", "Failed or incomplete: 1", "Archive failures: 1", "Expected pages: 9", "Reused pages: 3", "[skipped] archive.cbz", "[archive_failed] failed.cbz"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("summary = %q, want %q", output.String(), want)
+		}
+	}
+}
+
+func TestDownloadConfirmationRequirementOnlyGatesBroadOrDestructiveOperations(t *testing.T) {
+	chapters := make([]*source.Chapter, broadDownloadChapterThreshold)
+	for index := range chapters {
+		chapters[index] = &source.Chapter{ID: strconv.Itoa(index)}
+	}
+	tests := []struct {
+		name         string
+		chapters     []*source.Chapter
+		format       archive.Format
+		existingMode string
+		retainSource bool
+		want         string
+	}{
+		{name: "single directory", chapters: chapters[:1], format: archive.FormatDirectory, existingMode: "skip", retainSource: true},
+		{name: "broad", chapters: chapters, format: archive.FormatDirectory, existingMode: "skip", retainSource: true, want: "broad operation"},
+		{name: "replace", chapters: chapters[:1], format: archive.FormatCBZ, existingMode: "replace", retainSource: true, want: "replacing"},
+		{name: "remove source", chapters: chapters[:1], format: archive.FormatCBZ, existingMode: "skip", retainSource: false, want: "removing"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := downloadConfirmationRequirement(test.chapters, test.format, test.existingMode, test.retainSource)
+			if test.want == "" && got != "" {
+				t.Fatalf("requirement = %q, want none", got)
+			}
+			if test.want != "" && !strings.Contains(got, test.want) {
+				t.Fatalf("requirement = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestWriteDownloadPreflightShowsEffectiveOperation(t *testing.T) {
+	var output bytes.Buffer
+	writeDownloadPreflight(&output, &source.Manga{Title: "Example"}, "provider", []*source.Chapter{{ID: "one"}}, archive.FormatCBZ, "./library", "skip", false)
+	for _, want := range []string{"Title: Example", "Provider: provider", "Chapters: 1 selected", "Format: cbz", "Source pages: removed after archive validation"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("preflight = %q, want %q", output.String(), want)
+		}
 	}
 }
 

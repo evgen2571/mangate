@@ -12,9 +12,10 @@ import (
 func NewSearchCmd(a *app.App) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
-		Use:   "search <title>",
-		Short: "Search manga by title using the default provider",
-		Args:  requireSearchQuery,
+		Use:     "search <title>",
+		Short:   "Search manga by title using the default provider",
+		Example: "  mangate search \"example title\" --limit 10\n  mangate --json search \"example title\"",
+		Args:    requireSearchQuery,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			title := strings.TrimSpace(strings.Join(args, " "))
 			if title == "" {

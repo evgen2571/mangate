@@ -46,6 +46,10 @@ type downloadConfirmedMsg struct {
 	Chapters []*source.Chapter
 }
 
+type outputPathSelectedMsg struct {
+	Path string
+}
+
 type downloadProgressMsg struct {
 	Title     string
 	Detail    string
@@ -58,12 +62,15 @@ type downloadProgressMsg struct {
 type downloadSucceededMsg struct {
 	Manga    *source.Manga
 	Chapters []*source.Chapter
+	Outcomes []chapterOutcome
 }
 
 type downloadFailedMsg struct {
-	Manga    *source.Manga
-	Chapters []*source.Chapter
-	Err      error
+	Manga     *source.Manga
+	Chapters  []*source.Chapter
+	Outcomes  []chapterOutcome
+	Cancelled bool
+	Err       error
 }
 
 type coverLoadRequestedMsg struct {

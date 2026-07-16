@@ -45,7 +45,9 @@ func NewRootCmd(a *app.App) *cobra.Command {
 	cmd.AddCommand(
 		NewArchiveCmd(a),
 		NewChaptersCmd(a),
+		NewCompletionCmd(cmd),
 		NewConfigCmd(a),
+		NewDiagnosticsCmd(a),
 		NewDownloadCmd(a),
 		NewInteractiveCmd(a),
 		NewProviderCmd(a),
@@ -62,6 +64,7 @@ func NewInteractiveCmd(a *app.App) *cobra.Command {
 		Use:     "tui",
 		Aliases: []string{"interactive"},
 		Short:   "Open the interactive terminal interface",
+		Example: "  mangate tui",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInteractive(cmd, a)
 		},
@@ -78,7 +81,7 @@ func runInteractive(cmd *cobra.Command, a *app.App) error {
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
-	p := tea.NewProgram(tui.New(a))
+	p := tea.NewProgram(tui.NewWithContext(a, cmd.Context()))
 	_, err := p.Run()
 	return err
 }

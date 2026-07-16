@@ -185,14 +185,16 @@ type chaptersHelpKeyMap struct {
 }
 
 type chaptersKeyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Toggle      key.Binding
-	Filter      key.Binding
-	SelectAll   key.Binding
-	DeselectAll key.Binding
-	Download    key.Binding
-	Back        key.Binding
+	Up           key.Binding
+	Down         key.Binding
+	Toggle       key.Binding
+	Filter       key.Binding
+	SelectAll    key.Binding
+	SelectLatest key.Binding
+	SelectRange  key.Binding
+	DeselectAll  key.Binding
+	Download     key.Binding
+	Back         key.Binding
 }
 
 func newChaptersKeyMap() chaptersKeyMap {
@@ -217,6 +219,14 @@ func newChaptersKeyMap() chaptersKeyMap {
 			key.WithKeys("a"),
 			key.WithHelp("a", "all"),
 		),
+		SelectLatest: key.NewBinding(
+			key.WithKeys("l"),
+			key.WithHelp("l", "latest visible"),
+		),
+		SelectRange: key.NewBinding(
+			key.WithKeys("r"),
+			key.WithHelp("r", "range"),
+		),
 		DeselectAll: key.NewBinding(
 			key.WithKeys("d"),
 			key.WithHelp("d", "clear"),
@@ -234,11 +244,11 @@ func newChaptersKeyMap() chaptersKeyMap {
 
 func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.local.Up,
-		k.local.Down,
 		k.local.Toggle,
 		k.local.Filter,
 		k.local.SelectAll,
+		k.local.SelectLatest,
+		k.local.SelectRange,
 		k.local.DeselectAll,
 		k.local.Download,
 		k.global.Help,
@@ -248,7 +258,7 @@ func (k chaptersHelpKeyMap) ShortHelp() []key.Binding {
 
 func (k chaptersHelpKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.local.Up, k.local.Down, k.local.Toggle, k.local.Filter, k.local.SelectAll, k.local.DeselectAll},
+		{k.local.Up, k.local.Down, k.local.Toggle, k.local.Filter, k.local.SelectAll, k.local.SelectLatest, k.local.SelectRange, k.local.DeselectAll},
 		{k.local.Download, k.local.Back},
 		{k.global.Config, k.global.Help, k.global.Suspend, k.global.Quit},
 	}
