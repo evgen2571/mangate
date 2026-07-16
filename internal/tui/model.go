@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -28,6 +29,7 @@ const (
 	stateDownloading
 	stateConfig
 	stateFormat
+	stateOutput
 	stateConfirm
 	stateCompletion
 )
@@ -53,6 +55,7 @@ type model struct {
 	downloading downloadingModel
 	config      configModel
 	format      formatModel
+	output      outputModel
 	confirm     confirmModel
 	completion  completionModel
 }
@@ -170,6 +173,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.state == stateConfirm {
+			m.state = stateOutput
+		} else if m.state == stateOutput {
 			m.state = stateFormat
 		} else if m.state == stateFormat {
 			m.state = stateChapters
@@ -242,6 +247,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.openFormatSelection(msg.Manga, msg.Chapters)
+		m.resizeActiveModel()
+		return m, nil
+
+	case outputPathSelectedMsg:
+		path := strings.TrimSpace(msg.Path)
+		if path == "" {
+			m.output.status = "output root cannot be empty"
+			return m, nil
+		}
+		cfg := m.app.Cfg.Clone()
+		cfg.Download.Dir = filepath.Clean(path)
+		if err := m.app.ApplyConfig(cfg); err != nil {
+			m.output.status = fmt.Sprintf("apply output root: %v", err)
+			return m, nil
+		}
+		m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
+		m.state = stateConfirm
 		m.resizeActiveModel()
 		return m, nil
 
@@ -362,10 +384,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.format.move(1)
 				return m, nil
 			case "enter":
-				m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
-				m.state = stateConfirm
+				m.output = newOutputModel(m.app.Cfg.Download.Dir)
+				m.state = stateOutput
 				m.resizeActiveModel()
-				return m, nil
+				return m, m.output.Init()
 			case "esc", "backspace":
 				m.state = stateChapters
 				m.resizeActiveModel()
@@ -377,7 +399,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				return m, func() tea.Msg { return downloadConfirmedMsg{Manga: m.confirm.manga, Chapters: m.confirm.chapters} }
 			case "esc", "backspace":
-				m.state = stateFormat
+				m.state = stateOutput
 				m.resizeActiveModel()
 				return m, nil
 			}
@@ -423,6 +445,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.config, cmd = m.config.Update(msg)
 		return m, cmd
 
+	case stateOutput:
+		var cmd tea.Cmd
+		m.output, cmd = m.output.Update(msg)
+		return m, cmd
+
 	case stateFormat, stateConfirm:
 		return m, nil
 
@@ -437,6 +464,7 @@ func (m *model) openFormatSelection(manga *source.Manga, chapters []*source.Chap
 	m.format = newFormatModel(m.app.Cfg.Download.Format)
 	m.pendingFullMangaDownload = nil
 	m.confirm = newConfirmModel(m.app.Cfg, manga, chapters, m.format.selected())
+	m.output = newOutputModel(m.app.Cfg.Download.Dir)
 	m.state = stateFormat
 }
 
@@ -517,6 +545,8 @@ func (m model) View() string {
 		body = m.config.View()
 	case stateFormat:
 		body = m.format.View()
+	case stateOutput:
+		body = m.output.View()
 	case stateConfirm:
 		body = m.confirm.View()
 	case stateCompletion:
@@ -551,6 +581,8 @@ func (m model) currentHelp() help.KeyMap {
 		return m.config.HelpKeys(m.keys)
 	case stateFormat, stateConfirm:
 		return m.chapters.HelpKeys(m.keys)
+	case stateOutput:
+		return m.output.HelpKeys(m.keys)
 	case stateCompletion:
 		return m.chapters.HelpKeys(m.keys)
 	default:
@@ -583,6 +615,8 @@ func (m *model) resizeActiveModel() {
 		m.config.SetSize(m.width, bodyHeight)
 	case stateFormat:
 		m.format.SetSize(m.width, bodyHeight)
+	case stateOutput:
+		m.output.SetSize(m.width, bodyHeight)
 	case stateConfirm:
 		m.confirm.SetSize(m.width, bodyHeight)
 	case stateCompletion:

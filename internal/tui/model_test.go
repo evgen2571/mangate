@@ -143,6 +143,39 @@ func TestNewWithContextKeepsCallerLifecycleContext(t *testing.T) {
 	}
 }
 
+func TestOutputPathStepAppliesPathAndPreservesBackNavigation(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manga := &source.Manga{ID: "title", Title: "Example"}
+	chapters := []*source.Chapter{{ID: "one", Index: "1"}}
+	m := model{app: a, state: stateFormat, format: newFormatModel("cbz"), confirm: newConfirmModel(cfg, manga, chapters, "cbz"), output: newOutputModel(cfg.Download.Dir)}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if got.state != stateOutput {
+		t.Fatalf("state after format confirmation = %v, want stateOutput", got.state)
+	}
+	outputDir := filepath.Join(t.TempDir(), "nested", "library")
+	updated, _ = got.Update(outputPathSelectedMsg{Path: outputDir})
+	got = updated.(model)
+	if got.state != stateConfirm || got.app.Cfg.Download.Dir != outputDir || got.confirm.output != outputDir {
+		t.Fatalf("output confirmation = %#v", got)
+	}
+	updated, _ = got.Update(goBackMsg{})
+	got = updated.(model)
+	if got.state != stateOutput {
+		t.Fatalf("state after confirmation back = %v, want stateOutput", got.state)
+	}
+	updated, _ = got.Update(goBackMsg{})
+	got = updated.(model)
+	if got.state != stateFormat {
+		t.Fatalf("state after output back = %v, want stateFormat", got.state)
+	}
+}
+
 func TestLocalChapterStatusesRecognizesCompleteDirectoriesAndArchives(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Download.Dir = t.TempDir()

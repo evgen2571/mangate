@@ -46,6 +46,10 @@ type downloadConfirmedMsg struct {
 	Chapters []*source.Chapter
 }
 
+type outputPathSelectedMsg struct {
+	Path string
+}
+
 type downloadProgressMsg struct {
 	Title     string
 	Detail    string
