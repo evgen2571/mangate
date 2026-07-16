@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/source"
 	"github.com/spf13/cobra"
 )
 
 func NewSearchCmd(a *app.App) *cobra.Command {
-	return &cobra.Command{
+	var limit int
+	cmd := &cobra.Command{
 		Use:   "search <title>",
 		Short: "Search manga by title using the default provider",
 		Args:  cobra.MinimumNArgs(1),
@@ -25,8 +27,17 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 			}
 
 			if len(results) == 0 {
+				if wantsJSON(cmd) {
+					return writeJSON(cmd, "search", searchRecord{Provider: a.Cfg.Provider, Query: title, Results: []*source.Manga{}})
+				}
 				fmt.Fprintf(cmd.OutOrStdout(), "no results found for %q\n", title)
 				return nil
+			}
+			if limit > 0 && len(results) > limit {
+				results = results[:limit]
+			}
+			if wantsJSON(cmd) {
+				return writeJSON(cmd, "search", searchRecord{Provider: a.Cfg.Provider, Query: title, Results: results})
 			}
 
 			for i, manga := range results {
@@ -46,4 +57,12 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of results")
+	return cmd
+}
+
+type searchRecord struct {
+	Provider string          `json:"provider"`
+	Query    string          `json:"query"`
+	Results  []*source.Manga `json:"results"`
 }

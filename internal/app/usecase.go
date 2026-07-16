@@ -34,7 +34,7 @@ func (r providerResolver) Provider() (usecase.Provider, error) {
 		return nil, fmt.Errorf("provider: http client is not configured")
 	}
 
-	return r.app.Registry.New(r.app.Cfg.Provider, r.app.Cfg, r.app.Client)
+	return r.app.Provider()
 }
 
 type coverCache struct {

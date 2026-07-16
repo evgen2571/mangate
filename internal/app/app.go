@@ -99,6 +99,15 @@ func (a *App) SearchHistory() ([]string, error) {
 	return a.Cache.SearchHistory()
 }
 
+// Provider resolves the configured provider for non-interactive callers.
+// Callers can inspect its declared capabilities before making a request.
+func (a *App) Provider() (providers.Provider, error) {
+	if a == nil || a.Registry == nil || a.Client == nil {
+		return nil, fmt.Errorf("provider: app is not configured")
+	}
+	return a.Registry.New(a.Cfg.Provider, a.Cfg, a.Client)
+}
+
 func (a *App) AddSearchQuery(query string) error {
 	if a == nil || a.Cache == nil {
 		return nil

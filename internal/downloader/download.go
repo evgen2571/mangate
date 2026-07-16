@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -67,6 +68,9 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 }
 
 func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
+	if d.cfg.Download.Type != "plain" {
+		return fmt.Errorf("download chapter: download type %q is not supported; use plain", d.cfg.Download.Type)
+	}
 	if len(c.Pages) == 0 && pageLoader != nil {
 		pages, err := pageLoader(ctx, c)
 		if err != nil {
@@ -79,20 +83,11 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 		}
 	}
 
-	basePath, err := d.basePath()
-	if err != nil {
-		return err
+	if len(c.Pages) == 0 {
+		return fmt.Errorf("download chapter %q: provider returned no pages", c.ID)
 	}
 
-	chapterDir := filepath.Join(
-		basePath,
-		util.SanitizeString(c.From.Title),
-		util.SanitizeString(chapterName),
-	)
-
-	if err := os.RemoveAll(chapterDir); err != nil {
-		return fmt.Errorf("remove existing chapter workspace %q: %w", chapterDir, err)
-	}
+	chapterDir := filepath.Join(d.cfg.Download.Dir, titleDirName(c.From), util.SanitizeString(chapterName))
 	if err := util.EnsureDir(chapterDir, "chapter directory"); err != nil {
 		return err
 	}
@@ -104,12 +99,30 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 		page := page
 
 		g.Go(func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			filePathBase := filepath.Join(
 				chapterDir,
 				fmt.Sprintf("%04d", idx+1),
 			)
 
-			if _, err := d.downloadPage(page, filePathBase); err != nil {
+			if existingPage(filePathBase) {
+				switch d.cfg.Download.ExistingFileMode {
+				case "skip":
+					if reporter != nil {
+						reporter.pageCompleted(c)
+					}
+					return nil
+				case "fail":
+					return fmt.Errorf("download page: destination already exists for page %d", idx+1)
+				case "replace":
+					if err := removeExistingPage(filePathBase); err != nil {
+						return err
+					}
+				}
+			}
+			if _, err := d.downloadPage(ctx, page, filePathBase); err != nil {
 				return err
 			}
 			if reporter != nil {
@@ -120,14 +133,11 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 	}
 
 	if err := g.Wait(); err != nil {
+		_ = writeChapterState(chapterDir, c, false)
 		return err
 	}
 
-	if err := d.converter.ConvertChapter(
-		chapterDir,
-		util.SanitizeString(c.From.Title),
-		util.SanitizeString(chapterName),
-	); err != nil {
+	if err := writeChapterState(chapterDir, c, true); err != nil {
 		return err
 	}
 
@@ -135,6 +145,77 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 		reporter.chapterCompleted(c)
 	}
 
+	return nil
+}
+
+func removeExistingPage(base string) error {
+	paths, err := filepath.Glob(base + ".*")
+	if err != nil {
+		return err
+	}
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove existing page %q: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func titleDirName(manga *source.Manga) string {
+	if manga == nil {
+		return "unknown"
+	}
+	title := util.SanitizeString(manga.Title)
+	if id := util.SanitizeString(manga.ID); id != "unknown" {
+		return title + "-" + id
+	}
+	return title
+}
+
+func existingPage(base string) bool {
+	paths, err := filepath.Glob(base + ".*")
+	if err != nil {
+		return false
+	}
+	for _, path := range paths {
+		if strings.HasSuffix(path, ".part") {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() && info.Size() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+type chapterState struct {
+	FormatVersion string `json:"formatVersion"`
+	Provider      string `json:"provider,omitempty"`
+	TitleID       string `json:"titleId,omitempty"`
+	ChapterID     string `json:"chapterId,omitempty"`
+	ExpectedPages int    `json:"expectedPages"`
+	Complete      bool   `json:"complete"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
+func writeChapterState(chapterDir string, chapter *source.Chapter, complete bool) error {
+	state := chapterState{FormatVersion: "1", ChapterID: chapter.ID, ExpectedPages: len(chapter.Pages), Complete: complete, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	if chapter.From != nil {
+		state.TitleID = chapter.From.ID
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode chapter state: %w", err)
+	}
+	temp := filepath.Join(chapterDir, ".mangate.json.part")
+	final := filepath.Join(chapterDir, ".mangate.json")
+	if err := os.WriteFile(temp, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write chapter state: %w", err)
+	}
+	if err := os.Rename(temp, final); err != nil {
+		return fmt.Errorf("finalize chapter state: %w", err)
+	}
 	return nil
 }
 
@@ -155,15 +236,7 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 		return fmt.Errorf("download manga: nil manga")
 	}
 
-	basePath, err := d.basePath()
-	if err != nil {
-		return err
-	}
-
-	mangaDir := filepath.Join(
-		basePath,
-		util.SanitizeString(m.Title),
-	)
+	mangaDir := filepath.Join(d.cfg.Download.Dir, titleDirName(m))
 
 	if err := util.EnsureDir(mangaDir, "manga directory"); err != nil {
 		return err
@@ -247,7 +320,7 @@ func isForbiddenPageError(err error) bool {
 	return errors.As(err, &statusErr) && statusErr.statusCode == http.StatusForbidden
 }
 
-func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, error) {
+func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathBase string) (string, error) {
 	if p == nil {
 		return "", fmt.Errorf("download page: nil page")
 	}
@@ -258,7 +331,7 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 	d.acquirePageDownload()
 	defer d.releasePageDownload()
 
-	resp, err := d.getPageResponseWithRetry(p.URL)
+	resp, err := d.getPageResponseWithRetry(ctx, p.URL)
 	if err != nil {
 		return "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
@@ -267,30 +340,47 @@ func (d *Downloader) downloadPage(p *source.Page, filePathBase string) (string, 
 	if resp.StatusCode != http.StatusOK {
 		return "", pageStatusError{url: p.URL, statusCode: resp.StatusCode}
 	}
+	if contentType := resp.Header.Get("Content-Type"); contentType != "" && !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return "", fmt.Errorf("download page: expected an image response, got %q", contentType)
+	}
 
 	filePath := filePathBase + detectPageExtension(resp.Header.Get("Content-Type"), p.URL)
-	out, err := os.Create(filePath)
+	temporaryPath := filePath + ".part"
+	out, err := os.Create(temporaryPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create file %q: %w", filePath, err)
 	}
 
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		_ = out.Close()
-		_ = os.Remove(filePath)
+		_ = os.Remove(temporaryPath)
 		return "", fmt.Errorf("failed to write file %q: %w", filePath, err)
 	}
 
 	if err := out.Close(); err != nil {
-		_ = os.Remove(filePath)
+		_ = os.Remove(temporaryPath)
 		return "", fmt.Errorf("failed to close file %q: %w", filePath, err)
+	}
+	info, err := os.Stat(temporaryPath)
+	if err != nil || info.Size() == 0 {
+		_ = os.Remove(temporaryPath)
+		return "", fmt.Errorf("download page: response for %q was empty", p.URL)
+	}
+	if err := os.Rename(temporaryPath, filePath); err != nil {
+		_ = os.Remove(temporaryPath)
+		return "", fmt.Errorf("finalize file %q: %w", filePath, err)
 	}
 
 	return filePath, nil
 }
 
-func (d *Downloader) getPageResponseWithRetry(rawURL string) (*http.Response, error) {
+func (d *Downloader) getPageResponseWithRetry(ctx context.Context, rawURL string) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
-		resp, err := d.client.Get(rawURL)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := d.client.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +391,9 @@ func (d *Downloader) getPageResponseWithRetry(rawURL string) (*http.Response, er
 
 		wait := pageRetryAfterDelay(resp.Header.Get("Retry-After"), attempt)
 		resp.Body.Close()
-		time.Sleep(wait)
+		if err := sleepWithContext(ctx, wait); err != nil {
+			return nil, err
+		}
 	}
 }
 
@@ -322,6 +414,20 @@ func pageRetryAfterDelay(value string, attempt int) time.Duration {
 		return 250 * time.Millisecond
 	}
 	return delay
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (d *Downloader) acquirePageDownload() {

@@ -1,12 +1,12 @@
 package source
 
 type Manga struct {
-	ID       string
-	URL      string
-	Title    string
-	Chapters []*Chapter
-	Cover    Cover
-	Metadata MangaMetadata
+	ID       string        `json:"id"`
+	URL      string        `json:"url,omitempty"`
+	Title    string        `json:"title"`
+	Chapters []*Chapter    `json:"chapters,omitempty"`
+	Cover    Cover         `json:"cover,omitempty"`
+	Metadata MangaMetadata `json:"metadata"`
 }
 
 // ProviderInfo is static, safe-to-display provider metadata. Its identifier is
@@ -24,13 +24,13 @@ type ProviderInfo struct {
 }
 
 type MangaMetadata struct {
-	Description  map[string]string
-	ChapterCount int
-	Status       string
-	ContentType  string
+	Description  map[string]string `json:"description,omitempty"`
+	ChapterCount int               `json:"chapterCount,omitempty"`
+	Status       string            `json:"status,omitempty"`
+	ContentType  string            `json:"contentType,omitempty"`
 }
 
 type Cover struct {
-	URL      string
-	FileName string
+	URL      string `json:"url,omitempty"`
+	FileName string `json:"fileName,omitempty"`
 }

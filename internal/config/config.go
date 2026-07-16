@@ -44,8 +44,9 @@ type HTTPConfig struct {
 }
 
 type DownloadConfig struct {
-	Dir  string
-	Type string
+	Dir              string
+	Type             string
+	ExistingFileMode string
 }
 
 type ConcurrencyConfig struct {
@@ -88,8 +89,9 @@ type fileHTTPConfig struct {
 }
 
 type fileDownloadConfig struct {
-	Dir  *string `json:"dir,omitempty"`
-	Type *string `json:"type,omitempty"`
+	Dir              *string `json:"dir,omitempty"`
+	Type             *string `json:"type,omitempty"`
+	ExistingFileMode *string `json:"existingFileMode,omitempty"`
 }
 
 type fileConcurrencyConfig struct {
@@ -121,8 +123,9 @@ func DefaultConfig() Config {
 			Timeout: 30 * time.Second,
 		},
 		Download: DownloadConfig{
-			Dir:  defaultDownloadDir(),
-			Type: "plain",
+			Dir:              defaultDownloadDir(),
+			Type:             "plain",
+			ExistingFileMode: "skip",
 		},
 		Concurrency: ConcurrencyConfig{
 			PageDownloads:    8,
@@ -154,6 +157,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("download dir cannot be empty")
 	case strings.TrimSpace(c.Download.Type) == "":
 		return fmt.Errorf("download type cannot be empty")
+	case c.Download.ExistingFileMode != "skip" && c.Download.ExistingFileMode != "replace" && c.Download.ExistingFileMode != "fail":
+		return fmt.Errorf("existing file mode must be skip, replace, or fail")
 	case c.Concurrency.PageDownloads <= 0:
 		return fmt.Errorf("page-downloads must be > 0")
 	case c.Concurrency.ChapterDownloads <= 0:
@@ -288,6 +293,9 @@ func (f fileConfig) applyTo(cfg *Config) error {
 		if f.Download.Type != nil {
 			cfg.Download.Type = *f.Download.Type
 		}
+		if f.Download.ExistingFileMode != nil {
+			cfg.Download.ExistingFileMode = *f.Download.ExistingFileMode
+		}
 	}
 	if f.Concurrency != nil {
 		if f.Concurrency.PageDownloads != nil {
@@ -327,8 +335,9 @@ func newFileConfig(cfg Config) fileConfig {
 			Timeout: stringPtr(cfg.HTTP.Timeout.String()),
 		},
 		Download: &fileDownloadConfig{
-			Dir:  stringPtr(cfg.Download.Dir),
-			Type: stringPtr(cfg.Download.Type),
+			Dir:              stringPtr(cfg.Download.Dir),
+			Type:             stringPtr(cfg.Download.Type),
+			ExistingFileMode: stringPtr(cfg.Download.ExistingFileMode),
 		},
 		Concurrency: &fileConcurrencyConfig{
 			PageDownloads:    intPtr(cfg.Concurrency.PageDownloads),

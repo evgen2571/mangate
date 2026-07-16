@@ -1,5 +1,5 @@
 package source
 
 type Page struct {
-	URL string
+	URL string `json:"url"`
 }

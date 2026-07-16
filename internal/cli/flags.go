@@ -18,6 +18,13 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 	)
 
 	f.StringVar(
+		&cfg.Download.ExistingFileMode,
+		"existing-files",
+		cfg.Download.ExistingFileMode,
+		"Existing page behavior: skip, replace, or fail",
+	)
+
+	f.StringVar(
 		&cfg.Language,
 		"language",
 		cfg.Language,
@@ -36,7 +43,7 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		&cfg.Download.Type,
 		"download-type",
 		cfg.Download.Type,
-		"Download type (e.g. 'plain', 'cbz', 'zip')",
+		"Download type (plain image directory)",
 	)
 
 	// Concurrency

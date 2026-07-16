@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/evgen2571/mangate/internal/app"
+	"github.com/evgen2571/mangate/internal/source"
 )
 
 func NewChaptersCmd(a *app.App) *cobra.Command {
-	return &cobra.Command{
+	var limit int
+	cmd := &cobra.Command{
 		Use:   "chapters <manga-id>",
 		Short: "List chapters for a manga using the default provider",
 		Args:  cobra.ExactArgs(1),
@@ -27,8 +29,17 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			if len(chapters) == 0 {
+				if wantsJSON(cmd) {
+					return writeJSON(cmd, "chapters.list", chapterListRecord{Provider: a.Cfg.Provider, TitleID: mangaID, Order: "ascending provider chapter sequence", Chapters: []*source.Chapter{}})
+				}
 				fmt.Fprintf(out, "no chapters found for manga %s\n", mangaID)
 				return nil
+			}
+			if limit > 0 && len(chapters) > limit {
+				chapters = chapters[:limit]
+			}
+			if wantsJSON(cmd) {
+				return writeJSON(cmd, "chapters.list", chapterListRecord{Provider: a.Cfg.Provider, TitleID: mangaID, Order: "ascending provider chapter sequence", Chapters: chapters})
 			}
 
 			fmt.Fprintf(out, "Chapters for %s\n\n", mangaID)
@@ -53,4 +64,13 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of chapters")
+	return cmd
+}
+
+type chapterListRecord struct {
+	Provider string            `json:"provider"`
+	TitleID  string            `json:"titleId"`
+	Order    string            `json:"order"`
+	Chapters []*source.Chapter `json:"chapters"`
 }
