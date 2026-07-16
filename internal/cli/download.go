@@ -205,11 +205,11 @@ type chapterSelection struct {
 }
 
 func selectChapters(chapters []*source.Chapter, selection chapterSelection) ([]*source.Chapter, error) {
+	if err := selection.validate(); err != nil {
+		return nil, err
+	}
 	if len(selection.IDs) == 0 && len(selection.Numbers) == 0 && selection.Range == "" && !selection.First && !selection.Latest && !selection.All && selection.Before == "" && selection.After == "" {
 		return nil, fmt.Errorf("select chapters: choose --chapter-id, --chapter, --range, --first, --latest, or --all")
-	}
-	if (selection.First && selection.Latest) || (selection.First && selection.All) || (selection.Latest && selection.All) {
-		return nil, fmt.Errorf("select chapters: --first, --latest, and --all cannot be combined")
 	}
 	filtered := make([]*source.Chapter, 0, len(chapters))
 	for _, chapter := range chapters {
@@ -285,6 +285,27 @@ func selectChapters(chapters []*source.Chapter, selection chapterSelection) ([]*
 		return nil, fmt.Errorf("select chapters: no accessible chapters matched")
 	}
 	return selected, nil
+}
+
+func (selection chapterSelection) validate() error {
+	modeCount := 0
+	for _, enabled := range []bool{selection.First, selection.Latest, selection.All} {
+		if enabled {
+			modeCount++
+		}
+	}
+	if modeCount > 1 {
+		return fmt.Errorf("select chapters: --first, --latest, and --all cannot be combined")
+	}
+	hasExplicit := len(selection.IDs) > 0 || len(selection.Numbers) > 0
+	hasRange := selection.Range != "" || selection.Before != "" || selection.After != ""
+	if modeCount > 0 && (hasExplicit || hasRange) {
+		return fmt.Errorf("select chapters: --first, --latest, or --all cannot be combined with explicit chapter selectors or ranges")
+	}
+	if hasExplicit && hasRange {
+		return fmt.Errorf("select chapters: explicit chapter selectors cannot be combined with --range, --before, or --after")
+	}
+	return nil
 }
 
 func chapterInRange(value, start, end string) bool {

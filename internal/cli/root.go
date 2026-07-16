@@ -26,8 +26,8 @@ func NewRootCmd(a *app.App) *cobra.Command {
 			return a.ApplyConfig(a.Cfg)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if interactiveTerminal() && !wantsJSON(cmd) {
-				return runInteractive(a)
+			if interactiveTerminal() && !wantsJSON(cmd) && !isNonInteractive(cmd) {
+				return runInteractive(cmd, a)
 			}
 			return cmd.Help()
 		},
@@ -61,18 +61,26 @@ func NewInteractiveCmd(a *app.App) *cobra.Command {
 		Aliases: []string{"interactive"},
 		Short:   "Open the interactive terminal interface",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInteractive(a)
+			return runInteractive(cmd, a)
 		},
 	}
 }
 
-func runInteractive(a *app.App) error {
+func runInteractive(cmd *cobra.Command, a *app.App) error {
+	if isNonInteractive(cmd) {
+		return fmt.Errorf("tui cannot run with --non-interactive")
+	}
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
 	p := tea.NewProgram(tui.New(a))
 	_, err := p.Run()
 	return err
+}
+
+func isNonInteractive(cmd *cobra.Command) bool {
+	value, err := cmd.Flags().GetBool("non-interactive")
+	return err == nil && value
 }
 
 func interactiveTerminal() bool {

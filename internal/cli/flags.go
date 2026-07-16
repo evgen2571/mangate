@@ -38,6 +38,12 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Keep page directories after successful archive creation",
 	)
 
+	f.Bool(
+		"non-interactive",
+		false,
+		"Refuse prompts and the terminal interface",
+	)
+
 	f.StringVar(
 		&cfg.Language,
 		"language",

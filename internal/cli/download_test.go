@@ -72,3 +72,17 @@ func TestSelectChaptersRejectsAmbiguousNumber(t *testing.T) {
 		t.Fatalf("selectChapters() error = %v, want ambiguity error", err)
 	}
 }
+
+func TestSelectChaptersRejectsConflictingSelectorsBeforeMatching(t *testing.T) {
+	tests := []chapterSelection{
+		{Latest: true, All: true},
+		{All: true, IDs: []string{"chapter"}},
+		{Numbers: []string{"1"}, Range: "1-2"},
+	}
+	for _, selection := range tests {
+		_, err := selectChapters(nil, selection)
+		if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+			t.Fatalf("selectChapters(%#v) error = %v, want conflict", selection, err)
+		}
+	}
+}

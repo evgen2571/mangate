@@ -54,3 +54,16 @@ func TestConfigJSONUsesStableLowerCamelCaseNames(t *testing.T) {
 		t.Fatalf("configuration contains unstable Provider key: %#v", configuration)
 	}
 }
+
+func TestTUIRejectsNonInteractiveMode(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCmd(a)
+	cmd.SetArgs([]string{"--non-interactive", "tui"})
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--non-interactive") {
+		t.Fatalf("Execute() error = %v, want non-interactive rejection", err)
+	}
+}
