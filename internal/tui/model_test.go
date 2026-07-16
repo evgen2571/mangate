@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/config"
 	"github.com/evgen2571/mangate/internal/source"
@@ -108,6 +110,35 @@ func TestCompletionModelReportsPerChapterOutcomes(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("completion view = %q, want %q", view, want)
 		}
+	}
+}
+
+func TestQuitCancelsAnActiveDownloadBeforeLeavingTheTUI(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m := model{state: stateDownloading, downloadCancel: cancel, keys: newKeyMap()}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(model)
+	if cmd != nil || got.downloadCancel != nil || got.state != stateDownloading || got.downloading.status != "Cancelling download..." {
+		t.Fatalf("model after cancel = %#v, command = %v", got, cmd)
+	}
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("download context was not cancelled")
+	}
+}
+
+func TestNewWithContextKeepsCallerLifecycleContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := NewWithContext(a, ctx)
+	m, ok := created.(*model)
+	if !ok || m.baseContext != ctx {
+		t.Fatalf("NewWithContext() = %#v, want model with caller context", created)
 	}
 }
 

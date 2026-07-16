@@ -10,13 +10,14 @@ import (
 )
 
 type completionModel struct {
-	width    int
-	height   int
-	success  bool
-	summary  string
-	paths    []string
-	outcomes []chapterOutcome
-	error    string
+	width     int
+	height    int
+	success   bool
+	cancelled bool
+	summary   string
+	paths     []string
+	outcomes  []chapterOutcome
+	error     string
 }
 
 func (m *completionModel) SetSize(width, height int) {
@@ -26,7 +27,9 @@ func (m *completionModel) SetSize(width, height int) {
 
 func (m completionModel) View() string {
 	title := "Download incomplete"
-	if m.success {
+	if m.cancelled {
+		title = "Download cancelled"
+	} else if m.success {
 		title = "Download complete"
 	}
 	lines := []string{title, "", util.SanitizeTerminalText(m.summary)}

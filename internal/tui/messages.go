@@ -62,10 +62,11 @@ type downloadSucceededMsg struct {
 }
 
 type downloadFailedMsg struct {
-	Manga    *source.Manga
-	Chapters []*source.Chapter
-	Outcomes []chapterOutcome
-	Err      error
+	Manga     *source.Manga
+	Chapters  []*source.Chapter
+	Outcomes  []chapterOutcome
+	Cancelled bool
+	Err       error
 }
 
 type coverLoadRequestedMsg struct {

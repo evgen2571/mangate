@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -279,7 +280,22 @@ func (m downloadingModel) panelContentHeight() int {
 }
 
 func (m downloadingModel) HelpKeys(global keyMap) help.KeyMap {
-	return loadingHelpKeyMap{global: global}
+	return downloadingHelpKeyMap{global: global}
+}
+
+type downloadingHelpKeyMap struct {
+	global keyMap
+}
+
+func (k downloadingHelpKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "cancel download")),
+		k.global.Help,
+	}
+}
+
+func (k downloadingHelpKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{{key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "cancel download")), k.global.Help, k.global.Suspend}}
 }
 
 func (m downloadingModel) waitForMsgCmd() tea.Cmd {

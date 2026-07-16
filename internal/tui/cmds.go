@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,7 +47,7 @@ func (m model) loadChaptersCmd(manga *source.Manga) tea.Cmd {
 	}
 }
 
-func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapter, progressCh chan tea.Msg) tea.Cmd {
+func (m model) downloadChaptersCmd(ctx context.Context, manga *source.Manga, chapters []*source.Chapter, progressCh chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		go func() {
 			defer close(progressCh)
@@ -59,12 +60,19 @@ func (m model) downloadChaptersCmd(manga *source.Manga, chapters []*source.Chapt
 				Total:     0,
 			}
 
-			downloadErr := m.app.UseCases().DownloadChapters(nil, manga, chapters, func(progress usecase.DownloadProgress) {
+			downloadErr := m.app.UseCases().DownloadChapters(ctx, manga, chapters, func(progress usecase.DownloadProgress) {
 				progressCh <- downloadProgressMsgFromUsecase(progress)
 			})
-			outcomes, archiveErr := m.archiveChapters(manga, chapters)
+			cancelled := errors.Is(downloadErr, context.Canceled)
+			var outcomes []chapterOutcome
+			var archiveErr error
+			if cancelled {
+				outcomes = m.directoryChapterOutcomes(manga, chapters)
+			} else {
+				outcomes, archiveErr = m.archiveChapters(manga, chapters)
+			}
 			if operationErr := errors.Join(downloadErr, archiveErr); operationErr != nil {
-				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes, Err: operationErr}
+				progressCh <- downloadFailedMsg{Manga: manga, Chapters: chapters, Outcomes: outcomes, Cancelled: cancelled, Err: operationErr}
 				return
 			}
 
@@ -87,24 +95,7 @@ func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) 
 	if err != nil {
 		return nil, err
 	}
-	names := downloader.ChapterDirectoryNames(chapters)
-	titleDir := downloader.TitleDirectoryName(manga)
-	outcomes := make([]chapterOutcome, len(chapters))
-	for index, chapter := range chapters {
-		path := filepath.Join(m.app.Cfg.Download.Dir, titleDir, names[index])
-		name := "Unknown chapter"
-		if chapter != nil {
-			name = chapter.DisplayName()
-		}
-		outcomes[index] = chapterOutcome{Name: name, Status: "incomplete", Path: path}
-		if chapter == nil {
-			outcomes[index].Error = "selected chapter is nil"
-			continue
-		}
-		if chapterDirectoryComplete(path) {
-			outcomes[index].Status = "complete"
-		}
-	}
+	outcomes := m.directoryChapterOutcomes(manga, chapters)
 	if format == archive.FormatDirectory {
 		return outcomes, nil
 	}
@@ -149,6 +140,28 @@ func (m model) archiveChapters(manga *source.Manga, chapters []*source.Chapter) 
 		}
 	}
 	return outcomes, errors.Join(failures...)
+}
+
+func (m model) directoryChapterOutcomes(manga *source.Manga, chapters []*source.Chapter) []chapterOutcome {
+	names := downloader.ChapterDirectoryNames(chapters)
+	titleDir := downloader.TitleDirectoryName(manga)
+	outcomes := make([]chapterOutcome, len(chapters))
+	for index, chapter := range chapters {
+		path := filepath.Join(m.app.Cfg.Download.Dir, titleDir, names[index])
+		name := "Unknown chapter"
+		if chapter != nil {
+			name = chapter.DisplayName()
+		}
+		outcomes[index] = chapterOutcome{Name: name, Status: "incomplete", Path: path}
+		if chapter == nil {
+			outcomes[index].Error = "selected chapter is nil"
+			continue
+		}
+		if chapterDirectoryComplete(path) {
+			outcomes[index].Status = "complete"
+		}
+	}
+	return outcomes
 }
 
 func chapterDirectoryComplete(path string) bool {

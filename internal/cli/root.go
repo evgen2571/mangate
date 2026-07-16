@@ -81,7 +81,7 @@ func runInteractive(cmd *cobra.Command, a *app.App) error {
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
-	p := tea.NewProgram(tui.New(a))
+	p := tea.NewProgram(tui.NewWithContext(a, cmd.Context()))
 	_, err := p.Run()
 	return err
 }

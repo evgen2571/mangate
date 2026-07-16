@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -30,11 +31,13 @@ const (
 )
 
 type model struct {
-	app *app.App
+	app         *app.App
+	baseContext context.Context
 
 	state                    state
 	previousState            state
 	pendingFullMangaDownload *source.Manga
+	downloadCancel           context.CancelFunc
 	width                    int
 	height                   int
 
@@ -53,6 +56,15 @@ type model struct {
 }
 
 func New(a *app.App) tea.Model {
+	return NewWithContext(a, context.Background())
+}
+
+// NewWithContext creates the TUI using the caller's lifecycle context. Active
+// downloads inherit it, so process interruption cancels provider work too.
+func NewWithContext(a *app.App, baseContext context.Context) tea.Model {
+	if baseContext == nil {
+		baseContext = context.Background()
+	}
 	h := help.New()
 	h.ShowAll = false
 
@@ -64,12 +76,13 @@ func New(a *app.App) tea.Model {
 	}
 
 	model := &model{
-		app:    a,
-		state:  stateSearch,
-		keys:   newKeyMap(),
-		help:   h,
-		search: newSearchModel(searchHistory),
-		config: newConfigModel(a.Cfg),
+		app:         a,
+		baseContext: baseContext,
+		state:       stateSearch,
+		keys:        newKeyMap(),
+		help:        h,
+		search:      newSearchModel(searchHistory),
+		config:      newConfigModel(a.Cfg),
 	}
 	model.search.SetProvider(a.Cfg.Provider)
 	return model
@@ -238,11 +251,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateChapters
 			return m, nil
 		}
+		ctx, cancel := context.WithCancel(m.baseContext)
+		m.downloadCancel = cancel
 		progressCh := make(chan tea.Msg, 1024)
 		m.downloading = newDownloadingModel("Downloading pages", downloadDetailText(msg.Chapters), progressCh)
 		m.state = stateDownloading
 		m.resizeActiveModel()
-		return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(msg.Manga, msg.Chapters, progressCh))
+		return m, tea.Batch(m.downloading.waitForMsgCmd(), m.downloadChaptersCmd(ctx, msg.Manga, msg.Chapters, progressCh))
 
 	case downloadProgressMsg:
 		if m.state != stateDownloading {
@@ -254,6 +269,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(progressCmd, m.downloading.waitForMsgCmd())
 
 	case downloadSucceededMsg:
+		m.downloadCancel = nil
 		m.chapters.clearSelection()
 		m.chapters.setStatus(fmt.Sprintf("downloaded %d chapter(s)", len(msg.Chapters)))
 		m.completion = newCompletionModelWithOutcomes(m.app, msg.Manga, msg.Chapters, msg.Outcomes, nil)
@@ -262,8 +278,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case downloadFailedMsg:
-		m.chapters.setStatus(fmt.Sprintf("download failed: %v", msg.Err))
+		m.downloadCancel = nil
+		if msg.Cancelled {
+			m.chapters.setStatus("download cancelled")
+		} else {
+			m.chapters.setStatus(fmt.Sprintf("download failed: %v", msg.Err))
+		}
 		m.completion = newCompletionModelWithOutcomes(m.app, msg.Manga, msg.Chapters, msg.Outcomes, msg.Err)
+		m.completion.cancelled = msg.Cancelled
+		if msg.Cancelled {
+			m.completion.error = "Download cancelled; completed data has been kept."
+		}
 		m.state = stateCompletion
 		m.resizeActiveModel()
 		return m, nil
@@ -300,6 +325,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
+			if m.state == stateDownloading && m.downloadCancel != nil {
+				m.downloadCancel()
+				m.downloadCancel = nil
+				m.downloading.status = "Cancelling download..."
+				return m, nil
+			}
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Suspend):
 			return m, tea.Suspend
