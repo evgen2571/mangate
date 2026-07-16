@@ -30,6 +30,7 @@ type confirmModel struct {
 	unknownPageCounts int
 	plannedPaths      []string
 	existingPaths     []string
+	outputWarning     string
 	width             int
 	height            int
 }
@@ -120,6 +121,9 @@ func (m confirmModel) View() string {
 	}
 	if len(m.existingPaths) > 0 {
 		lines = append(lines, fmt.Sprintf("Existing outputs: %d (%s policy)", len(m.existingPaths), util.SanitizeTerminalText(m.existing)))
+	}
+	if m.outputWarning != "" {
+		lines = append(lines, "Warning: "+m.outputWarning)
 	}
 	lines = append(lines, "", "enter: start download  esc: change format  ctrl+g: edit output settings")
 	return lipgloss.NewStyle().

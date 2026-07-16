@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -11,6 +13,34 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/evgen2571/mangate/internal/constant"
 )
+
+func outputPathWarning(path string) (string, error) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "." || path == "" {
+		return "", fmt.Errorf("output root cannot be empty")
+	}
+	probe := path
+	for {
+		info, err := os.Stat(probe)
+		if err == nil {
+			if probe == path && !info.IsDir() {
+				return "", fmt.Errorf("output root is an existing file")
+			}
+			if info.Mode().Perm()&0o222 == 0 {
+				return fmt.Sprintf("nearest existing directory %s is not writable", probe), nil
+			}
+			return "", nil
+		}
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("inspect output root: %w", err)
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return "", fmt.Errorf("output root has no accessible parent")
+		}
+		probe = parent
+	}
+}
 
 type outputModel struct {
 	width  int

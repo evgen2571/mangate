@@ -268,6 +268,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.output.status = "output root cannot be empty"
 			return m, nil
 		}
+		warning, err := outputPathWarning(path)
+		if err != nil {
+			m.output.status = err.Error()
+			return m, nil
+		}
 		cfg := m.app.Cfg.Clone()
 		cfg.Download.Dir = filepath.Clean(path)
 		if err := m.app.ApplyConfig(cfg); err != nil {
@@ -275,6 +280,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.confirm = newConfirmModel(m.app.Cfg, m.confirm.manga, m.confirm.chapters, m.format.selected())
+		m.confirm.outputWarning = warning
 		m.state = stateConfirm
 		m.resizeActiveModel()
 		return m, nil
