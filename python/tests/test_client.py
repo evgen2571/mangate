@@ -53,12 +53,13 @@ class ClientTests(unittest.TestCase):
         }
         process = _CompletedProcess(payload, 0)
         with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
-            result = Client().convert("chapter", output_format="cbz", remove_source=True)
+            result = Client().convert("chapter", output_format="cbz", remove_source=True, dry_run=True)
         command = popen.call_args.args[0]
         self.assertIn("archive", command)
         self.assertIn("convert", command)
         self.assertIn("--format", command)
         self.assertIn("--remove-source", command)
+        self.assertIn("--dry-run", command)
         self.assertEqual(result["format"], "cbz")
 
 
