@@ -48,12 +48,18 @@ func (i chapterItem) Description() string {
 		return ""
 	}
 
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 5)
 	if volume := strings.TrimSpace(i.value.Volume); volume != "" {
 		parts = append(parts, "Volume: "+util.SanitizeTerminalText(volume))
 	}
 	if language := strings.TrimSpace(i.value.Language); language != "" {
 		parts = append(parts, "Language: "+util.SanitizeTerminalText(language))
+	}
+	if group := strings.TrimSpace(i.value.ReleaseGroup); group != "" {
+		parts = append(parts, "Group: "+util.SanitizeTerminalText(group))
+	}
+	if publishedAt := strings.TrimSpace(i.value.PublishedAt); publishedAt != "" {
+		parts = append(parts, "Published: "+util.SanitizeTerminalText(publishedAt))
 	}
 	if i.value.PageCount > 0 {
 		parts = append(parts, fmt.Sprintf("Pages: %d", i.value.PageCount))

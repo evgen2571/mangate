@@ -66,6 +66,12 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 				if chapter.Language != "" {
 					writeHuman(out, "   Language: %s\n", chapter.Language)
 				}
+				if chapter.ReleaseGroup != "" {
+					writeHuman(out, "   Release group: %s\n", chapter.ReleaseGroup)
+				}
+				if chapter.PublishedAt != "" {
+					writeHuman(out, "   Published: %s\n", chapter.PublishedAt)
+				}
 				if chapter.URL != "" {
 					writeHuman(out, "   URL:   %s\n", chapter.URL)
 				}

@@ -19,6 +19,9 @@ func TestProviderChaptersRequestsConfiguredLanguage(t *testing.T) {
 		if !reflect.DeepEqual(languages, []string{"ru"}) {
 			t.Fatalf("translatedLanguage[] query = %#v, want %#v", languages, []string{"ru"})
 		}
+		if includes := r.URL.Query()["includes[]"]; !reflect.DeepEqual(includes, []string{"scanlation_group"}) {
+			t.Fatalf("includes[] query = %#v, want scanlation group", includes)
+		}
 
 		writeMangaDexChaptersResponse(t, w, 0, 500, 0, nil)
 	}))
@@ -77,7 +80,7 @@ func TestProviderChaptersFetchesAllPages(t *testing.T) {
 func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeMangaDexChaptersResponse(t, w, 0, 500, 1, []testMangaDexChapter{
-			{ID: "chapter-1", Volume: "2", Chapter: "1", Title: "First", Language: "en", Pages: 23},
+			{ID: "chapter-1", Volume: "2", Chapter: "1", Title: "First", Language: "en", ReleaseGroup: "Example Group", PublishedAt: "2026-01-02T03:04:05+00:00", Pages: 23},
 		})
 	}))
 	defer server.Close()
@@ -99,6 +102,9 @@ func TestProviderChaptersIncludesPageCount(t *testing.T) {
 	if chapters[0].Volume != "2" {
 		t.Fatalf("chapter Volume = %q, want 2", chapters[0].Volume)
 	}
+	if chapters[0].ReleaseGroup != "Example Group" || chapters[0].PublishedAt != "2026-01-02T03:04:05+00:00" {
+		t.Fatalf("chapter release metadata = %#v", chapters[0])
+	}
 }
 
 func newTestProvider(t *testing.T, baseURL, language string) *Provider {
@@ -118,12 +124,14 @@ func newTestProvider(t *testing.T, baseURL, language string) *Provider {
 }
 
 type testMangaDexChapter struct {
-	ID       string
-	Volume   string
-	Chapter  string
-	Title    string
-	Language string
-	Pages    int
+	ID           string
+	Volume       string
+	Chapter      string
+	Title        string
+	Language     string
+	ReleaseGroup string
+	PublishedAt  string
+	Pages        int
 }
 
 func writeMangaDexChaptersResponse(t *testing.T, w http.ResponseWriter, offset, limit, total int, chapters []testMangaDexChapter) {
@@ -139,7 +147,12 @@ func writeMangaDexChaptersResponse(t *testing.T, w http.ResponseWriter, offset, 
 				"title":              chapter.Title,
 				"pages":              chapter.Pages,
 				"translatedLanguage": chapter.Language,
+				"publishAt":          chapter.PublishedAt,
 			},
+			"relationships": []map[string]any{{
+				"type":       "scanlation_group",
+				"attributes": map[string]any{"name": chapter.ReleaseGroup},
+			}},
 		})
 	}
 

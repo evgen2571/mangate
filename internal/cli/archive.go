@@ -134,6 +134,12 @@ func newArchiveInspectCmd(name string) *cobra.Command {
 				if metadata.Language != "" {
 					writeHuman(cmd.OutOrStdout(), "Language: %s\n", metadata.Language)
 				}
+				if metadata.ReleaseGroup != "" {
+					writeHuman(cmd.OutOrStdout(), "Release group: %s\n", metadata.ReleaseGroup)
+				}
+				if metadata.PublishedAt != "" {
+					writeHuman(cmd.OutOrStdout(), "Published: %s\n", metadata.PublishedAt)
+				}
 			}
 			return nil
 		},

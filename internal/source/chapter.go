@@ -8,15 +8,17 @@ import (
 )
 
 type Chapter struct {
-	URL       string  `json:"url,omitempty"`
-	ID        string  `json:"id"`
-	Volume    string  `json:"volume,omitempty"`
-	Index     string  `json:"number,omitempty"`
-	Title     string  `json:"title,omitempty"`
-	Language  string  `json:"language,omitempty"`
-	PageCount int     `json:"pageCount,omitempty"`
-	Pages     []*Page `json:"pages,omitempty"`
-	From      *Manga  `json:"-"`
+	URL          string  `json:"url,omitempty"`
+	ID           string  `json:"id"`
+	Volume       string  `json:"volume,omitempty"`
+	Index        string  `json:"number,omitempty"`
+	Title        string  `json:"title,omitempty"`
+	Language     string  `json:"language,omitempty"`
+	ReleaseGroup string  `json:"releaseGroup,omitempty"`
+	PublishedAt  string  `json:"publishedAt,omitempty"`
+	PageCount    int     `json:"pageCount,omitempty"`
+	Pages        []*Page `json:"pages,omitempty"`
+	From         *Manga  `json:"-"`
 }
 
 func (c *Chapter) DisplayTitle(fallbackIndex int) string {

@@ -68,6 +68,8 @@ type Metadata struct {
 	ChapterNumber string `json:"chapterNumber,omitempty"`
 	ChapterTitle  string `json:"chapterTitle,omitempty"`
 	Language      string `json:"language,omitempty"`
+	ReleaseGroup  string `json:"releaseGroup,omitempty"`
+	PublishedAt   string `json:"publishedAt,omitempty"`
 	ExpectedPages int    `json:"expectedPages,omitempty"`
 	SchemaVersion string `json:"schemaVersion"`
 	Completion    string `json:"completion"`

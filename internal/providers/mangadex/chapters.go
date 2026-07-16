@@ -18,12 +18,19 @@ type mangaDexChapter struct {
 	ID         string `json:"id"`
 	URL        string
 	Attributes struct {
-		Volume   string `json:"volume"`
-		Chapter  string `json:"chapter"`
-		Title    string `json:"title"`
-		Pages    int    `json:"pages"`
-		Language string `json:"translatedLanguage"`
+		Volume    string `json:"volume"`
+		Chapter   string `json:"chapter"`
+		Title     string `json:"title"`
+		Pages     int    `json:"pages"`
+		Language  string `json:"translatedLanguage"`
+		PublishAt string `json:"publishAt"`
 	} `json:"attributes"`
+	Relationships []struct {
+		Type       string `json:"type"`
+		Attributes struct {
+			Name string `json:"name"`
+		} `json:"attributes"`
+	} `json:"relationships"`
 }
 
 func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*source.Chapter, error) {
@@ -34,6 +41,7 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 		params.Set("limit", strconv.Itoa(mangaDexChapterPageLimit))
 		params.Set("offset", strconv.Itoa(offset))
 		params.Add("translatedLanguage[]", pr.language)
+		params.Add("includes[]", "scanlation_group")
 
 		url := pr.api("manga/" + manga.ID + "/feed?" + params.Encode())
 
@@ -105,14 +113,25 @@ func (mdc *mangaDexChapter) getIndex() string {
 
 func (mdc *mangaDexChapter) toSource() *source.Chapter {
 	return &source.Chapter{
-		ID:        mdc.ID,
-		URL:       mdc.URL,
-		Volume:    mdc.Attributes.Volume,
-		Index:     mdc.getIndex(),
-		Title:     mdc.getTitle(),
-		Language:  mdc.Attributes.Language,
-		PageCount: mdc.Attributes.Pages,
+		ID:           mdc.ID,
+		URL:          mdc.URL,
+		Volume:       mdc.Attributes.Volume,
+		Index:        mdc.getIndex(),
+		Title:        mdc.getTitle(),
+		Language:     mdc.Attributes.Language,
+		ReleaseGroup: mdc.releaseGroup(),
+		PublishedAt:  mdc.Attributes.PublishAt,
+		PageCount:    mdc.Attributes.Pages,
 	}
+}
+
+func (mdc *mangaDexChapter) releaseGroup() string {
+	for _, relationship := range mdc.Relationships {
+		if relationship.Type == "scanlation_group" && relationship.Attributes.Name != "" {
+			return relationship.Attributes.Name
+		}
+	}
+	return ""
 }
 
 func sortChaptersByChapter(chapters []mangaDexChapter) {
