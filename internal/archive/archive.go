@@ -222,14 +222,19 @@ func sourcePages(directory string) ([]pageFile, *chapterState, error) {
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 			return nil, nil, fmt.Errorf("create archive: unreadable page %q", entry.Name())
 		}
-		if err := validateImageFile(filepath.Join(directory, entry.Name()), entry.Name()); err != nil {
+		actualExtension, err := validateImageFile(filepath.Join(directory, entry.Name()), entry.Name())
+		if err != nil {
 			return nil, nil, err
 		}
 		index, err := pageNumber(entry.Name())
 		if err != nil {
 			return nil, nil, err
 		}
-		pages = append(pages, pageFile{path: filepath.Join(directory, entry.Name()), name: entry.Name(), index: index})
+		name := entry.Name()
+		if strings.EqualFold(filepath.Ext(name), ".img") {
+			name = strings.TrimSuffix(name, filepath.Ext(name)) + actualExtension
+		}
+		pages = append(pages, pageFile{path: filepath.Join(directory, entry.Name()), name: name, index: index})
 	}
 	sort.Slice(pages, func(left, right int) bool { return pages[left].index < pages[right].index })
 	if len(pages) == 0 {
@@ -279,44 +284,60 @@ func pageNumber(name string) (int, error) {
 	return value, nil
 }
 
-func validateImageFile(path, name string) error {
+func validateImageFile(path, name string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("create archive: open page %q: %w", name, err)
+		return "", fmt.Errorf("create archive: open page %q: %w", name, err)
 	}
 	defer file.Close()
 	header := make([]byte, 32)
 	count, err := io.ReadFull(file, header)
 	if err != nil && err != io.ErrUnexpectedEOF {
-		return fmt.Errorf("create archive: read page %q: %w", name, err)
+		return "", fmt.Errorf("create archive: read page %q: %w", name, err)
 	}
 	header = header[:count]
-	if !matchesImageSignature(header, strings.ToLower(filepath.Ext(name))) {
-		return fmt.Errorf("create archive: page %q does not contain a valid image matching its extension", name)
+	actualExtension := imageExtension(header)
+	extension := strings.ToLower(filepath.Ext(name))
+	if actualExtension == "" || (extension != ".img" && !imageExtensionMatches(extension, actualExtension)) {
+		return "", fmt.Errorf("create archive: page %q does not contain a valid image matching its extension", name)
 	}
-	return nil
+	return actualExtension, nil
 }
 
 func matchesImageSignature(header []byte, extension string) bool {
+	actualExtension := imageExtension(header)
+	return actualExtension != "" && imageExtensionMatches(extension, actualExtension)
+}
+
+func imageExtensionMatches(extension, actualExtension string) bool {
+	if extension == ".img" {
+		return false
+	}
+	if extension == ".jpeg" {
+		extension = ".jpg"
+	}
+	return extension == actualExtension
+}
+
+func imageExtension(header []byte) string {
 	hasPrefix := func(signature []byte) bool {
 		return len(header) >= len(signature) && string(header[:len(signature)]) == string(signature)
 	}
-	switch extension {
-	case ".jpg", ".jpeg":
-		return hasPrefix([]byte{0xff, 0xd8, 0xff})
-	case ".png":
-		return hasPrefix([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
-	case ".gif":
-		return hasPrefix([]byte("GIF87a")) || hasPrefix([]byte("GIF89a"))
-	case ".webp":
-		return len(header) >= 12 && string(header[:4]) == "RIFF" && string(header[8:12]) == "WEBP"
-	case ".avif":
-		return len(header) >= 12 && string(header[4:8]) == "ftyp" && (string(header[8:12]) == "avif" || string(header[8:12]) == "avis")
-	case ".bmp":
-		return hasPrefix([]byte("BM"))
-	default:
-		return false
+	switch {
+	case hasPrefix([]byte{0xff, 0xd8, 0xff}):
+		return ".jpg"
+	case hasPrefix([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}):
+		return ".png"
+	case hasPrefix([]byte("GIF87a")) || hasPrefix([]byte("GIF89a")):
+		return ".gif"
+	case len(header) >= 12 && string(header[:4]) == "RIFF" && string(header[8:12]) == "WEBP":
+		return ".webp"
+	case len(header) >= 12 && string(header[4:8]) == "ftyp" && (string(header[8:12]) == "avif" || string(header[8:12]) == "avis"):
+		return ".avif"
+	case hasPrefix([]byte("BM")):
+		return ".bmp"
 	}
+	return ""
 }
 
 func writeArchive(destination io.Writer, pages []pageFile, format Format, metadata Metadata) error {

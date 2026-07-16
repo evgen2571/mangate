@@ -252,6 +252,23 @@ func TestCreateFromDirectoryNormalizesNumericPageNamesForLexicographicOrder(t *t
 	}
 }
 
+func TestCreateFromDirectoryDetectsImageExtensionForFallbackImageName(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.img", pngPage())
+	output := filepath.Join(t.TempDir(), "chapter.zip")
+	if _, err := CreateFromDirectory(Options{Format: FormatZIP, SourceDir: source, OutputPath: output}); err != nil {
+		t.Fatalf("CreateFromDirectory() error = %v", err)
+	}
+	reader, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if reader.File[0].Name != "0001.png" {
+		t.Fatalf("page entry = %q, want 0001.png", reader.File[0].Name)
+	}
+}
+
 func writePage(t *testing.T, directory, name string, body []byte) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(directory, name), body, 0o644); err != nil {
