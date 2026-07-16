@@ -2,8 +2,6 @@
 
 Mangate is a Go command-line application for searching and downloading manga / manhwa from supported providers. It offers a direct CLI for quick commands and scripts, a minimal full-screen TUI for interactive use, extensible provider support, and Python bindings.
 
-<!-- Add TUI screenshot here -->
-
 ## Features
 
 - Search supported manga and manhwa providers.
@@ -90,7 +88,8 @@ titles = client.search("title", limit=5)
 chapters = client.chapters(titles[0]["id"])
 ```
 
-See the [Python package documentation](python/README.md) for more details.
+See the [full Python bindings guide](docs/python.md) for configuration, downloads,
+archive operations, cancellation, and error handling.
 
 
 ## Project status

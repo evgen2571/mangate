@@ -33,8 +33,3 @@ go.work.sum
 
 # Local agent/Ralph workspace
 .hermes/
-
-# Media files
-*.png
-*.jpeg
-*.jpg
