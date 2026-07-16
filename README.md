@@ -119,7 +119,7 @@ Every core command accepts `--json`. Standard output then contains exactly one J
 
 `0` means complete success. `1` means a valid search found no results, `2` means invalid command usage, `3` configuration failure, `4` provider or content failure, `5` partial download, `6` filesystem failure, `7` cancellation, `8` archive creation or validation failure, and `10` internal failure. A multi-chapter partial result uses `5` and its structured chapter result identifies the completed and incomplete chapters. In JSON mode an empty search uses the `no_results` status with an empty result list.
 
-Use `--quiet` to suppress progress. `--verbose` writes limited diagnostic context to standard error and never prints credentials. JSON output never mixes progress into standard output.
+Use `--quiet` to suppress successful human-readable output. `--verbose` writes limited diagnostic context to standard error and never prints credentials. JSON output never mixes progress into standard output.
 
 ## Provider support
 
