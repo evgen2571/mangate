@@ -10,6 +10,7 @@ type Chapter struct {
 	ID        string
 	Index     string
 	Title     string
+	Language  string
 	PageCount int
 	Pages     []*Page
 	From      *Manga
