@@ -17,6 +17,9 @@ func TestConfigModelUpdateDraftFromCurrentFieldParsesValues(t *testing.T) {
 		want  func(config.Config) bool
 	}{
 		{configFieldLanguage, "ru", func(c config.Config) bool { return c.Language == "ru" }},
+		{configFieldDownloadFormat, "cbz", func(c config.Config) bool { return c.Download.Format == "cbz" }},
+		{configFieldExistingFiles, "replace", func(c config.Config) bool { return c.Download.ExistingFileMode == "replace" }},
+		{configFieldRetainSource, "false", func(c config.Config) bool { return !c.Download.RetainSource }},
 		{configFieldHTTPTimeout, "45s", func(c config.Config) bool { return c.HTTP.Timeout == 45*time.Second }},
 		{configFieldPageDownloads, "3", func(c config.Config) bool { return c.Concurrency.PageDownloads == 3 }},
 		{configFieldSearchHistoryMax, "25", func(c config.Config) bool { return c.Search.HistoryMax == 25 }},
