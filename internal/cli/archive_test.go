@@ -49,3 +49,40 @@ func TestArchiveConvertJSONCreatesCBZWithoutProvider(t *testing.T) {
 		t.Fatalf("output path = %q", response.Data.OutputPath)
 	}
 }
+
+func TestArchiveConvertDryRunDoesNotCreateArchive(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "0001.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	application, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCmd(application)
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"--json", "--format", "zip", "archive", "convert", "--dry-run", "--remove-source", source})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var response struct {
+		Operation string `json:"operation"`
+		Data      struct {
+			OutputPath   string `json:"outputPath"`
+			RemoveSource bool   `json:"removeSource"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Operation != "archive.convert.plan" || !response.Data.RemoveSource || filepath.Ext(response.Data.OutputPath) != ".zip" {
+		t.Fatalf("response = %#v", response)
+	}
+	if _, err := os.Stat(response.Data.OutputPath); !os.IsNotExist(err) {
+		t.Fatalf("dry run created archive: %v", err)
+	}
+	if _, err := os.Stat(source); err != nil {
+		t.Fatalf("dry run removed source: %v", err)
+	}
+}
