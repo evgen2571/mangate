@@ -51,6 +51,10 @@ Open the full-screen TUI with:
 ```bash
 mangate tui
 ```
+or simply
+```bash
+mangate
+```
 
 Use the built-in help for other commands and options:
 
@@ -58,6 +62,11 @@ Use the built-in help for other commands and options:
 mangate --help
 mangate <command> --help
 ```
+
+## Documentation
+
+- [CLI documentation](docs/cli.md)
+- [Python bindings](docs/python.md)
 
 ## Output formats
 
