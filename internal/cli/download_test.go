@@ -125,6 +125,25 @@ func TestWriteDownloadPreflightShowsEffectiveOperation(t *testing.T) {
 	}
 }
 
+func TestChapterRecordsUseDownloaderChapterDirectoryNames(t *testing.T) {
+	title := &source.Manga{ID: "title-id", Title: "Example"}
+	chapters := []*source.Chapter{
+		{ID: "chapter-a", Title: "Special"},
+		{ID: "chapter-b", Index: "1"},
+		{ID: "chapter-c", Index: "1"},
+	}
+
+	records := chapterRecords(t.TempDir(), title, chapters, archive.FormatCBZ, "pending")
+	for index, name := range []string{"Title-Special", "Chapter-1", "Chapter-1-chapter-c"} {
+		if filepath.Base(records[index].OutputPath) != name {
+			t.Fatalf("chapter %d output path = %q, want directory %q", index, records[index].OutputPath, name)
+		}
+		if records[index].ArchivePath != records[index].OutputPath+".cbz" {
+			t.Fatalf("chapter %d archive path = %q, want source path with .cbz", index, records[index].ArchivePath)
+		}
+	}
+}
+
 func TestReusableArchiveSelectionSkipsValidatedMatchingArchives(t *testing.T) {
 	directory := t.TempDir()
 	archivePath := filepath.Join(directory, "chapter.cbz")

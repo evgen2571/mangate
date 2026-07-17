@@ -14,6 +14,7 @@ import (
 
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/usecase"
 	"github.com/evgen2571/mangate/internal/util"
@@ -465,7 +466,7 @@ func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter
 	if id := util.SanitizeString(title.ID); id != "unknown" {
 		titleDir += "-" + id
 	}
-	names := chapterDirectoryNames(chapters)
+	names := downloader.ChapterDirectoryNames(chapters)
 	for index, chapter := range chapters {
 		directory := filepath.Join(root, titleDir, names[index])
 		record := chapterDownload{ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: directory, ExpectedPages: chapter.PageCount}
@@ -475,27 +476,6 @@ func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter
 		records = append(records, record)
 	}
 	return records
-}
-
-func chapterDirectoryNames(chapters []*source.Chapter) []string {
-	names := make([]string, len(chapters))
-	used := make(map[string]struct{}, len(chapters))
-	for index, chapter := range chapters {
-		name := "unknown-chapter"
-		if chapter.Index != "" {
-			name = "Chapter-" + chapter.Index
-		}
-		if chapter.Title != "" {
-			name += "-" + chapter.Title
-		}
-		name = util.SanitizeString(name)
-		if _, exists := used[name]; exists {
-			name = util.SanitizeString(name + "-" + chapter.ID)
-		}
-		used[name] = struct{}{}
-		names[index] = name
-	}
-	return names
 }
 
 func finalizeArchives(ctx context.Context, record downloadRecord, title *source.Manga, chapters []*source.Chapter, format archive.Format, existingMode string, removeSource bool) error {
