@@ -35,7 +35,7 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		&cfg.Download.RetainSource,
 		"retain-source",
 		cfg.Download.RetainSource,
-		"Keep page directories after successful archive creation",
+		"Legacy setting; archive downloads always remove temporary page directories",
 	)
 
 	f.Bool(

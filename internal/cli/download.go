@@ -115,11 +115,11 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				}
 				return nil
 			}
-			if requirement := downloadConfirmationRequirement(selection, format, a.Cfg.Download.ExistingFileMode, a.Cfg.Download.RetainSource); requirement != "" && !assumeYes {
+			if requirement := downloadConfirmationRequirement(selection, format, a.Cfg.Download.ExistingFileMode); requirement != "" && !assumeYes {
 				return fmt.Errorf("download: %s; review with --dry-run, then rerun with --yes to continue", requirement)
 			}
 			if !wantsJSON(cmd) && !isQuiet(cmd) {
-				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, a.Cfg.Download.Dir, a.Cfg.Download.ExistingFileMode, a.Cfg.Download.RetainSource)
+				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, a.Cfg.Download.Dir, a.Cfg.Download.ExistingFileMode)
 			}
 			pendingSelection := selection
 			if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
@@ -151,14 +151,14 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				record.Error = err.Error()
 				if format != archive.FormatDirectory {
-					if archiveErr := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); archiveErr != nil {
+					if archiveErr := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, true); archiveErr != nil {
 						record.Error = errors.Join(err, archiveErr).Error()
 					}
 				}
 				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
 			}
 			if format != archive.FormatDirectory {
-				if err := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, !a.Cfg.Download.RetainSource); err != nil {
+				if err := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, true); err != nil {
 					record.Error = err.Error()
 					return reportDownloadResult(cmd, &record, err)
 				}
@@ -191,12 +191,12 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 
 const broadDownloadChapterThreshold = 25
 
-func downloadConfirmationRequirement(chapters []*source.Chapter, format archive.Format, existingFileMode string, retainSource bool) string {
+func downloadConfirmationRequirement(chapters []*source.Chapter, format archive.Format, existingFileMode string) string {
 	switch {
 	case existingFileMode == string(archive.ExistingReplace):
 		return "replacing existing output may discard data"
-	case format != archive.FormatDirectory && !retainSource:
-		return "removing source page directories after archive creation changes local files"
+	case format != archive.FormatDirectory:
+		return "removing temporary source page directories after archive creation changes local files"
 	case len(chapters) >= broadDownloadChapterThreshold:
 		return fmt.Sprintf("downloading %d chapters is a broad operation", len(chapters))
 	default:
@@ -204,13 +204,13 @@ func downloadConfirmationRequirement(chapters []*source.Chapter, format archive.
 	}
 }
 
-func writeDownloadPreflight(out io.Writer, title *source.Manga, provider string, chapters []*source.Chapter, format archive.Format, outputRoot, existingFileMode string, retainSource bool) {
+func writeDownloadPreflight(out io.Writer, title *source.Manga, provider string, chapters []*source.Chapter, format archive.Format, outputRoot, existingFileMode string) {
 	titleName := "Unknown title"
 	if title != nil && title.Title != "" {
 		titleName = title.Title
 	}
 	sourcePages := "kept"
-	if format != archive.FormatDirectory && !retainSource {
+	if format != archive.FormatDirectory {
 		sourcePages = "removed after archive validation"
 	}
 	writeHuman(out, "Download plan\nTitle: %s\nProvider: %s\nChapters: %d selected\nFormat: %s\nOutput: %s\nExisting files: %s\nSource pages: %s\n", titleName, provider, len(chapters), format, outputRoot, existingFileMode, sourcePages)

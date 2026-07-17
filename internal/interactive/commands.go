@@ -35,7 +35,7 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 					path := chapterPaths[index]
 					if m.format != archive.FormatDirectory {
 						progressCh <- downloadProgress{completed: completed, total: len(chapters), completedChapters: completed, totalChapters: len(chapters), active: "Creating and validating archive..."}
-						result, archiveErr := archive.CreateFromDirectoryContext(ctx, archive.Options{Format: m.format, SourceDir: path, OutputPath: path + m.format.Extension(), ExistingFileMode: archive.ExistingFileMode(m.app.Cfg.Download.ExistingFileMode), RemoveSource: !m.app.Cfg.Download.RetainSource, Metadata: archive.Metadata{Provider: m.app.Cfg.Provider, TitleID: m.manga.ID, Title: m.manga.Title, ChapterID: chapter.ID, ChapterNumber: chapter.Index, ChapterTitle: chapter.Title, ExpectedPages: chapter.PageCount}})
+						result, archiveErr := archive.CreateFromDirectoryContext(ctx, archive.Options{Format: m.format, SourceDir: path, OutputPath: path + m.format.Extension(), ExistingFileMode: archive.ExistingFileMode(m.app.Cfg.Download.ExistingFileMode), RemoveSource: true, Metadata: archive.Metadata{Provider: m.app.Cfg.Provider, TitleID: m.manga.ID, Title: m.manga.Title, ChapterID: chapter.ID, ChapterNumber: chapter.Index, ChapterTitle: chapter.Title, ExpectedPages: chapter.PageCount}})
 						if archiveErr != nil {
 							failed++
 							err = errors.Join(err, archiveErr)

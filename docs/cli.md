@@ -74,7 +74,7 @@ These options are available on the root command and inherited by its subcommands
 | `--output string` | Same value as `--download-dir`. | Alias for the download root. |
 | `--format string` | `directory`, `cbz`, or `zip`. Default: `directory`. | Chooses the download format. Archive conversion requires `cbz` or `zip`. |
 | `--existing-files string` | `skip`, `replace`, or `fail`. Default: `skip`. | Controls conflicts with existing pages and archives. |
-| `--retain-source` | Boolean. Default: true. Use `--retain-source=false` to disable it. | Keeps page directories after a successful CBZ or ZIP download or conversion. |
+| `--retain-source` | Legacy Boolean setting. | Archive downloads always remove temporary page directories after validation. Standalone archive conversion still uses its explicit `--remove-source` option. |
 | `--page-downloads int` | Positive integer. Default: `8`. | Limits simultaneous page downloads. |
 | `--chapter-downloads int` | Positive integer. Default: `6`. | Limits simultaneous chapter downloads. |
 | `--search-history-max int` | Non-negative integer. Default: `100`. | Sets the number of search queries remembered by the TUI. `0` disables search history. |
@@ -302,7 +302,7 @@ mangate --format cbz download <title-id> --all --dry-run
 mangate --format cbz download <title-id> --all --yes
 ~~~
 
-The command requires `--yes` when it selects 25 or more chapters, uses `--existing-files replace`, or removes source page directories after archive creation with `--retain-source=false`. A replacement or source-removal operation is never inferred from the output format.
+The command requires `--yes` when it selects 25 or more chapters, uses `--existing-files replace`, or creates CBZ/ZIP archives, because archive downloads remove their temporary page directories after validation.
 
 The default output root is the configured download directory. Mangate creates a title directory using a sanitized title and title ID, then a sanitized chapter directory. Directory output points to the chapter directory. CBZ and ZIP output points to the archive path beside that directory.
 
@@ -578,7 +578,7 @@ For downloads, `--yes` is required for:
 
 - Selecting at least 25 chapters.
 - `--existing-files replace`.
-- Removing source page directories after CBZ or ZIP creation with `--retain-source=false`.
+- Removing temporary source page directories after CBZ or ZIP creation.
 
 For archive conversion, `--yes` is required for source removal and replacement.
 
