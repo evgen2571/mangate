@@ -30,8 +30,9 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 				progressCh <- downloadProgress{p.CompletedPages, p.TotalPages, p.CompletedChapters, p.TotalChapters, active}
 			})
 			if err == nil {
-				for _, chapter := range chapters {
-					path := filepath.Join(m.app.Cfg.Download.Dir, downloader.TitleDirectoryName(m.manga), m.chapterDirectory(chapter))
+				chapterPaths := chapterDownloadPaths(m.app.Cfg.Download.Dir, m.manga, chapters)
+				for index, chapter := range chapters {
+					path := chapterPaths[index]
 					if m.format != archive.FormatDirectory {
 						progressCh <- downloadProgress{completed: completed, total: len(chapters), completedChapters: completed, totalChapters: len(chapters), active: "Creating and validating archive..."}
 						result, archiveErr := archive.CreateFromDirectoryContext(ctx, archive.Options{Format: m.format, SourceDir: path, OutputPath: path + m.format.Extension(), ExistingFileMode: archive.ExistingFileMode(m.app.Cfg.Download.ExistingFileMode), RemoveSource: !m.app.Cfg.Download.RetainSource, Metadata: archive.Metadata{Provider: m.app.Cfg.Provider, TitleID: m.manga.ID, Title: m.manga.Title, ChapterID: chapter.ID, ChapterNumber: chapter.Index, ChapterTitle: chapter.Title, ExpectedPages: chapter.PageCount}})
@@ -58,11 +59,11 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 	}
 }
 
-func (m *model) chapterDirectory(chapter *source.Chapter) string {
-	for index, candidate := range m.chapters {
-		if candidate == chapter {
-			return downloader.ChapterDirectoryNames(m.chapters)[index]
-		}
+func chapterDownloadPaths(root string, manga *source.Manga, chapters []*source.Chapter) []string {
+	names := downloader.ChapterDirectoryNames(chapters)
+	paths := make([]string, len(names))
+	for index, name := range names {
+		paths[index] = filepath.Join(root, downloader.TitleDirectoryName(manga), name)
 	}
-	return downloader.ChapterDirectoryNames([]*source.Chapter{chapter})[0]
+	return paths
 }
