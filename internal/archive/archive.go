@@ -353,7 +353,7 @@ func imageExtensionMatches(extension, actualExtension string) bool {
 	if extension == ".img" {
 		return false
 	}
-	if extension == ".jpeg" {
+	if extension == ".jpeg" || extension == ".jfif" {
 		extension = ".jpg"
 	}
 	return extension == actualExtension
@@ -615,7 +615,7 @@ func isSafeEntry(name string) bool {
 func isPageName(name string) bool {
 	extension := strings.ToLower(filepath.Ext(name))
 	switch extension {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".img":
+	case ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".avif", ".bmp", ".img":
 		return !strings.Contains(name, "/") && !strings.Contains(name, "\\")
 	default:
 		return false
