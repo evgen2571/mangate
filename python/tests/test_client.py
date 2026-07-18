@@ -32,6 +32,30 @@ class ClientTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "output_format"):
             Client(output_format="rar")
 
+    def test_accepts_png_and_jpeg_output_formats(self) -> None:
+        self.assertEqual(Client(output_format="png").output_format, "png")
+        self.assertEqual(Client(output_format="jpeg").output_format, "jpeg")
+
+    def test_download_forwards_png_and_jpeg_formats(self) -> None:
+        payload = {"formatVersion": "1", "operation": "download.plan", "status": "success", "data": {}}
+        with patch("mangate.client.subprocess.Popen", return_value=_CompletedProcess(payload, 0)) as popen:
+            Client().download("title-id", latest=True, output_format="png")
+            Client().download("title-id", latest=True, output_format="jpeg")
+        commands = [call.args[0] for call in popen.call_args_list]
+        self.assertIn("png", commands[0])
+        self.assertIn("jpeg", commands[1])
+
+    def test_dataset_collect_forwards_resume_and_configuration(self) -> None:
+        payload = {"formatVersion": "1", "operation": "dataset.collect", "status": "success", "data": {"state": "completed"}}
+        with patch("mangate.client.subprocess.Popen", return_value=_CompletedProcess(payload, 0)) as popen:
+            result = Client().dataset_collect(collection_config="dataset.json", resume=True)
+        command = popen.call_args.args[0]
+        self.assertIn("dataset", command)
+        self.assertIn("collect", command)
+        self.assertIn("--collection-config", command)
+        self.assertIn("--resume", command)
+        self.assertEqual(result["state"], "completed")
+
     def test_download_returns_partial_result_despite_nonzero_exit(self) -> None:
         payload = {
             "formatVersion": "1",

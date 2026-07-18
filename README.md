@@ -8,7 +8,8 @@ Mangate is a Go command-line application for searching and downloading manga / m
 - View title information and available chapters.
 - Select individual chapters, ranges, or multiple chapters to download.
 - Download through the CLI or the interactive TUI, with progress and partial-failure reporting.
-- Save chapters as ordered image directories, CBZ archives, or ZIP archives.
+- Save chapters as ordered image directories, PNG, JPEG, CBZ, or ZIP output.
+- Collect bounded, resumable datasets with provenance and validation records.
 - Skip and reuse existing downloads, or choose a replacement policy.
 - Produce machine-readable JSON output for scripts.
 - Use Mangate's main operations from Python.
@@ -65,12 +66,27 @@ mangate <command> --help
 
 - [CLI documentation](docs/cli.md)
 - [Python bindings](docs/python.md)
+- [Dataset collection](docs/dataset.md)
 
 ## Output formats
 
 - `directory` - ordered image files in a chapter directory.
+- `png` - lossless PNG page output.
+- `jpeg` - JPEG page output at quality 95, with transparent pixels flattened to white.
 - `cbz` - one comic-book archive per chapter.
 - `zip` - one standard ZIP archive per chapter.
+
+## Dataset collection
+
+Build a bounded collection without manually finding title IDs:
+
+```bash
+mangate --format directory --output ./datasets/manhwa-raw-v1 dataset collect \
+  --original-language ko --chapter-language en --max-titles 1000 \
+  --max-chapters-per-title 20 --max-bytes 500GiB --resume --yes
+```
+
+Use only provider access and content you are authorized to download. Provider terms and availability can change.
 
 ## Python bindings
 

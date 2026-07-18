@@ -98,7 +98,7 @@ Arguments:
 - `timeout` is a per-command timeout in seconds. `None` disables the Python-side deadline.
 - `page_downloads` and `chapter_downloads` override the executable's concurrency settings when set.
 - `existing_files` accepts `skip`, `replace`, or `fail`. The default is `skip`.
-- `output_format` accepts `directory`, `cbz`, or `zip`. The default is `directory`.
+- `output_format` accepts `directory`, `png`, `jpeg`, `cbz`, or `zip`. The default is `directory`.
 - `retain_source` defaults to true and controls source page directories after archive creation.
 
 The constructor raises `ValueError` for an unsupported existing-file policy or output format. It does not check that the executable exists until a method starts a process.

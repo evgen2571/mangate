@@ -2,7 +2,7 @@
 
 Mangate has two ways to work. Direct commands are suited to scripts, explicit searches, and downloads. The full-screen TUI is suited to browsing titles and selecting chapters interactively. Both modes use the same provider, download directory, output format, and existing-file settings.
 
-Direct commands print human-readable results by default. Add `--json` when another program needs structured output. Downloads support `directory`, `cbz`, and `zip` output.
+Direct commands print human-readable results by default. Add `--json` when another program needs structured output. Downloads support `directory`, `png`, `jpeg`, `cbz`, and `zip` output.
 
 ## Command notation
 
@@ -72,7 +72,7 @@ These options are available on the root command and inherited by its subcommands
 | `--language string` | Provider language code. Default: `en`. | Sets the configured provider language. When explicitly supplied to `search`, it also filters results by the title's original language. |
 | `--download-dir string` | Directory path. Default: `~/downloads/mangate` on a normal Linux installation. | Sets the root for downloaded titles and chapters. |
 | `--output string` | Same value as `--download-dir`. | Alias for the download root. |
-| `--format string` | `directory`, `cbz`, or `zip`. Default: `directory`. | Chooses the download format. Archive conversion requires `cbz` or `zip`. |
+| `--format string` | `directory`, `png`, `jpeg`, `cbz`, or `zip`. Default: `directory`. | Chooses the download format. Archive conversion requires `cbz` or `zip`. |
 | `--existing-files string` | `skip`, `replace`, or `fail`. Default: `skip`. | Controls conflicts with existing pages and archives. |
 | `--retain-source` | Legacy Boolean setting. | Archive downloads always remove temporary page directories after validation. Standalone archive conversion still uses its explicit `--remove-source` option. |
 | `--page-downloads int` | Positive integer. Default: `8`. | Limits simultaneous page downloads. |
