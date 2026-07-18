@@ -19,7 +19,7 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request) (*http.Response, err
 			return nil, err
 		}
 
-		if resp.StatusCode != http.StatusTooManyRequests || attempt >= maxRateLimitRetries {
+		if !retryableProviderStatus(resp.StatusCode) || attempt >= maxRateLimitRetries {
 			return resp, nil
 		}
 
@@ -27,11 +27,15 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request) (*http.Response, err
 		resp.Body.Close()
 
 		if err := sleepWithContext(currentReq.Context(), wait); err != nil {
-			return nil, fmt.Errorf("wait for rate limit reset: %w", err)
+			return nil, fmt.Errorf("wait for provider retry: %w", err)
 		}
 
 		currentReq = currentReq.Clone(currentReq.Context())
 	}
+}
+
+func retryableProviderStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusInternalServerError || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
 }
 
 func retryAfterDelay(value string, attempt int) time.Duration {

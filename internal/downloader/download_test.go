@@ -1,11 +1,13 @@
 package downloader
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"image/jpeg"
 	"image"
 	"image/color"
+	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -59,6 +62,31 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 	}
 }
 
+func TestDownloadChapterToReportsTransferMetadata(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png; charset=binary")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Concurrency.PageDownloads = 1
+	d := New(cfg, server.Client())
+	chapter := &source.Chapter{ID: "chapter", From: &source.Manga{ID: "title", Title: "Title"}, Pages: []*source.Page{{URL: server.URL + "/page"}}}
+	results, err := d.DownloadChapterTo(context.Background(), chapter, filepath.Join(cfg.Download.Dir, "stable"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("result count = %d", len(results))
+	}
+	result := results[0]
+	if result.TitleID != "title" || result.ChapterID != "chapter" || result.PageIndex != 1 || result.SourceContentType != "image/png" || result.OutputContentType != "image/png" || result.Extension != ".png" || result.Bytes != int64(len(pngBytes)) || result.Reused || result.Converted {
+		t.Fatalf("download result = %#v", result)
+	}
+}
+
 func TestDownloadChapterConvertsJPEGAndPNGPages(t *testing.T) {
 	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, A: 255})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,8 +126,12 @@ func TestDownloadChapterConvertsJPEGAndPNGPages(t *testing.T) {
 	}
 }
 
-func TestDownloadChapterKeepsGIFPageWhenImageFormatSelected(t *testing.T) {
-	gifBytes := []byte("GIF89a")
+func TestDownloadChapterConvertsGIFPageWhenImageFormatSelected(t *testing.T) {
+	var gifData bytes.Buffer
+	if err := gif.Encode(&gifData, image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.White, color.Black}), nil); err != nil {
+		t.Fatal(err)
+	}
+	gifBytes := gifData.Bytes()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/gif")
 		_, _ = w.Write(gifBytes)
@@ -115,13 +147,36 @@ func TestDownloadChapterKeepsGIFPageWhenImageFormatSelected(t *testing.T) {
 	if err := d.DownloadChapter(chapter); err != nil {
 		t.Fatalf("DownloadChapter() error = %v", err)
 	}
-	path := filepath.Join(cfg.Download.Dir, "GIF-Manga", "Chapter-1", "0001.gif")
-	got, err := os.ReadFile(path)
+	file, err := os.Open(filepath.Join(cfg.Download.Dir, "GIF-Manga", "Chapter-1", "0001.jpeg"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(gifBytes) {
-		t.Fatalf("GIF page was converted or changed: got %q", got)
+	defer file.Close()
+	if _, err := jpeg.Decode(file); err != nil {
+		t.Fatalf("GIF page was not converted to JPEG: %v", err)
+	}
+}
+
+func TestDownloadChapterRejectsMismatchedExistingConvertedFormat(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Download.Format = "jpeg"
+	cfg.Download.ExistingFileMode = "skip"
+	directory := filepath.Join(cfg.Download.Dir, "Existing-Manga", "Chapter-1")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var data bytes.Buffer
+	if err := gif.Encode(&data, image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.White, color.Black}), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "0001.gif"), data.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := New(cfg, http.DefaultClient)
+	chapter := &source.Chapter{Index: "1", From: &source.Manga{Title: "Existing Manga"}, Pages: []*source.Page{{URL: "http://example.invalid/page.gif"}}}
+	if err := d.DownloadChapter(chapter); err == nil || !strings.Contains(err.Error(), "does not match requested jpeg") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -475,6 +530,25 @@ func TestDownloadPageRetriesTooManyRequests(t *testing.T) {
 
 	if got := attempts.Load(); got != 2 {
 		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
+func TestDownloadPageHonorsRunScopedRetryLimit(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	d := NewWithPageRetryLimit(cfg, server.Client(), 0)
+	chapter := &source.Chapter{Index: "1", From: &source.Manga{Title: "Retry Manga"}, Pages: []*source.Page{{URL: server.URL + "/page.png"}}}
+	if err := d.DownloadChapter(chapter); err == nil {
+		t.Fatal("expected the retry limit to stop a 429 response")
+	}
+	if attempts.Load() != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts.Load())
 	}
 }
 

@@ -97,6 +97,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 	}
 
 	var g errgroup.Group
+	g.SetLimit(d.pageDownloadLimit())
 
 	for idx, page := range c.Pages {
 		idx := idx
@@ -112,6 +113,9 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 			)
 
 			if existingPage(filePathBase) {
+				if existingPath := existingPagePath(filePathBase); !existingOutputMatchesFormat(existingPath, d.cfg.Download.Format) && d.cfg.Download.ExistingFileMode == "skip" {
+					return fmt.Errorf("download page: existing output %q does not match requested %s format; use --existing-files replace", filepath.Ext(existingPath), d.cfg.Download.Format)
+				}
 				switch d.cfg.Download.ExistingFileMode {
 				case "skip":
 					if reporter != nil {
@@ -126,7 +130,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 					}
 				}
 			}
-			if _, err := d.downloadPage(ctx, page, filePathBase); err != nil {
+			if _, _, err := d.downloadPage(ctx, page, filePathBase); err != nil {
 				return err
 			}
 			if reporter != nil {
@@ -150,6 +154,11 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 	}
 
 	return nil
+}
+
+func existingOutputMatchesFormat(path, format string) bool {
+	want := targetImageExtension(format, "")
+	return want == "" || strings.EqualFold(filepath.Ext(path), want)
 }
 
 func removeExistingPage(base string) error {
@@ -335,12 +344,12 @@ func isForbiddenPageError(err error) bool {
 	return errors.As(err, &statusErr) && statusErr.statusCode == http.StatusForbidden
 }
 
-func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathBase string) (string, error) {
+func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathBase string) (string, string, error) {
 	if p == nil {
-		return "", fmt.Errorf("download page: nil page")
+		return "", "", fmt.Errorf("download page: nil page")
 	}
 	if strings.TrimSpace(p.URL) == "" {
-		return "", fmt.Errorf("download page: empty page url")
+		return "", "", fmt.Errorf("download page: empty page url")
 	}
 
 	d.acquirePageDownload()
@@ -348,77 +357,84 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 
 	resp, err := d.getPageResponseWithRetry(ctx, p.URL)
 	if err != nil {
-		return "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
+		return "", "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", pageStatusError{url: p.URL, statusCode: resp.StatusCode}
+		return "", "", pageStatusError{url: p.URL, statusCode: resp.StatusCode}
 	}
 	if contentType := resp.Header.Get("Content-Type"); contentType != "" && !strings.HasPrefix(strings.ToLower(contentType), "image/") {
-		return "", fmt.Errorf("download page: expected an image response, got %q", contentType)
+		return "", "", fmt.Errorf("download page: expected an image response, got %q", contentType)
 	}
 
-	contentType := resp.Header.Get("Content-Type")
-	sourceExtension := detectPageExtension(contentType, p.URL)
+	sourceContentType := normalizedPageContentType(resp.Header.Get("Content-Type"))
+	sourceExtension := detectPageExtension(sourceContentType, p.URL)
+	if sourceContentType == "" {
+		sourceContentType = mime.TypeByExtension(sourceExtension)
+	}
 	filePath := filePathBase + sourceExtension
 	temporaryPath := filePath + ".part"
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read page %q: %w", p.URL, err)
+		return "", "", fmt.Errorf("failed to read page %q: %w", p.URL, err)
 	}
 	if len(data) == 0 {
-		return "", fmt.Errorf("download page: response for %q was empty", p.URL)
+		return "", "", fmt.Errorf("download page: response for %q was empty", p.URL)
 	}
 	if targetExtension := targetImageExtension(d.cfg.Download.Format, sourceExtension); targetExtension != "" {
 		data, err = convertImage(data, targetExtension)
 		if err != nil {
-			return "", fmt.Errorf("convert page %q to %s: %w", p.URL, targetExtension, err)
+			return "", "", fmt.Errorf("convert page %q to %s: %w", p.URL, targetExtension, err)
 		}
 		filePath = filePathBase + targetExtension
 		temporaryPath = filePath + ".part"
 	}
 	out, err := os.Create(temporaryPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create file %q: %w", filePath, err)
+		return "", "", fmt.Errorf("failed to create file %q: %w", filePath, err)
 	}
 
 	if _, err := out.Write(data); err != nil {
 		_ = out.Close()
 		_ = os.Remove(temporaryPath)
-		return "", fmt.Errorf("failed to write file %q: %w", filePath, err)
+		return "", "", fmt.Errorf("failed to write file %q: %w", filePath, err)
 	}
 
 	if err := out.Close(); err != nil {
 		_ = os.Remove(temporaryPath)
-		return "", fmt.Errorf("failed to close file %q: %w", filePath, err)
+		return "", "", fmt.Errorf("failed to close file %q: %w", filePath, err)
 	}
 	info, err := os.Stat(temporaryPath)
 	if err != nil || info.Size() == 0 {
 		_ = os.Remove(temporaryPath)
-		return "", fmt.Errorf("download page: response for %q was empty", p.URL)
+		return "", "", fmt.Errorf("download page: response for %q was empty", p.URL)
 	}
 	if err := os.Rename(temporaryPath, filePath); err != nil {
 		_ = os.Remove(temporaryPath)
-		return "", fmt.Errorf("finalize file %q: %w", filePath, err)
+		return "", "", fmt.Errorf("finalize file %q: %w", filePath, err)
 	}
 
-	return filePath, nil
+	return filePath, sourceContentType, nil
+}
+
+func normalizedPageContentType(value string) string {
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(mediaType)
 }
 
 func targetImageExtension(format, sourceExtension string) string {
+	_ = sourceExtension
 	if format != "png" && format != "jpeg" {
 		return ""
 	}
-	switch strings.ToLower(sourceExtension) {
-	case ".jpg", ".jpeg", ".png":
-		if format == "png" {
-			return ".png"
-		}
-		return ".jpeg"
-	default:
-		return ""
+	if format == "png" {
+		return ".png"
 	}
+	return ".jpeg"
 }
 
 func convertImage(data []byte, extension string) ([]byte, error) {
@@ -457,7 +473,7 @@ func (d *Downloader) getPageResponseWithRetry(ctx context.Context, rawURL string
 			return nil, err
 		}
 
-		if resp.StatusCode != http.StatusTooManyRequests || attempt >= maxPageDownloadRetries {
+		if resp.StatusCode != http.StatusTooManyRequests || attempt >= d.pageRetryLimit {
 			return resp, nil
 		}
 
@@ -507,6 +523,13 @@ func (d *Downloader) acquirePageDownload() {
 		return
 	}
 	d.pageDownloads <- struct{}{}
+}
+
+func (d *Downloader) pageDownloadLimit() int {
+	if d.cfg.Concurrency.PageDownloads > 0 {
+		return d.cfg.Concurrency.PageDownloads
+	}
+	return 1
 }
 
 func (d *Downloader) releasePageDownload() {

@@ -80,6 +80,14 @@ func WriteError(out io.Writer, operation string, err error) error {
 func ErrorCategory(message string) string {
 	message = strings.ToLower(message)
 	switch {
+	case strings.Contains(message, "dataset configuration mismatch"), strings.Contains(message, "dataset format mismatch"):
+		return "configuration_mismatch"
+	case strings.Contains(message, "dataset already exists"):
+		return "dataset_exists"
+	case strings.Contains(message, "dataset") && strings.Contains(message, "not found"):
+		return "dataset_not_found"
+	case strings.Contains(message, "dataset") && strings.Contains(message, "database"):
+		return "database"
 	case strings.Contains(message, "no results found"):
 		return "no_results"
 	case strings.Contains(message, "unknown provider"):
@@ -92,6 +100,10 @@ func ErrorCategory(message string) string {
 		return "timeout"
 	case strings.Contains(message, "archive"):
 		return "archive"
+	case strings.Contains(message, "verification"):
+		return "verification"
+	case strings.Contains(message, "validation"):
+		return "validation"
 	case strings.Contains(message, "permission"), strings.Contains(message, "create file"), strings.Contains(message, "write file"):
 		return "filesystem"
 	case strings.Contains(message, "context canceled"), strings.Contains(message, "interrupted"):

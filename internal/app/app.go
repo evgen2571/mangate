@@ -48,7 +48,7 @@ func (a *App) DatasetService(collection dataset.Config) (dataset.Service, error)
 	if err != nil {
 		return dataset.Service{}, err
 	}
-	return dataset.Service{Store: store, Provider: provider, Downloader: downloader.New(cfg, a.Client)}, nil
+	return dataset.Service{Store: store, Provider: provider, Downloader: downloader.NewWithPageRetryLimit(cfg, a.Client, collection.Runtime.RetryLimit)}, nil
 }
 
 type Option func(*App) error

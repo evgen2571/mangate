@@ -71,6 +71,23 @@ The public package is small:
 
 Only `Client`, `MangateError`, and `__version__` are exported from the package root.
 
+## Dataset collection
+
+The Python client forwards dataset operations to the Go CLI. It does not open
+the dataset database or make provider requests itself.
+
+```python
+plan = client.dataset_plan(collection_config="dataset.json")
+result = client.dataset_collect(collection_config="dataset.json", resume=True)
+status = client.dataset_status("./datasets/manhwa-raw-v1")
+verification = client.dataset_verify("./datasets/manhwa-raw-v1")
+exports = client.dataset_export("./datasets/manhwa-raw-v1")
+```
+
+`dataset_collect` accepts `cancel_event` and preserves a returned partial
+result. Dataset output formats are `directory`, `png`, `jpeg`, `cbz`, and
+`zip`.
+
 ## Creating and configuring a client
 
 Create a client with:

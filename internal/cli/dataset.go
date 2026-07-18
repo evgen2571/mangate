@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"path/filepath"
 	"strconv"
@@ -80,7 +81,7 @@ func newDatasetPlanCmd(a *app.App) *cobra.Command {
 		if wantsJSON(cmd) {
 			return writeJSON(cmd, "dataset.plan", result)
 		}
-		writeHuman(cmd.OutOrStdout(), "Dataset plan\nProvider: %s\nOutput: %s\nFormat: %s\nCandidates: %d\nTitles: %d\nChapters: %d\nEstimated pages: %d\n", cfg.Provider, cfg.Output.Directory, cfg.Output.Format, plan.Candidates, plan.Titles, plan.Chapters, plan.EstimatedPages)
+		writeDatasetPlanHuman(cmd.OutOrStdout(), "Dataset plan", cfg, plan, true)
 		return nil
 	}}
 	bindDatasetFlags(cmd, &flags, false)
@@ -110,9 +111,12 @@ func newDatasetCollectCmd(a *app.App) *cobra.Command {
 			return err
 		}
 		if wantsJSON(cmd) {
+			if result.State == "partial" {
+				return writeJSONStatus(cmd, "dataset.collect", "partial", result)
+			}
 			return writeJSON(cmd, "dataset.collect", result)
 		}
-		writeHuman(cmd.OutOrStdout(), "Dataset collection %s\nOutput: %s\nFormat: %s\nValid pages: %d\nStored bytes: %d\nManifest: %s\nSummary: %s\n", result.State, result.DatasetRoot, result.Format, result.Counters.ValidPages, result.Counters.StoredBytes, result.ManifestPath, result.SummaryPath)
+		writeHuman(cmd.OutOrStdout(), "Dataset collection %s\nOutput: %s\nFormat: %s\nValid pages: %d\nStored bytes: %d\nStopping reason: %s\nManifest: %s\nSummary: %s\n", result.State, result.DatasetRoot, result.Format, result.Counters.ValidPages, result.Counters.StoredBytes, result.StoppingReason, result.ManifestPath, result.SummaryPath)
 		return nil
 	}}
 	bindDatasetFlags(cmd, &flags, true)
@@ -135,12 +139,24 @@ func newDatasetPlanResult(cmd *cobra.Command, a *app.App, cfg dataset.Config, fl
 	if wantsJSON(cmd) {
 		return writeJSON(cmd, "dataset.plan", result)
 	}
-	writeHuman(cmd.OutOrStdout(), "Dataset dry run\nTitles: %d\nChapters: %d\nEstimated pages: %d\n", plan.Titles, plan.Chapters, plan.EstimatedPages)
+	writeDatasetPlanHuman(cmd.OutOrStdout(), "Dataset dry run", cfg, plan, true)
 	return nil
+}
+
+func writeDatasetPlanHuman(out io.Writer, heading string, cfg dataset.Config, plan dataset.Plan, confirmationRequired bool) {
+	warnings := strings.Join(plan.Warnings, "; ")
+	if warnings == "" {
+		warnings = "none"
+	}
+	confirmation := "no"
+	if confirmationRequired {
+		confirmation = "yes"
+	}
+	writeHuman(out, "%s\nProvider: %s\nOutput: %s\nFormat: %s\nCandidates: %d\nTitles: %d\nChapters: %d\nEstimated pages: %d\nByte limit: %d\nTitle strategy: %s\nChapter strategy: %s\nSplits: train=%d validation=%d test=%d\nWarnings: %s\nConfirmation required: %s\n", heading, cfg.Provider, cfg.Output.Directory, cfg.Output.Format, plan.Candidates, plan.Titles, plan.Chapters, plan.EstimatedPages, cfg.Limits.MaxBytes, cfg.Sampling.TitleStrategy, cfg.Sampling.ChapterStrategy, plan.SplitCounts["train"], plan.SplitCounts["validation"], plan.SplitCounts["test"], warnings, confirmation)
 }
 func newDatasetStatusCmd() *cobra.Command {
 	return &cobra.Command{Use: "status <dataset-root>", Short: "Show local dataset state without provider access", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := dataset.Open(args[0])
+		store, err := dataset.OpenExisting(args[0])
 		if err != nil {
 			return err
 		}
@@ -152,14 +168,15 @@ func newDatasetStatusCmd() *cobra.Command {
 		if wantsJSON(cmd) {
 			return writeJSON(cmd, "dataset.status", info)
 		}
-		writeHuman(cmd.OutOrStdout(), "Dataset status\nID: %s\nProvider: %s\nFormat: %s\nState: %s\nValid pages: %d\nStored bytes: %d\n", info.Config.DatasetID, info.Config.Provider, info.Config.Output.Format, info.State, info.Counters.ValidPages, info.Counters.StoredBytes)
+		c := info.Counters
+		writeHuman(cmd.OutOrStdout(), "Dataset status\nID: %s\nProvider: %s\nFormat: %s\nConfiguration hash: %s\nState: %s\nStopping reason: %s\nTitles: %d discovered, %d planned, %d completed, %d failed\nChapters: %d planned, %d completed, %d failed\nPages: %d planned, %d valid, %d duplicate, %d rejected, %d failed\nStored bytes: %d\nArchives: %d\nSplits: train=%d validation=%d test=%d\nLast update: %s\n", info.Config.DatasetID, info.Config.Provider, info.Config.Output.Format, info.ConfigHash, info.State, info.StoppingReason, c.DiscoveredTitles, c.PlannedTitles, c.CompletedTitles, c.FailedTitles, c.PlannedChapters, c.CompletedChapters, c.FailedChapters, c.PlannedPages, c.ValidPages, c.DuplicatePages, c.RejectedPages, c.FailedPages, c.StoredBytes, c.Archives, info.SplitCounts["train"], info.SplitCounts["validation"], info.SplitCounts["test"], info.UpdatedAt)
 		return nil
 	}}
 }
 func newDatasetVerifyCmd() *cobra.Command {
 	var repair bool
 	cmd := &cobra.Command{Use: "verify <dataset-root>", Short: "Verify local dataset output without provider access", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := dataset.Open(args[0])
+		store, err := dataset.OpenExisting(args[0])
 		if err != nil {
 			return err
 		}
@@ -181,7 +198,7 @@ func newDatasetExportCmd() *cobra.Command {
 	var split string
 	var duplicates, rejected bool
 	cmd := &cobra.Command{Use: "export <dataset-root>", Short: "Regenerate manifest, summary, and failure reports from local state", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := dataset.Open(args[0])
+		store, err := dataset.OpenExisting(args[0])
 		if err != nil {
 			return err
 		}
@@ -189,7 +206,9 @@ func newDatasetExportCmd() *cobra.Command {
 		if err := dataset.Export(cmd.Context(), store, dataset.ExportOptions{Split: split, IncludeDuplicates: duplicates, IncludeRejected: rejected}); err != nil {
 			return err
 		}
-		_ = dataset.Failures(cmd.Context(), store)
+		if err := dataset.Failures(cmd.Context(), store); err != nil {
+			return err
+		}
 		result := map[string]string{"manifestPath": filepath.Join(args[0], "manifest.jsonl"), "summaryPath": filepath.Join(args[0], "summary.json")}
 		if wantsJSON(cmd) {
 			return writeJSON(cmd, "dataset.export", result)
@@ -211,7 +230,7 @@ func effectiveDatasetConfig(cmd *cobra.Command, a *app.App, f datasetFlags) (dat
 	cfg.Runtime.PageWorkers = a.Cfg.Concurrency.PageDownloads
 	cfg.Runtime.ChapterWorkers = a.Cfg.Concurrency.ChapterDownloads
 	if f.resume && f.configPath == "" {
-		if existing, err := dataset.Open(root); err == nil {
+		if existing, err := dataset.OpenExisting(root); err == nil {
 			if saved, _, ok, loadErr := existing.LoadConfig(context.Background()); loadErr == nil && ok {
 				cfg = saved
 			}
@@ -296,8 +315,8 @@ func effectiveDatasetConfig(cmd *cobra.Command, a *app.App, f datasetFlags) (dat
 		}
 		cfg.Limits.MaxBytes = bytes
 	}
-	if f.keepReleases {
-		cfg.Sampling.KeepDuplicateChapterReleases = true
+	if cmd.Flags().Changed("keep-duplicate-releases") {
+		cfg.Sampling.KeepDuplicateChapterReleases = f.keepReleases
 	}
 	return cfg, cfg.Normalize()
 }
@@ -306,8 +325,15 @@ func parseDatasetBytes(value string) (int64, error) {
 	if value == "" {
 		return 0, nil
 	}
-	multipliers := map[string]float64{"B": 1, "KIB": 1 << 10, "MIB": 1 << 20, "GIB": 1 << 30, "TIB": 1 << 40, "KB": 1e3, "MB": 1e6, "GB": 1e9, "TB": 1e12}
-	for suffix, multiplier := range multipliers {
+	multipliers := []struct {
+		suffix     string
+		multiplier float64
+	}{
+		{"TIB", 1 << 40}, {"GIB", 1 << 30}, {"MIB", 1 << 20}, {"KIB", 1 << 10},
+		{"TB", 1e12}, {"GB", 1e9}, {"MB", 1e6}, {"KB", 1e3}, {"B", 1},
+	}
+	for _, unit := range multipliers {
+		suffix, multiplier := unit.suffix, unit.multiplier
 		if strings.HasSuffix(value, suffix) {
 			number := strings.TrimSpace(strings.TrimSuffix(value, suffix))
 			parsed, err := strconv.ParseFloat(number, 64)
