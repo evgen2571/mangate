@@ -230,14 +230,15 @@ The required positional value is the title reference from `search`. The help tex
 | Option | Default | Effect |
 | --- | --- | --- |
 | `--limit int` | No limit when zero. | Keeps at most this many chapters after provider ordering. |
+| `--chapter-language string` | All languages. | Keeps only chapters with this exact provider language. |
 
 ~~~bash
 mangate chapters <title-id>
-mangate --language en chapters <title-id> --limit 20
+mangate chapters <title-id> --chapter-language en --limit 20
 mangate --json chapters <title-id>
 ~~~
 
-The CLI reports chapters in the provider's ascending chapter sequence. The MangaDex provider sorts numeric chapter labels numerically, puts non-numeric labels after numeric ones, and uses release metadata and the stable chapter ID to order ties. The configured language is requested from MangaDex, so the returned list contains that language.
+The CLI reports all available chapters in the provider's ascending chapter sequence by default. The MangaDex provider sorts numeric chapter labels numerically, puts non-numeric labels after numeric ones, and uses release metadata and the stable chapter ID to order ties. Use `--chapter-language` to limit the list to one language.
 
 Human-readable rows can include the display title, stable chapter ID, page count, volume, language, release group, publication time, and URL. A chapter with no number is represented by the provider's value. For MangaDex, an unnumbered chapter is mapped to number `0`.
 
@@ -500,7 +501,7 @@ Chapter records can contain:
 - `pageCount`.
 - `url`.
 
-The list order is provider order. MangaDex returns one configured language and sorts numeric chapter labels numerically. Duplicate numbers are separate releases and retain separate stable IDs.
+The list order is provider order. MangaDex returns all available languages and sorts numeric chapter labels numerically. Duplicate numbers, including releases in different languages, are separate releases and retain separate stable IDs.
 
 The download command uses these IDs and labels for selection. It does not guess which duplicate release you intended.
 

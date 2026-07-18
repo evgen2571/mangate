@@ -12,6 +12,7 @@ import (
 
 func NewChaptersCmd(a *app.App) *cobra.Command {
 	var limit int
+	var language string
 	cmd := &cobra.Command{
 		Use:     "chapters <manga-id>",
 		Short:   "List chapters for a manga using the default provider",
@@ -32,6 +33,7 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load chapters for manga %q with provider %q: %w", mangaID, a.Cfg.Provider, err)
 			}
+			chapters = filterChaptersByLanguage(chapters, language)
 
 			out := cmd.OutOrStdout()
 			if len(chapters) == 0 {
@@ -83,7 +85,23 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of chapters")
+	cmd.Flags().StringVar(&language, "chapter-language", "", "Only chapters in this provider language")
 	return cmd
+}
+
+func filterChaptersByLanguage(chapters []*source.Chapter, language string) []*source.Chapter {
+	language = strings.TrimSpace(language)
+	if language == "" {
+		return chapters
+	}
+
+	filtered := make([]*source.Chapter, 0, len(chapters))
+	for _, chapter := range chapters {
+		if chapter != nil && chapter.Language == language {
+			filtered = append(filtered, chapter)
+		}
+	}
+	return filtered
 }
 
 type chapterListRecord struct {

@@ -13,24 +13,30 @@ import (
 	"github.com/evgen2571/mangate/internal/source"
 )
 
-func TestProviderChaptersRequestsConfiguredLanguage(t *testing.T) {
+func TestProviderChaptersRequestsAllLanguages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		languages := r.URL.Query()["translatedLanguage[]"]
-		if !reflect.DeepEqual(languages, []string{"ru"}) {
-			t.Fatalf("translatedLanguage[] query = %#v, want %#v", languages, []string{"ru"})
+		if len(languages) != 0 {
+			t.Fatalf("translatedLanguage[] query = %#v, want no language filter", languages)
 		}
 		if includes := r.URL.Query()["includes[]"]; !reflect.DeepEqual(includes, []string{"scanlation_group"}) {
 			t.Fatalf("includes[] query = %#v, want scanlation group", includes)
 		}
 
-		writeMangaDexChaptersResponse(t, w, 0, 500, 0, nil)
+		writeMangaDexChaptersResponse(t, w, 0, 500, 2, []testMangaDexChapter{
+			{ID: "chapter-en", Chapter: "1", Language: "en"},
+			{ID: "chapter-ru", Chapter: "1", Language: "ru"},
+		})
 	}))
 	defer server.Close()
 
 	provider := newTestProvider(t, server.URL, "ru")
-	_, err := provider.Chapters(context.Background(), &source.Manga{ID: "manga-id"})
+	chapters, err := provider.Chapters(context.Background(), &source.Manga{ID: "manga-id"})
 	if err != nil {
 		t.Fatalf("Chapters() error = %v", err)
+	}
+	if len(chapters) != 2 {
+		t.Fatalf("len(chapters) = %d, want all languages", len(chapters))
 	}
 }
 

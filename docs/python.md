@@ -262,7 +262,7 @@ Each chapter dictionary can contain:
 | `pageCount` | integer | Yes | Provider-reported page count. |
 | `url` | string | Yes | Provider chapter URL. |
 
-MangaDex returns the configured language and orders numeric chapter labels numerically. Decimal labels remain strings in the returned dictionary. Unnumbered MangaDex chapters are mapped to `0`. Duplicate numbers are separate releases, so select by `id` when a number is ambiguous.
+MangaDex returns all available languages and orders numeric chapter labels numerically. Decimal labels remain strings in the returned dictionary. Unnumbered MangaDex chapters are mapped to `0`. Duplicate numbers are separate releases, so select by `id` when a number is ambiguous. Pass `language="en"` to `client.chapters()` to request one language only.
 
 ~~~python
 chapters = client.chapters("title-id")
@@ -718,7 +718,7 @@ print(Client().version())
 | `Client.provider_info` | `provider_info(provider=None)` | One provider record. |
 | `Client.search` | `search(query, provider=None, limit=None)` | Title-summary list. |
 | `Client.title` | `title(title_id, provider=None)` | Title record. |
-| `Client.chapters` | `chapters(title_id, provider=None, limit=None)` | Chapter dictionary list. |
+| `Client.chapters` | `chapters(title_id, provider=None, limit=None, language=None)` | Chapter dictionary list; all languages by default. |
 | `Client.download` | Chapter selectors, format, retention, dry-run, acknowledgement, and cancellation. | Download data dictionary. |
 | `Client.convert` | Local directory, archive format, output, removal, dry-run, and acknowledgement. | Archive result dictionary. |
 | `Client.convert_many` | Directory iterable, optional one-to-one output iterable, format, removal, dry-run, and acknowledgement. | Archive result list. |
