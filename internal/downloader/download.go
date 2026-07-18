@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
@@ -429,7 +431,12 @@ func convertImage(data []byte, extension string) ([]byte, error) {
 	case ".png":
 		err = png.Encode(&output, decoded)
 	case ".jpeg":
-		err = jpeg.Encode(&output, decoded, &jpeg.Options{Quality: 95})
+		// JPEG has no alpha channel. Flattening against white keeps conversion
+		// deterministic instead of leaving encoder-specific black transparency.
+		flattened := image.NewRGBA(decoded.Bounds())
+		draw.Draw(flattened, flattened.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+		draw.Draw(flattened, flattened.Bounds(), decoded, decoded.Bounds().Min, draw.Over)
+		err = jpeg.Encode(&output, flattened, &jpeg.Options{Quality: 95})
 	default:
 		return nil, fmt.Errorf("unsupported target image extension %q", extension)
 	}
