@@ -190,6 +190,12 @@ func Verify(ctx context.Context, store *Store, repair bool) (map[string]any, err
 		return nil, err
 	}
 	if repair {
+		if _, err := store.db.ExecContext(ctx, `UPDATE chapters SET state='partial' WHERE id IN (SELECT DISTINCT chapter_id FROM pages WHERE state='pending')`); err != nil {
+			return nil, err
+		}
+		if _, err := store.db.ExecContext(ctx, `UPDATE titles SET state=CASE WHEN EXISTS(SELECT 1 FROM chapters WHERE chapters.title_id=titles.id AND selected=1 AND state!='completed') THEN 'partial' ELSE 'completed' END`); err != nil {
+			return nil, err
+		}
 		if err := Export(ctx, store, ExportOptions{}); err != nil {
 			return nil, err
 		}

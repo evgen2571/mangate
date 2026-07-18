@@ -31,6 +31,11 @@ func (s Service) Collect(ctx context.Context, cfg Config, resume bool) (CollectR
 	if err := s.Store.Initialize(ctx, cfg, resume); err != nil {
 		return CollectResult{}, err
 	}
+	if resume {
+		if _, err := Verify(ctx, s.Store, true); err != nil {
+			return CollectResult{}, fmt.Errorf("reconcile resumed dataset: %w", err)
+		}
+	}
 	titles, chapters, err := s.Store.Planned(ctx)
 	if err != nil {
 		return CollectResult{}, err
