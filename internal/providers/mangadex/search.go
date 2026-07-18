@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/source"
@@ -16,13 +17,21 @@ type mangaDexManga struct {
 	ID         string `json:"id"`
 	URL        string
 	Attributes struct {
-		TitleMap         map[string]string   `json:"title"`
-		AltTitles        []map[string]string `json:"altTitles"`
-		DescriptionMap   map[string]string   `json:"description"`
-		Status           string              `json:"status"`
-		ContentRating    string              `json:"contentRating"`
-		OriginalLanguage string              `json:"originalLanguage"`
-		Year             int                 `json:"year"`
+		TitleMap                     map[string]string   `json:"title"`
+		AltTitles                    []map[string]string `json:"altTitles"`
+		DescriptionMap               map[string]string   `json:"description"`
+		Status                       string              `json:"status"`
+		ContentRating                string              `json:"contentRating"`
+		OriginalLanguage             string              `json:"originalLanguage"`
+		Year                         int                 `json:"year"`
+		AvailableTranslatedLanguages []string            `json:"availableTranslatedLanguages"`
+		CreatedAt                    string              `json:"createdAt"`
+		UpdatedAt                    string              `json:"updatedAt"`
+		Tags                         []struct {
+			Attributes struct {
+				Name map[string]string `json:"name"`
+			} `json:"attributes"`
+		} `json:"tags"`
 	} `json:"attributes"`
 }
 
@@ -60,6 +69,81 @@ func (pr *Provider) Search(ctx context.Context, title string) ([]*source.Manga, 
 	}
 
 	return mangas, nil
+}
+
+// BrowseManga reads one bounded MangaDex catalog page. Unlike Search it does
+// not depend on a title query and is intended for collection planning.
+func (pr *Provider) BrowseManga(ctx context.Context, browse source.BrowseRequest) (source.BrowsePage, error) {
+	limit := browse.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	if browse.Offset < 0 {
+		return source.BrowsePage{}, fmt.Errorf("browse offset must be >= 0")
+	}
+	params := url.Values{}
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("offset", strconv.Itoa(browse.Offset))
+	for _, value := range browse.OriginalLanguages {
+		params.Add("originalLanguage[]", value)
+	}
+	for _, value := range browse.ChapterLanguages {
+		params.Add("availableTranslatedLanguage[]", value)
+	}
+	for _, value := range browse.Statuses {
+		params.Add("status[]", value)
+	}
+	for _, value := range browse.ContentRatings {
+		params.Add("contentRating[]", value)
+	}
+	for _, value := range browse.IncludedTags {
+		params.Add("includedTags[]", value)
+	}
+	for _, value := range browse.ExcludedTags {
+		params.Add("excludedTags[]", value)
+	}
+	orderBy := strings.TrimSpace(browse.OrderBy)
+	if orderBy == "" {
+		orderBy = "updatedAt"
+	}
+	direction := strings.ToLower(strings.TrimSpace(browse.OrderDirection))
+	if direction != "asc" && direction != "desc" {
+		direction = "desc"
+	}
+	params.Set("order["+orderBy+"]", direction)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pr.api("manga/?"+params.Encode()), nil)
+	if err != nil {
+		return source.BrowsePage{}, fmt.Errorf("create browse request in %q: %w", pr.Name(), err)
+	}
+	resp, err := pr.doWithRateLimitRetry(req)
+	if err != nil {
+		return source.BrowsePage{}, fmt.Errorf("execute browse request in %q: %w", pr.Name(), err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return source.BrowsePage{}, fmt.Errorf("browse request in %q returned unexpected status: %s", pr.Name(), resp.Status)
+	}
+	var payload mangaDexResponse[mangaDexManga]
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return source.BrowsePage{}, fmt.Errorf("decode browse response in %q: %w", pr.Name(), err)
+	}
+	result := source.BrowsePage{Offset: payload.Offset, Total: payload.Total}
+	for _, item := range payload.Data {
+		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		item.URL = pr.site("title/" + item.ID)
+		tags := make([]string, 0, len(item.Attributes.Tags))
+		for _, tag := range item.Attributes.Tags {
+			if name := localizedValue(tag.Attributes.Name, pr.language); name != "" {
+				tags = append(tags, name)
+			}
+		}
+		result.Titles = append(result.Titles, source.BrowseTitle{Manga: item.toSource(pr.language), AvailableLanguages: append([]string(nil), item.Attributes.AvailableTranslatedLanguages...), Tags: tags, CreatedAt: item.Attributes.CreatedAt, UpdatedAt: item.Attributes.UpdatedAt})
+	}
+	result.NextOffset = payload.Offset + len(payload.Data)
+	result.HasMore = len(payload.Data) > 0 && (payload.Total == 0 || result.NextOffset < payload.Total)
+	return result, nil
 }
 
 // Title retrieves one title by its stable MangaDex identifier. The title
