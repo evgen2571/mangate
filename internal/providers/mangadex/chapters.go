@@ -40,7 +40,6 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 		params := url.Values{}
 		params.Set("limit", strconv.Itoa(mangaDexChapterPageLimit))
 		params.Set("offset", strconv.Itoa(offset))
-		params.Add("translatedLanguage[]", pr.language)
 		params.Add("includes[]", "scanlation_group")
 
 		url := pr.api("manga/" + manga.ID + "/feed?" + params.Encode())
@@ -84,10 +83,6 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 
 	chapters := make([]*source.Chapter, 0, len(allChapters))
 	for _, mdc := range allChapters {
-		if mdc.Attributes.Language != pr.language {
-			continue
-		}
-
 		mdc.URL = pr.site("chapter/" + mdc.ID)
 		chapter := mdc.toSource()
 		chapter.From = manga

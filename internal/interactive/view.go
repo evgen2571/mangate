@@ -82,7 +82,11 @@ func (m *model) searchView() string {
 	s := newStyles()
 	m.input.Placeholder = "Search by title"
 	m.input.PromptStyle = s.accent
-	return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render("Search manga and manhwa"), s.muted.Render("Find a title, then choose the chapters you want."), "", m.inputView(s), "", s.muted.Render("Provider: "+m.app.Cfg.Provider+" · Language: "+m.app.Cfg.Language))
+	language := m.languageFilter
+	if language == "" {
+		language = "all"
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render("Search manga and manhwa"), s.muted.Render("Find a title, then choose the chapters you want."), "", m.inputView(s), "", s.muted.Render("Provider: "+m.app.Cfg.Provider+" · Language: "+language))
 }
 
 // inputView owns the shared, fixed-width parent border. Bubbles owns only the
@@ -133,9 +137,9 @@ func (m *model) chaptersView() string {
 
 func (m *model) formatView() string {
 	s := newStyles()
-	descriptions := map[archive.Format]string{archive.FormatDirectory: "Keep pages as individual image files", archive.FormatCBZ: "Comic-book archive, one file per chapter", archive.FormatZIP: "Standard ZIP archive, one file per chapter"}
+	descriptions := map[archive.Format]string{archive.FormatDirectory: "Keep pages in their downloaded formats", archive.FormatPNG: "Pages will be in PNG format", archive.FormatJPEG: "Pages will be in JPEG format", archive.FormatCBZ: "Comic-book archive, one file per chapter", archive.FormatZIP: "Standard ZIP archive, one file per chapter"}
 	parts := []string{s.heading.Render("Choose download format")}
-	for _, f := range []archive.Format{archive.FormatDirectory, archive.FormatCBZ, archive.FormatZIP} {
+	for _, f := range []archive.Format{archive.FormatDirectory, archive.FormatPNG, archive.FormatJPEG, archive.FormatCBZ, archive.FormatZIP} {
 		marker := "○"
 		style := s.muted
 		if f == m.format {

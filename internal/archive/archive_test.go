@@ -344,6 +344,20 @@ func TestCreateFromDirectoryDetectsImageExtensionForFallbackImageName(t *testing
 	}
 }
 
+func TestCreateFromDirectoryAcceptsJFIFPages(t *testing.T) {
+	source := t.TempDir()
+	writePage(t, source, "0001.jfif", jpegPage())
+	output := filepath.Join(t.TempDir(), "chapter.cbz")
+
+	result, err := CreateFromDirectory(Options{Format: FormatCBZ, SourceDir: source, OutputPath: output})
+	if err != nil {
+		t.Fatalf("CreateFromDirectory() error = %v", err)
+	}
+	if result.IncludedPages != 1 || !result.Validation.Complete {
+		t.Fatalf("result = %#v, want one complete page", result)
+	}
+}
+
 func writePage(t *testing.T, directory, name string, body []byte) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(directory, name), body, 0o644); err != nil {

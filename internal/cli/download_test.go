@@ -94,17 +94,16 @@ func TestDownloadConfirmationRequirementOnlyGatesBroadOrDestructiveOperations(t 
 		chapters     []*source.Chapter
 		format       archive.Format
 		existingMode string
-		retainSource bool
 		want         string
 	}{
-		{name: "single directory", chapters: chapters[:1], format: archive.FormatDirectory, existingMode: "skip", retainSource: true},
-		{name: "broad", chapters: chapters, format: archive.FormatDirectory, existingMode: "skip", retainSource: true, want: "broad operation"},
-		{name: "replace", chapters: chapters[:1], format: archive.FormatCBZ, existingMode: "replace", retainSource: true, want: "replacing"},
-		{name: "remove source", chapters: chapters[:1], format: archive.FormatCBZ, existingMode: "skip", retainSource: false, want: "removing"},
+		{name: "single directory", chapters: chapters[:1], format: archive.FormatDirectory, existingMode: "skip"},
+		{name: "broad", chapters: chapters, format: archive.FormatDirectory, existingMode: "skip", want: "broad operation"},
+		{name: "replace", chapters: chapters[:1], format: archive.FormatCBZ, existingMode: "replace", want: "replacing"},
+		{name: "archive removes temporary source", chapters: chapters[:1], format: archive.FormatCBZ, existingMode: "skip", want: "removing temporary"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := downloadConfirmationRequirement(test.chapters, test.format, test.existingMode, test.retainSource)
+			got := downloadConfirmationRequirement(test.chapters, test.format, test.existingMode)
 			if test.want == "" && got != "" {
 				t.Fatalf("requirement = %q, want none", got)
 			}
@@ -117,10 +116,29 @@ func TestDownloadConfirmationRequirementOnlyGatesBroadOrDestructiveOperations(t 
 
 func TestWriteDownloadPreflightShowsEffectiveOperation(t *testing.T) {
 	var output bytes.Buffer
-	writeDownloadPreflight(&output, &source.Manga{Title: "Example"}, "provider", []*source.Chapter{{ID: "one"}}, archive.FormatCBZ, "./library", "skip", false)
+	writeDownloadPreflight(&output, &source.Manga{Title: "Example"}, "provider", []*source.Chapter{{ID: "one"}}, archive.FormatCBZ, "./library", "skip")
 	for _, want := range []string{"Title: Example", "Provider: provider", "Chapters: 1 selected", "Format: cbz", "Source pages: removed after archive validation"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("preflight = %q, want %q", output.String(), want)
+		}
+	}
+}
+
+func TestChapterRecordsUseDownloaderChapterDirectoryNames(t *testing.T) {
+	title := &source.Manga{ID: "title-id", Title: "Example"}
+	chapters := []*source.Chapter{
+		{ID: "chapter-a", Title: "Special"},
+		{ID: "chapter-b", Index: "1"},
+		{ID: "chapter-c", Index: "1"},
+	}
+
+	records := chapterRecords(t.TempDir(), title, chapters, archive.FormatCBZ, "pending")
+	for index, name := range []string{"Title-Special", "Chapter-1", "Chapter-1-chapter-c"} {
+		if filepath.Base(records[index].OutputPath) != name {
+			t.Fatalf("chapter %d output path = %q, want directory %q", index, records[index].OutputPath, name)
+		}
+		if records[index].ArchivePath != records[index].OutputPath+".cbz" {
+			t.Fatalf("chapter %d archive path = %q, want source path with .cbz", index, records[index].ArchivePath)
 		}
 	}
 }

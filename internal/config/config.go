@@ -156,8 +156,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("http timeout must be > 0")
 	case strings.TrimSpace(c.Download.Dir) == "":
 		return fmt.Errorf("download dir cannot be empty")
-	case c.Download.Format != "directory" && c.Download.Format != "cbz" && c.Download.Format != "zip":
-		return fmt.Errorf("download format must be directory, cbz, or zip")
+	case c.Download.Format != "directory" && c.Download.Format != "png" && c.Download.Format != "jpeg" && c.Download.Format != "cbz" && c.Download.Format != "zip":
+		return fmt.Errorf("download format must be directory, png, jpeg, cbz, or zip")
 	case c.Download.ExistingFileMode != "skip" && c.Download.ExistingFileMode != "replace" && c.Download.ExistingFileMode != "fail":
 		return fmt.Errorf("existing file mode must be skip, replace, or fail")
 	case c.Concurrency.PageDownloads <= 0:

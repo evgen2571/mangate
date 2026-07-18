@@ -46,46 +46,53 @@ type model struct {
 	previous      screen
 	width, height int
 
-	input         textinput.Model
-	resultsList   list.Model
-	spinner       spinner.Model
-	progressBar   progress.Model
-	help          help.Model
-	doneViewport  viewport.Model
-	showHelp      bool
-	loading       bool
-	status        string
-	query         string
-	results       []*source.Manga
-	resultCursor  int
-	chapters      []*source.Chapter
-	chapterCursor int
-	chapterOffset int
-	selected      map[int]bool
-	chapterFilter string
-	filtering     bool
-	rangeAnchor   int
-	format        archive.Format
-	manga         *source.Manga
-	cancel        context.CancelFunc
-	progress      downloadProgress
-	progressCh    chan tea.Msg
-	completion    string
-	doneErr       error
-	doneCompleted int
-	doneFailed    int
-	configCursor  int
-	configEditing bool
-	draft         config.Config
+	input          textinput.Model
+	resultsList    list.Model
+	spinner        spinner.Model
+	progressBar    progress.Model
+	help           help.Model
+	doneViewport   viewport.Model
+	showHelp       bool
+	loading        bool
+	status         string
+	query          string
+	languageFilter string
+	results        []*source.Manga
+	resultCursor   int
+	chapters       []*source.Chapter
+	chapterCursor  int
+	chapterOffset  int
+	selected       map[int]bool
+	chapterFilter  string
+	filtering      bool
+	rangeAnchor    int
+	format         archive.Format
+	manga          *source.Manga
+	cancel         context.CancelFunc
+	progress       downloadProgress
+	progressCh     chan tea.Msg
+	completion     string
+	doneErr        error
+	doneCompleted  int
+	doneFailed     int
+	configCursor   int
+	configEditing  bool
+	draft          config.Config
 }
 
 func New(a *app.App) tea.Model { return NewWithContext(a, context.Background()) }
 
 func NewWithContext(a *app.App, ctx context.Context) tea.Model {
+	return NewWithContextAndLanguage(a, ctx, "")
+}
+
+// NewWithContextAndLanguage creates a TUI with an optional explicit language
+// filter. An empty filter means that all languages are in scope.
+func NewWithContextAndLanguage(a *app.App, ctx context.Context, language string) tea.Model {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	m := &model{app: a, ctx: ctx, screen: searchScreen, selected: map[int]bool{}, rangeAnchor: -1, format: archive.FormatDirectory}
+	m := &model{app: a, ctx: ctx, languageFilter: strings.TrimSpace(language), screen: searchScreen, selected: map[int]bool{}, rangeAnchor: -1, format: archive.FormatDirectory}
 	m.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
 	m.progressBar = progress.New(progress.WithDefaultGradient())
 	m.progressBar.ShowPercentage = true
@@ -100,7 +107,11 @@ func NewWithContext(a *app.App, ctx context.Context) tea.Model {
 }
 
 func NewWithSearchResults(a *app.App, ctx context.Context, query string, results []*source.Manga) tea.Model {
-	m := NewWithContext(a, ctx).(*model)
+	return NewWithSearchResultsAndLanguage(a, ctx, query, results, "")
+}
+
+func NewWithSearchResultsAndLanguage(a *app.App, ctx context.Context, query string, results []*source.Manga, language string) tea.Model {
+	m := NewWithContextAndLanguage(a, ctx, language).(*model)
 	m.query, m.results, m.screen = query, results, resultsScreen
 	m.newResultsList(results)
 	return m
@@ -358,7 +369,7 @@ func (m *model) updateFormat(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	formats := []archive.Format{archive.FormatDirectory, archive.FormatCBZ, archive.FormatZIP}
+	formats := []archive.Format{archive.FormatDirectory, archive.FormatPNG, archive.FormatJPEG, archive.FormatCBZ, archive.FormatZIP}
 	index := 0
 	for i, f := range formats {
 		if f == m.format {

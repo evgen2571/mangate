@@ -82,10 +82,19 @@ class Client:
     def title(self, title_id: str, *, provider: str | None = None) -> dict[str, Any]:
         return self._json(["--provider", provider or self.provider, "title", title_id])["data"]
 
-    def chapters(self, title_id: str, *, provider: str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+    def chapters(
+        self,
+        title_id: str,
+        *,
+        provider: str | None = None,
+        limit: int | None = None,
+        language: str | None = None,
+    ) -> list[dict[str, Any]]:
         args = ["--provider", provider or self.provider, "chapters"]
         if limit is not None:
             args.extend(["--limit", str(limit)])
+        if language:
+            args.extend(["--chapter-language", language])
         args.append(title_id)
         return self._json(args)["data"]["chapters"]
 

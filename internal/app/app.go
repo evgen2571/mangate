@@ -18,6 +18,8 @@ type App struct {
 	Registry   *providers.Registry
 	Downloader *downloader.Downloader
 	Cache      *cache.Cache
+	appliedCfg config.Config
+	hasApplied bool
 }
 
 type Option func(*App) error
@@ -54,7 +56,7 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	if a.Client != nil && a.Downloader != nil && a.Cache != nil && a.Cfg == cfg {
+	if a.hasApplied && a.Client != nil && a.Downloader != nil && a.Cache != nil && a.appliedCfg == cfg {
 		return nil
 	}
 
@@ -67,6 +69,8 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 	a.Client = client
 	a.Downloader = downloader.New(cfg, client)
 	a.Cache = cache.New(cfg, client)
+	a.appliedCfg = cfg
+	a.hasApplied = true
 
 	return nil
 }

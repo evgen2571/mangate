@@ -111,6 +111,23 @@ func TestApplyConfigSkipsRebuildWhenConfigUnchanged(t *testing.T) {
 	}
 }
 
+func TestApplyConfigRebuildsAfterInPlaceConfigMutation(t *testing.T) {
+	cfg := config.DefaultConfig()
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	oldDownloader := a.Downloader
+
+	a.Cfg.Download.Dir = t.TempDir()
+	if err := a.ApplyConfig(a.Cfg); err != nil {
+		t.Fatalf("ApplyConfig() error = %v", err)
+	}
+	if a.Downloader == oldDownloader {
+		t.Fatal("Downloader pointer did not change after in-place config mutation")
+	}
+}
+
 func TestSearchHistoryDelegatesToCache(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Dirs.Cache = t.TempDir()

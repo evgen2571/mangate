@@ -74,7 +74,7 @@ These options are available on the root command and inherited by its subcommands
 | `--output string` | Same value as `--download-dir`. | Alias for the download root. |
 | `--format string` | `directory`, `cbz`, or `zip`. Default: `directory`. | Chooses the download format. Archive conversion requires `cbz` or `zip`. |
 | `--existing-files string` | `skip`, `replace`, or `fail`. Default: `skip`. | Controls conflicts with existing pages and archives. |
-| `--retain-source` | Boolean. Default: true. Use `--retain-source=false` to disable it. | Keeps page directories after a successful CBZ or ZIP download or conversion. |
+| `--retain-source` | Legacy Boolean setting. | Archive downloads always remove temporary page directories after validation. Standalone archive conversion still uses its explicit `--remove-source` option. |
 | `--page-downloads int` | Positive integer. Default: `8`. | Limits simultaneous page downloads. |
 | `--chapter-downloads int` | Positive integer. Default: `6`. | Limits simultaneous chapter downloads. |
 | `--search-history-max int` | Non-negative integer. Default: `100`. | Sets the number of search queries remembered by the TUI. `0` disables search history. |
@@ -230,14 +230,15 @@ The required positional value is the title reference from `search`. The help tex
 | Option | Default | Effect |
 | --- | --- | --- |
 | `--limit int` | No limit when zero. | Keeps at most this many chapters after provider ordering. |
+| `--chapter-language string` | All languages. | Keeps only chapters with this exact provider language. |
 
 ~~~bash
 mangate chapters <title-id>
-mangate --language en chapters <title-id> --limit 20
+mangate chapters <title-id> --chapter-language en --limit 20
 mangate --json chapters <title-id>
 ~~~
 
-The CLI reports chapters in the provider's ascending chapter sequence. The MangaDex provider sorts numeric chapter labels numerically, puts non-numeric labels after numeric ones, and uses release metadata and the stable chapter ID to order ties. The configured language is requested from MangaDex, so the returned list contains that language.
+The CLI reports all available chapters in the provider's ascending chapter sequence by default. The MangaDex provider sorts numeric chapter labels numerically, puts non-numeric labels after numeric ones, and uses release metadata and the stable chapter ID to order ties. Use `--chapter-language` to limit the list to one language.
 
 Human-readable rows can include the display title, stable chapter ID, page count, volume, language, release group, publication time, and URL. A chapter with no number is represented by the provider's value. For MangaDex, an unnumbered chapter is mapped to number `0`.
 
@@ -302,7 +303,7 @@ mangate --format cbz download <title-id> --all --dry-run
 mangate --format cbz download <title-id> --all --yes
 ~~~
 
-The command requires `--yes` when it selects 25 or more chapters, uses `--existing-files replace`, or removes source page directories after archive creation with `--retain-source=false`. A replacement or source-removal operation is never inferred from the output format.
+The command requires `--yes` when it selects 25 or more chapters, uses `--existing-files replace`, or creates CBZ/ZIP archives, because archive downloads remove their temporary page directories after validation.
 
 The default output root is the configured download directory. Mangate creates a title directory using a sanitized title and title ID, then a sanitized chapter directory. Directory output points to the chapter directory. CBZ and ZIP output points to the archive path beside that directory.
 
@@ -500,7 +501,7 @@ Chapter records can contain:
 - `pageCount`.
 - `url`.
 
-The list order is provider order. MangaDex returns one configured language and sorts numeric chapter labels numerically. Duplicate numbers are separate releases and retain separate stable IDs.
+The list order is provider order. MangaDex returns all available languages and sorts numeric chapter labels numerically. Duplicate numbers, including releases in different languages, are separate releases and retain separate stable IDs.
 
 The download command uses these IDs and labels for selection. It does not guess which duplicate release you intended.
 
@@ -578,7 +579,7 @@ For downloads, `--yes` is required for:
 
 - Selecting at least 25 chapters.
 - `--existing-files replace`.
-- Removing source page directories after CBZ or ZIP creation with `--retain-source=false`.
+- Removing temporary source page directories after CBZ or ZIP creation.
 
 For archive conversion, `--yes` is required for source removal and replacement.
 

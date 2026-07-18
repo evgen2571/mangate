@@ -49,6 +49,47 @@ func TestChaptersCommandPrintsProviderChapters(t *testing.T) {
 	}
 }
 
+func TestChaptersCommandShowsAllLanguagesByDefault(t *testing.T) {
+	a := newTestApp(t, fakeProvider{chapters: []*source.Chapter{
+		{ID: "chapter-en", Index: "1", Language: "en"},
+		{ID: "chapter-ja", Index: "1", Language: "ja"},
+	}})
+
+	cmd := NewChaptersCmd(a)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"manga-123"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{"chapter-en", "Language: en", "chapter-ja", "Language: ja"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output missing %q\noutput:\n%s", want, got)
+		}
+	}
+}
+
+func TestChaptersCommandFiltersExplicitLanguage(t *testing.T) {
+	a := newTestApp(t, fakeProvider{chapters: []*source.Chapter{
+		{ID: "chapter-en", Index: "1", Language: "en"},
+		{ID: "chapter-ja", Index: "1", Language: "ja"},
+	}})
+
+	cmd := NewChaptersCmd(a)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"manga-123", "--chapter-language", "ja"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if strings.Contains(out.String(), "chapter-en") || !strings.Contains(out.String(), "chapter-ja") {
+		t.Fatalf("unexpected filtered output:\n%s", out.String())
+	}
+}
+
 func TestChaptersCommandRejectsNilChapter(t *testing.T) {
 	a := newTestApp(t, fakeProvider{
 		chapters: []*source.Chapter{nil},

@@ -54,6 +54,30 @@ func TestViewsRenderSharedFrame(t *testing.T) {
 	}
 }
 
+func TestSearchViewShowsAllWhenLanguageWasNotSpecified(t *testing.T) {
+	m := testModel(t)
+	resize(t, m, 80, 24)
+
+	view := m.searchView()
+	if !strings.Contains(view, "Language: all") {
+		t.Fatalf("search view language = %q, want all", view)
+	}
+}
+
+func TestSearchViewShowsExplicitLanguage(t *testing.T) {
+	a, err := app.New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewWithContextAndLanguage(a, context.Background(), "ja").(*model)
+	resize(t, m, 80, 24)
+
+	view := m.searchView()
+	if !strings.Contains(view, "Language: ja") {
+		t.Fatalf("search view language = %q, want ja", view)
+	}
+}
+
 func TestSmallTerminalPreservesState(t *testing.T) {
 	m := testModel(t)
 	m.screen, m.query, m.chapterFilter = chaptersScreen, "dorohedoro", "english"
