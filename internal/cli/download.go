@@ -90,7 +90,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			started := time.Now().UTC()
 			record := downloadRecord{Provider: provider.Name(), Title: title, Format: format, OutputRoot: a.Cfg.Download.Dir, Status: "in_progress", StartedAt: started, Chapters: chapterRecords(a.Cfg.Download.Dir, title, selection, format, "pending")}
 			if dryRun {
-				if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
+				if format.IsArchive() && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
 					if _, err := reusableArchiveSelection(&record, selection, title); err != nil {
 						return err
 					}
@@ -122,7 +122,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, a.Cfg.Download.Dir, a.Cfg.Download.ExistingFileMode)
 			}
 			pendingSelection := selection
-			if format != archive.FormatDirectory && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
+			if format.IsArchive() && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
 				pendingSelection, err = reusableArchiveSelection(&record, selection, title)
 				if err != nil {
 					return err
@@ -150,14 +150,14 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			updateChapterRecordStates(&record)
 			if err != nil {
 				record.Error = err.Error()
-				if format != archive.FormatDirectory {
+				if format.IsArchive() {
 					if archiveErr := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, true); archiveErr != nil {
 						record.Error = errors.Join(err, archiveErr).Error()
 					}
 				}
 				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
 			}
-			if format != archive.FormatDirectory {
+			if format.IsArchive() {
 				if err := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, true); err != nil {
 					record.Error = err.Error()
 					return reportDownloadResult(cmd, &record, err)
@@ -195,7 +195,7 @@ func downloadConfirmationRequirement(chapters []*source.Chapter, format archive.
 	switch {
 	case existingFileMode == string(archive.ExistingReplace):
 		return "replacing existing output may discard data"
-	case format != archive.FormatDirectory:
+	case format.IsArchive():
 		return "removing temporary source page directories after archive creation changes local files"
 	case len(chapters) >= broadDownloadChapterThreshold:
 		return fmt.Sprintf("downloading %d chapters is a broad operation", len(chapters))
@@ -210,7 +210,7 @@ func writeDownloadPreflight(out io.Writer, title *source.Manga, provider string,
 		titleName = title.Title
 	}
 	sourcePages := "kept"
-	if format != archive.FormatDirectory {
+	if format.IsArchive() {
 		sourcePages = "removed after archive validation"
 	}
 	writeHuman(out, "Download plan\nTitle: %s\nProvider: %s\nChapters: %d selected\nFormat: %s\nOutput: %s\nExisting files: %s\nSource pages: %s\n", titleName, provider, len(chapters), format, outputRoot, existingFileMode, sourcePages)
@@ -470,7 +470,7 @@ func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter
 	for index, chapter := range chapters {
 		directory := filepath.Join(root, titleDir, names[index])
 		record := chapterDownload{ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: directory, ExpectedPages: chapter.PageCount}
-		if format != archive.FormatDirectory {
+		if format.IsArchive() {
 			record.ArchivePath = directory + format.Extension()
 		}
 		records = append(records, record)

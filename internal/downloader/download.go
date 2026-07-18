@@ -1,10 +1,15 @@
 package downloader
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -352,14 +357,31 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 		return "", fmt.Errorf("download page: expected an image response, got %q", contentType)
 	}
 
-	filePath := filePathBase + detectPageExtension(resp.Header.Get("Content-Type"), p.URL)
+	contentType := resp.Header.Get("Content-Type")
+	sourceExtension := detectPageExtension(contentType, p.URL)
+	filePath := filePathBase + sourceExtension
 	temporaryPath := filePath + ".part"
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read page %q: %w", p.URL, err)
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("download page: response for %q was empty", p.URL)
+	}
+	if targetExtension := targetImageExtension(d.cfg.Download.Format, sourceExtension); targetExtension != "" {
+		data, err = convertImage(data, targetExtension)
+		if err != nil {
+			return "", fmt.Errorf("convert page %q to %s: %w", p.URL, targetExtension, err)
+		}
+		filePath = filePathBase + targetExtension
+		temporaryPath = filePath + ".part"
+	}
 	out, err := os.Create(temporaryPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create file %q: %w", filePath, err)
 	}
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	if _, err := out.Write(data); err != nil {
 		_ = out.Close()
 		_ = os.Remove(temporaryPath)
 		return "", fmt.Errorf("failed to write file %q: %w", filePath, err)
@@ -380,6 +402,41 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 	}
 
 	return filePath, nil
+}
+
+func targetImageExtension(format, sourceExtension string) string {
+	if format != "png" && format != "jpeg" {
+		return ""
+	}
+	switch strings.ToLower(sourceExtension) {
+	case ".jpg", ".jpeg", ".png":
+		if format == "png" {
+			return ".png"
+		}
+		return ".jpeg"
+	default:
+		return ""
+	}
+}
+
+func convertImage(data []byte, extension string) ([]byte, error) {
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	var output bytes.Buffer
+	switch extension {
+	case ".png":
+		err = png.Encode(&output, decoded)
+	case ".jpeg":
+		err = jpeg.Encode(&output, decoded, &jpeg.Options{Quality: 95})
+	default:
+		return nil, fmt.Errorf("unsupported target image extension %q", extension)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
 }
 
 func (d *Downloader) getPageResponseWithRetry(ctx context.Context, rawURL string) (*http.Response, error) {

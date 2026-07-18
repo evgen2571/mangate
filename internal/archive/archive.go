@@ -23,16 +23,22 @@ const (
 	FormatDirectory Format = "directory"
 	FormatCBZ       Format = "cbz"
 	FormatZIP       Format = "zip"
+	FormatPNG       Format = "png"
+	FormatJPEG      Format = "jpeg"
 )
 
 func ParseFormat(value string) (Format, error) {
 	format := Format(strings.ToLower(strings.TrimSpace(value)))
 	switch format {
-	case FormatDirectory, FormatCBZ, FormatZIP:
+	case FormatDirectory, FormatCBZ, FormatZIP, FormatPNG, FormatJPEG:
 		return format, nil
 	default:
-		return "", fmt.Errorf("invalid output format %q; use directory, cbz, or zip", value)
+		return "", fmt.Errorf("invalid output format %q; use directory, png, jpeg, cbz, or zip", value)
 	}
+}
+
+func (f Format) IsArchive() bool {
+	return f == FormatCBZ || f == FormatZIP
 }
 
 func (f Format) Extension() string {

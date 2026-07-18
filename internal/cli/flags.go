@@ -28,7 +28,7 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		&cfg.Download.Format,
 		"format",
 		cfg.Download.Format,
-		"Output format: directory, cbz, or zip",
+		"Output format: directory, png, jpeg, cbz, or zip",
 	)
 
 	f.BoolVar(

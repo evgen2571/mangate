@@ -80,11 +80,21 @@ func NewInteractiveCmd(a *app.App) *cobra.Command {
 }
 
 func runInteractive(cmd *cobra.Command, a *app.App) error {
-	return runTUI(cmd, interactive.NewWithContext(a, cmd.Context()))
+	return runTUI(cmd, interactive.NewWithContextAndLanguage(a, cmd.Context(), tuiLanguage(cmd)))
 }
 
 func runInteractiveSearchResults(cmd *cobra.Command, a *app.App, query string, results []*source.Manga) error {
-	return runTUI(cmd, interactive.NewWithSearchResults(a, cmd.Context(), query, results))
+	return runTUI(cmd, interactive.NewWithSearchResultsAndLanguage(a, cmd.Context(), query, results, tuiLanguage(cmd)))
+}
+
+func tuiLanguage(cmd *cobra.Command) string {
+	if cmd.Flags().Changed("language") {
+		value, err := cmd.Flags().GetString("language")
+		if err == nil {
+			return value
+		}
+	}
+	return ""
 }
 
 func runTUI(cmd *cobra.Command, ui tea.Model) error {

@@ -47,12 +47,12 @@ func NewDiagnosticsCmd(a *app.App) *cobra.Command {
 				Provider:            provider.Info(),
 				DownloadDirectory:   inspectPath(a.Cfg.Download.Dir),
 				CacheDirectory:      inspectPath(a.Cfg.Dirs.Cache),
-				SupportedFormats:    []archive.Format{archive.FormatDirectory, archive.FormatCBZ, archive.FormatZIP},
+				SupportedFormats:    []archive.Format{archive.FormatDirectory, archive.FormatPNG, archive.FormatJPEG, archive.FormatCBZ, archive.FormatZIP},
 			}
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "diagnostics", record)
 			}
-			writeHuman(cmd.OutOrStdout(), "Platform: %s\nInteractive terminal: %t\nProvider: %s (%s)\nProvider availability: %s\nDownload directory: %s\nCache directory: %s\nArchive formats: directory, cbz, zip\n", record.Platform, record.InteractiveTerminal, record.Provider.Name, record.Provider.ID, record.Provider.Availability, formatPathDiagnostic(record.DownloadDirectory), formatPathDiagnostic(record.CacheDirectory))
+			writeHuman(cmd.OutOrStdout(), "Platform: %s\nInteractive terminal: %t\nProvider: %s (%s)\nProvider availability: %s\nDownload directory: %s\nCache directory: %s\nOutput formats: directory, png, jpeg, cbz, zip\n", record.Platform, record.InteractiveTerminal, record.Provider.Name, record.Provider.ID, record.Provider.Availability, formatPathDiagnostic(record.DownloadDirectory), formatPathDiagnostic(record.CacheDirectory))
 			return nil
 		},
 	}

@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 	"encoding/json"
+	"image/jpeg"
 	"image"
 	"image/color"
 	"image/png"
@@ -55,6 +56,72 @@ func TestDownloadChapterPlainKeepsDownloadedPageType(t *testing.T) {
 
 	if _, err := png.Decode(f); err != nil {
 		t.Fatalf("png.Decode(%q) error = %v", pagePath, err)
+	}
+}
+
+func TestDownloadChapterConvertsJPEGAndPNGPages(t *testing.T) {
+	pngBytes := mustPNGBytes(t, color.RGBA{R: 255, A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	for _, test := range []struct {
+		format string
+		ext    string
+		check  func(*os.File) error
+	}{
+		{format: "png", ext: ".png", check: func(file *os.File) error { _, err := png.Decode(file); return err }},
+		{format: "jpeg", ext: ".jpeg", check: func(file *os.File) error { _, err := jpeg.Decode(file); return err }},
+	} {
+		t.Run(test.format, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Download.Dir = t.TempDir()
+			cfg.Download.Format = test.format
+			cfg.Concurrency.PageDownloads = 1
+			d := New(cfg, server.Client())
+			manga := &source.Manga{Title: "Converted Manga"}
+			chapter := &source.Chapter{Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/page.png"}}}
+			if err := d.DownloadChapter(chapter); err != nil {
+				t.Fatalf("DownloadChapter() error = %v", err)
+			}
+			file, err := os.Open(filepath.Join(cfg.Download.Dir, "Converted-Manga", "Chapter-1", "0001"+test.ext))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			if err := test.check(file); err != nil {
+				t.Fatalf("decoded converted page: %v", err)
+			}
+		})
+	}
+}
+
+func TestDownloadChapterKeepsGIFPageWhenImageFormatSelected(t *testing.T) {
+	gifBytes := []byte("GIF89a")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/gif")
+		_, _ = w.Write(gifBytes)
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Download.Format = "jpeg"
+	d := New(cfg, server.Client())
+	manga := &source.Manga{Title: "GIF Manga"}
+	chapter := &source.Chapter{Index: "1", From: manga, Pages: []*source.Page{{URL: server.URL + "/page.gif"}}}
+	if err := d.DownloadChapter(chapter); err != nil {
+		t.Fatalf("DownloadChapter() error = %v", err)
+	}
+	path := filepath.Join(cfg.Download.Dir, "GIF-Manga", "Chapter-1", "0001.gif")
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(gifBytes) {
+		t.Fatalf("GIF page was converted or changed: got %q", got)
 	}
 }
 
