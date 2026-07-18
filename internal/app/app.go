@@ -7,6 +7,7 @@ import (
 
 	"github.com/evgen2571/mangate/internal/cache"
 	"github.com/evgen2571/mangate/internal/config"
+	"github.com/evgen2571/mangate/internal/dataset"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/providers"
 )
@@ -20,6 +21,34 @@ type App struct {
 	Cache      *cache.Cache
 	appliedCfg config.Config
 	hasApplied bool
+}
+
+// DatasetService creates a run-scoped downloader. It keeps a dataset's output
+// and concurrency choices out of the user's saved application configuration
+// while still sharing this application's HTTP client and provider registry.
+func (a *App) DatasetService(collection dataset.Config) (dataset.Service, error) {
+	if a == nil || a.Client == nil {
+		return dataset.Service{}, fmt.Errorf("dataset service: app is not configured")
+	}
+	cfg := a.Cfg.Clone()
+	cfg.Provider = collection.Provider
+	cfg.Download.Dir = collection.Output.Directory
+	cfg.Download.Format = string(collection.Output.Format)
+	cfg.Download.ExistingFileMode = string(collection.Output.ExistingFiles)
+	cfg.Concurrency.PageDownloads = collection.Runtime.PageWorkers
+	cfg.Concurrency.ChapterDownloads = collection.Runtime.ChapterWorkers
+	if err := cfg.Validate(); err != nil {
+		return dataset.Service{}, fmt.Errorf("dataset service configuration: %w", err)
+	}
+	provider, err := a.Registry.New(cfg.Provider, cfg, a.Client)
+	if err != nil {
+		return dataset.Service{}, err
+	}
+	store, err := dataset.Open(collection.Output.Directory)
+	if err != nil {
+		return dataset.Service{}, err
+	}
+	return dataset.Service{Store: store, Provider: provider, Downloader: downloader.New(cfg, a.Client)}, nil
 }
 
 type Option func(*App) error
