@@ -33,3 +33,10 @@ go.work.sum
 
 # Local agent/Ralph workspace
 .hermes/
+
+# Dataset runtime output
+datasets/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.part

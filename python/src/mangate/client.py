@@ -57,8 +57,8 @@ class Client:
         self.chapter_downloads = chapter_downloads
         if existing_files not in {"skip", "replace", "fail"}:
             raise ValueError("existing_files must be skip, replace, or fail")
-        if output_format.lower() not in {"directory", "cbz", "zip"}:
-            raise ValueError("output_format must be directory, cbz, or zip")
+        if output_format.lower() not in {"directory", "png", "jpeg", "cbz", "zip"}:
+            raise ValueError("output_format must be directory, png, jpeg, cbz, or zip")
         self.existing_files = existing_files
         self.output_format = output_format.lower()
         self.retain_source = retain_source
@@ -132,8 +132,8 @@ class Client:
         if language:
             args.extend(["--chapter-language", language])
         if output_format is not None:
-            if output_format.lower() not in {"directory", "cbz", "zip"}:
-                raise ValueError("output_format must be directory, cbz, or zip")
+            if output_format.lower() not in {"directory", "png", "jpeg", "cbz", "zip"}:
+                raise ValueError("output_format must be directory, png, jpeg, cbz, or zip")
             args.extend(["--format", output_format.lower()])
         if retain_source is not None:
             args.append("--retain-source" if retain_source else "--retain-source=false")
@@ -208,6 +208,69 @@ class Client:
     def verify_archive(self, archive_path: str | os.PathLike[str]) -> dict[str, Any]:
         """Verify archive structure, safe entry paths, and completion metadata."""
         return self._json(["archive", "verify", os.fspath(archive_path)])["data"]
+
+    def dataset_plan(
+        self,
+        *,
+        collection_config: str | os.PathLike[str] | None = None,
+        resume: bool = False,
+        extra_args: Iterable[str] = (),
+    ) -> dict[str, Any]:
+        args = ["dataset", "plan"]
+        if collection_config is not None:
+            args.extend(["--collection-config", os.fspath(collection_config)])
+        if resume:
+            args.append("--resume")
+        args.extend(extra_args)
+        return self._json(args)["data"]
+
+    def dataset_collect(
+        self,
+        *,
+        collection_config: str | os.PathLike[str] | None = None,
+        resume: bool = False,
+        dry_run: bool = False,
+        assume_yes: bool = True,
+        cancel_event: Event | None = None,
+        extra_args: Iterable[str] = (),
+    ) -> dict[str, Any]:
+        args = ["dataset", "collect"]
+        if collection_config is not None:
+            args.extend(["--collection-config", os.fspath(collection_config)])
+        if resume:
+            args.append("--resume")
+        if dry_run:
+            args.append("--dry-run")
+        if assume_yes:
+            args.append("--yes")
+        args.extend(extra_args)
+        return self._json(args, cancel_event=cancel_event)["data"]
+
+    def dataset_status(self, dataset_root: str | os.PathLike[str]) -> dict[str, Any]:
+        return self._json(["dataset", "status", os.fspath(dataset_root)])["data"]
+
+    def dataset_verify(self, dataset_root: str | os.PathLike[str], *, repair: bool = False) -> dict[str, Any]:
+        args = ["dataset", "verify", os.fspath(dataset_root)]
+        if repair:
+            args.append("--repair")
+        return self._json(args)["data"]
+
+    def dataset_export(
+        self,
+        dataset_root: str | os.PathLike[str],
+        *,
+        split: str | None = None,
+        include_duplicates: bool = False,
+        include_rejected: bool = False,
+    ) -> dict[str, Any]:
+        args = ["dataset", "export", os.fspath(dataset_root)]
+        if split:
+            args.extend(["--split", split])
+        if include_duplicates:
+            args.append("--include-duplicates")
+        if include_rejected:
+            args.append("--include-rejected")
+        return self._json(args)["data"]
 
     def _base_args(self) -> list[str]:
         args = [self.executable]

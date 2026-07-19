@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "datasetId": "manhwa-smoke-test",
+  "provider": "mangadex",
+  "output": { "directory": "./datasets/manhwa-smoke-test", "format": "directory", "existingFiles": "skip" },
+  "discovery": { "originalLanguages": ["ko"], "chapterLanguages": ["en"], "statuses": ["ongoing", "completed"], "contentRatings": ["safe", "suggestive"], "candidatePoolSize": 20 },
+  "sampling": { "seed": 2571, "titleStrategy": "stratified", "chapterStrategy": "uniform", "maxTitles": 3, "maxChaptersPerTitle": 2, "keepDuplicateChapterReleases": false },
+  "limits": { "maxPages": 100, "maxBytes": 1073741824, "maxFailures": 20 },
+  "validation": { "minimumWidth": 128, "minimumHeight": 128, "maximumWidth": 20000, "maximumHeight": 100000, "maximumDecodedPixels": 500000000, "fullDecode": true, "calculateSHA256": true, "calculatePerceptualHash": true },
+  "splits": { "enabled": true, "train": 0.8, "validation": 0.1, "test": 0.1 },
+  "runtime": { "titleWorkers": 1, "chapterWorkers": 2, "pageWorkers": 4, "validationWorkers": 1, "retryLimit": 3 }
+}

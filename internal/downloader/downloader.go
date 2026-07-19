@@ -7,9 +7,10 @@ import (
 )
 
 type Downloader struct {
-	cfg           config.Config
-	client        *http.Client
-	pageDownloads chan struct{}
+	cfg            config.Config
+	client         *http.Client
+	pageDownloads  chan struct{}
+	pageRetryLimit int
 }
 
 func New(config config.Config, client *http.Client) *Downloader {
@@ -19,8 +20,20 @@ func New(config config.Config, client *http.Client) *Downloader {
 	}
 
 	return &Downloader{
-		cfg:           config,
-		client:        client,
-		pageDownloads: make(chan struct{}, pageDownloads),
+		cfg:            config,
+		client:         client,
+		pageDownloads:  make(chan struct{}, pageDownloads),
+		pageRetryLimit: maxPageDownloadRetries,
 	}
+}
+
+// NewWithPageRetryLimit creates a downloader with the ordinary configuration
+// plus a run-scoped retry limit. It is used by dataset collection so its
+// persisted runtime settings do not mutate the user's global configuration.
+func NewWithPageRetryLimit(config config.Config, client *http.Client, retryLimit int) *Downloader {
+	download := New(config, client)
+	if retryLimit >= 0 {
+		download.pageRetryLimit = retryLimit
+	}
+	return download
 }

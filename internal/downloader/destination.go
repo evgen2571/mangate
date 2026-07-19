@@ -22,6 +22,7 @@ type PageDownloadResult struct {
 	ChapterID         string `json:"chapterId"`
 	PageIndex         int    `json:"pageIndex"`
 	Path              string `json:"path"`
+	Extension         string `json:"extension"`
 	SourceContentType string `json:"sourceContentType,omitempty"`
 	OutputContentType string `json:"outputContentType,omitempty"`
 	Bytes             int64  `json:"bytes"`
@@ -73,6 +74,7 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 	results := make([]PageDownloadResult, len(chapter.Pages))
 	var mu sync.Mutex
 	var g errgroup.Group
+	g.SetLimit(d.pageDownloadLimit())
 	for index, page := range chapter.Pages {
 		index, page := index, page
 		g.Go(func() error {
@@ -82,6 +84,9 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 			base := filepath.Join(directory, fmt.Sprintf("%04d", index+1))
 			result := PageDownloadResult{TitleID: chapter.From.ID, ChapterID: chapter.ID, PageIndex: index + 1}
 			if existingPage(base) {
+				if existingPath := existingPagePath(base); !existingOutputMatchesFormat(existingPath, d.cfg.Download.Format) && d.cfg.Download.ExistingFileMode == "skip" {
+					return fmt.Errorf("download page: existing output %q does not match requested %s format; use --existing-files replace", filepath.Ext(existingPath), d.cfg.Download.Format)
+				}
 				switch d.cfg.Download.ExistingFileMode {
 				case "fail":
 					return fmt.Errorf("download page: destination already exists for page %d", index+1)
@@ -96,6 +101,7 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 						return err
 					}
 					result.Path, result.Bytes, result.Reused = path, info.Size(), true
+					result.Extension = filepath.Ext(path)
 					result.OutputContentType = mime.TypeByExtension(filepath.Ext(path))
 					mu.Lock()
 					results[index] = result
@@ -103,7 +109,7 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 					return nil
 				}
 			}
-			path, err := d.downloadPage(ctx, page, base)
+			path, sourceContentType, err := d.downloadPage(ctx, page, base)
 			if err != nil {
 				return err
 			}
@@ -111,7 +117,8 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 			if err != nil {
 				return fmt.Errorf("inspect downloaded page: %w", err)
 			}
-			result.Path, result.Bytes = path, info.Size()
+			result.Path, result.Bytes, result.SourceContentType = path, info.Size(), sourceContentType
+			result.Extension = filepath.Ext(path)
 			result.OutputContentType = mime.TypeByExtension(filepath.Ext(path))
 			result.Converted = d.cfg.Download.Format == "png" || d.cfg.Download.Format == "jpeg"
 			mu.Lock()
