@@ -119,6 +119,9 @@ func (c *Config) Normalize() error {
 	if err != nil {
 		return err
 	}
+	if format.IsArchive() {
+		return fmt.Errorf("dataset output format %q is not supported; datasets store ordered page files", format)
+	}
 	c.Output.Format = format
 	if c.Output.ExistingFiles == "" {
 		c.Output.ExistingFiles = archive.ExistingSkip

@@ -1,16 +1,13 @@
 package dataset
 
 import (
-	"archive/zip"
 	"bufio"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"slices"
+	"sort"
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/archive"
@@ -53,12 +50,52 @@ type ManifestRecord struct {
 	ValidatedAt      string  `json:"validatedAt,omitempty"`
 }
 
-func Export(ctx context.Context, store *Store, options ExportOptions) error {
-	info, err := store.Info(ctx)
+func optional(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+func manifestRecords(store *Store, options ExportOptions) ([]ManifestRecord, error) {
+	info, err := store.Info(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	records := []ManifestRecord{}
+	for _, page := range store.data.Pages {
+		if page.State != "valid" && !(options.IncludeRejected && page.State == "rejected") {
+			continue
+		}
+		if !options.IncludeDuplicates && page.ExactDuplicateOf != "" {
+			continue
+		}
+		title, titleOK := store.data.Titles[page.TitleID]
+		chapter, chapterOK := store.data.Chapters[page.ChapterID]
+		if !titleOK || !chapterOK || (options.Split != "" && title.Split != options.Split) {
+			continue
+		}
+		records = append(records, ManifestRecord{SchemaVersion: 1, DatasetID: info.Config.DatasetID, Provider: info.Config.Provider, Format: string(info.Config.Output.Format), StorageType: page.StorageType, TitleID: page.TitleID, Title: title.Name, TitleURL: title.URL, OriginalLanguage: title.OriginalLanguage, ChapterID: page.ChapterID, ChapterNumber: chapter.Number, ChapterLanguage: chapter.Language, ChapterURL: chapter.URL, PageIndex: page.Index, RelativePath: page.RelativePath, ArchiveEntry: optional(page.ArchiveEntry), SourceMIMEType: page.SourceMIMEType, MIMEType: page.MIMEType, Extension: page.Extension, Width: page.Width, Height: page.Height, Bytes: page.Bytes, SHA256: page.SHA256, PerceptualHash: page.PerceptualHash, Split: title.Split, ExactDuplicateOf: optional(page.ExactDuplicateOf), NearDuplicateOf: optional(page.NearDuplicateOf), DownloadedAt: page.DownloadedAt, ValidatedAt: page.ValidatedAt})
+	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].TitleID != records[j].TitleID {
+			return records[i].TitleID < records[j].TitleID
+		}
+		if records[i].ChapterID != records[j].ChapterID {
+			return records[i].ChapterID < records[j].ChapterID
+		}
+		return records[i].PageIndex < records[j].PageIndex
+	})
+	return records, nil
+}
+func Export(_ context.Context, store *Store, options ExportOptions) error {
+	records, err := manifestRecords(store, options)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(store.Root(), "reports"), 0o755); err != nil {
+	info, err := store.Info(context.Background())
+	if err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(store.Root(), ".manifest-*.jsonl")
@@ -71,61 +108,17 @@ func Export(ctx context.Context, store *Store, options ExportOptions) error {
 			_ = os.Remove(tmp.Name())
 		}
 	}()
-	writer := bufio.NewWriter(tmp)
-	query := `SELECT p.title_id,t.name,COALESCE(t.url,''),COALESCE(t.original_language,''),p.chapter_id,COALESCE(c.number,''),COALESCE(c.language,''),COALESCE(c.url,''),p.page_index,COALESCE(p.storage_type,''),COALESCE(p.relative_path,''),p.archive_entry,COALESCE(p.source_mime_type,''),COALESCE(p.mime_type,''),COALESCE(p.extension,''),COALESCE(p.width,0),COALESCE(p.height,0),COALESCE(p.bytes,0),COALESCE(p.sha256,''),COALESCE(p.perceptual_hash,''),p.exact_duplicate_of,p.near_duplicate_of,COALESCE(t.split,''),COALESCE(p.downloaded_at,''),COALESCE(p.validated_at,'') FROM pages p JOIN titles t ON t.id=p.title_id JOIN chapters c ON c.id=p.chapter_id WHERE p.state='valid'`
-	if options.IncludeRejected {
-		query = strings.Replace(query, "p.state='valid'", "p.state IN ('valid','rejected')", 1)
-	}
-	args := []any{}
-	if options.Split != "" {
-		query += " AND t.split=?"
-		args = append(args, options.Split)
-	}
-	if !options.IncludeDuplicates {
-		query += " AND p.exact_duplicate_of IS NULL"
-	}
-	query += " ORDER BY p.title_id,p.chapter_id,p.page_index"
-	rows, err := store.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var r ManifestRecord
-		var archiveEntry, duplicate, nearDuplicate sqlString
-		var downloaded, validated sqlString
-		if err := rows.Scan(&r.TitleID, &r.Title, &r.TitleURL, &r.OriginalLanguage, &r.ChapterID, &r.ChapterNumber, &r.ChapterLanguage, &r.ChapterURL, &r.PageIndex, &r.StorageType, &r.RelativePath, &archiveEntry, &r.SourceMIMEType, &r.MIMEType, &r.Extension, &r.Width, &r.Height, &r.Bytes, &r.SHA256, &r.PerceptualHash, &duplicate, &nearDuplicate, &r.Split, &downloaded, &validated); err != nil {
-			return err
-		}
-		r.SchemaVersion = 1
-		r.DatasetID = info.Config.DatasetID
-		r.Provider = info.Config.Provider
-		r.Format = string(info.Config.Output.Format)
-		if archiveEntry.Valid {
-			value := archiveEntry.String
-			r.ArchiveEntry = &value
-		}
-		if duplicate.Valid {
-			value := duplicate.String
-			r.ExactDuplicateOf = &value
-		}
-		if nearDuplicate.Valid {
-			value := nearDuplicate.String
-			r.NearDuplicateOf = &value
-		}
-		r.DownloadedAt, r.ValidatedAt = downloaded.String, validated.String
-		data, err := json.Marshal(r)
+	w := bufio.NewWriter(tmp)
+	for _, record := range records {
+		data, err := json.Marshal(record)
 		if err != nil {
 			return err
 		}
-		if _, err := writer.Write(append(data, '\n')); err != nil {
+		if _, err := w.Write(append(data, '\n')); err != nil {
 			return err
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if err := writer.Flush(); err != nil {
+	if err := w.Flush(); err != nil {
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -135,113 +128,98 @@ func Export(ctx context.Context, store *Store, options ExportOptions) error {
 		return err
 	}
 	ok = true
-	stats, err := summaryStatistics(ctx, store)
-	if err != nil {
-		return err
-	}
-	summary := map[string]any{"schemaVersion": 1, "datasetId": info.Config.DatasetID, "provider": info.Config.Provider, "format": info.Config.Output.Format, "configurationHash": info.ConfigHash, "state": info.State, "stoppingReason": info.StoppingReason, "createdAt": info.CreatedAt, "updatedAt": info.UpdatedAt, "counters": info.Counters, "statistics": stats, "databaseSchemaVersion": SchemaVersion, "manifestSchemaVersion": 1, "manifestOptions": map[string]any{"split": options.Split, "includeDuplicates": options.IncludeDuplicates, "includeRejected": options.IncludeRejected}}
+	stats := statistics(store)
+	summary := map[string]any{"schemaVersion": 1, "datasetId": info.Config.DatasetID, "provider": info.Config.Provider, "format": info.Config.Output.Format, "configurationHash": info.ConfigHash, "state": info.State, "stoppingReason": info.StoppingReason, "createdAt": info.CreatedAt, "updatedAt": info.UpdatedAt, "counters": info.Counters, "statistics": stats, "stateSchemaVersion": SchemaVersion, "manifestSchemaVersion": 1, "manifestOptions": options}
 	return writeJSONFile(filepath.Join(store.Root(), "summary.json"), summary)
 }
-
-func summaryStatistics(ctx context.Context, store *Store) (map[string]any, error) {
-	stats := map[string]any{"splitCounts": map[string]int{}, "rejectionCategories": map[string]int{}, "failureCategories": map[string]int{}}
-	var averageWidth, averageHeight, averageAspect float64
-	var minWidth, maxWidth, minHeight, maxHeight int
-	if err := store.db.QueryRowContext(ctx, `SELECT COALESCE(AVG(width),0),COALESCE(MIN(width),0),COALESCE(MAX(width),0),COALESCE(AVG(height),0),COALESCE(MIN(height),0),COALESCE(MAX(height),0),COALESCE(AVG(CAST(width AS REAL)/NULLIF(height,0)),0) FROM pages WHERE state='valid'`).Scan(&averageWidth, &minWidth, &maxWidth, &averageHeight, &minHeight, &maxHeight, &averageAspect); err != nil {
-		return nil, err
-	}
-	stats["width"] = map[string]any{"average": averageWidth, "minimum": minWidth, "maximum": maxWidth}
-	stats["height"] = map[string]any{"average": averageHeight, "minimum": minHeight, "maximum": maxHeight}
-	stats["aspectRatio"] = map[string]any{"average": averageAspect}
-	var validPages, titleCount, chapterCount int
-	if err := store.db.QueryRowContext(ctx, "SELECT COUNT(*),COUNT(DISTINCT title_id),COUNT(DISTINCT chapter_id) FROM pages WHERE state='valid'").Scan(&validPages, &titleCount, &chapterCount); err != nil {
-		return nil, err
-	}
-	stats["pagesPerTitle"] = ratio(validPages, titleCount)
-	stats["pagesPerChapter"] = ratio(validPages, chapterCount)
-	if err := collectCountMap(ctx, store, "SELECT COALESCE(split,''),COUNT(*) FROM titles WHERE state!='discovered' GROUP BY split", stats["splitCounts"].(map[string]int)); err != nil {
-		return nil, err
-	}
-	if err := collectCountMap(ctx, store, "SELECT COALESCE(rejection_code,''),COUNT(*) FROM pages WHERE state='rejected' GROUP BY rejection_code", stats["rejectionCategories"].(map[string]int)); err != nil {
-		return nil, err
-	}
-	if err := collectCountMap(ctx, store, "SELECT COALESCE(last_error,''),COUNT(*) FROM chapters WHERE state='failed' GROUP BY last_error", stats["failureCategories"].(map[string]int)); err != nil {
-		return nil, err
-	}
-	var retries int
-	if err := store.db.QueryRowContext(ctx, "SELECT COALESCE(SUM(CASE WHEN attempt>1 THEN attempt-1 ELSE 0 END),0) FROM attempts").Scan(&retries); err != nil {
-		return nil, err
-	}
-	stats["retryCount"] = retries
-	var archiveBytes int64
-	rows, err := store.db.QueryContext(ctx, "SELECT archive_path FROM chapters WHERE archive_path IS NOT NULL AND state='completed'")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			return nil, err
-		}
-		if info, err := os.Stat(path); err == nil {
-			archiveBytes += info.Size()
+func statistics(store *Store) map[string]any {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	widths, heights := []int{}, []int{}
+	titleIDs, chapterIDs, hashes := map[string]bool{}, map[string]bool{}, map[string]map[string]bool{}
+	rejection, failures := map[string]int{}, map[string]int{}
+	var bytes int64
+	retries := 0
+	for _, attempt := range store.data.Attempts {
+		if attempt.Attempt > 1 {
+			retries += attempt.Attempt - 1
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	for _, page := range store.data.Pages {
+		if page.State == "valid" {
+			widths = append(widths, page.Width)
+			heights = append(heights, page.Height)
+			titleIDs[page.TitleID] = true
+			chapterIDs[page.ChapterID] = true
+			bytes += page.Bytes
+			if page.SHA256 != "" {
+				if hashes[page.SHA256] == nil {
+					hashes[page.SHA256] = map[string]bool{}
+				}
+				if title, ok := store.data.Titles[page.TitleID]; ok && title.Split != "" {
+					hashes[page.SHA256][title.Split] = true
+				}
+			}
+		}
+		if page.State == "rejected" {
+			rejection[page.RejectionCode]++
+		}
 	}
-	stats["archiveBytes"] = archiveBytes
-	return stats, nil
+	for _, chapter := range store.data.Chapters {
+		if chapter.State == "failed" {
+			failures[chapter.LastError]++
+		}
+	}
+	avg := func(values []int) float64 {
+		if len(values) == 0 {
+			return 0
+		}
+		total := 0
+		for _, v := range values {
+			total += v
+		}
+		return float64(total) / float64(len(values))
+	}
+	minmax := func(values []int) (int, int) {
+		if len(values) == 0 {
+			return 0, 0
+		}
+		min, max := values[0], values[0]
+		for _, v := range values {
+			if v < min {
+				min = v
+			}
+			if v > max {
+				max = v
+			}
+		}
+		return min, max
+	}
+	minW, maxW := minmax(widths)
+	minH, maxH := minmax(heights)
+	return map[string]any{"splitCounts": splitCounts(store.data.Titles), "rejectionCategories": rejection, "failureCategories": failures, "retryCount": retries, "archiveBytes": int64(0), "storedBytes": bytes, "width": map[string]any{"average": avg(widths), "minimum": minW, "maximum": maxW}, "height": map[string]any{"average": avg(heights), "minimum": minH, "maximum": maxH}, "pagesPerTitle": ratio(len(widths), len(titleIDs)), "pagesPerChapter": ratio(len(widths), len(chapterIDs))}
 }
-func ratio(numerator, denominator int) float64 {
-	if denominator == 0 {
+func splitCounts(titles map[string]Title) map[string]int {
+	counts := map[string]int{}
+	for _, title := range titles {
+		if title.State != "discovered" {
+			counts[title.Split]++
+		}
+	}
+	return counts
+}
+func ratio(n, d int) float64 {
+	if d == 0 {
 		return 0
 	}
-	return float64(numerator) / float64(denominator)
-}
-func collectCountMap(ctx context.Context, store *Store, query string, target map[string]int) error {
-	rows, err := store.db.QueryContext(ctx, query)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		var count int
-		if err := rows.Scan(&name, &count); err != nil {
-			return err
-		}
-		target[name] = count
-	}
-	return rows.Err()
-}
-
-type sqlString struct {
-	String string
-	Valid  bool
-}
-
-func (s *sqlString) Scan(value any) error {
-	if value == nil {
-		s.String = ""
-		s.Valid = false
-		return nil
-	}
-	switch value := value.(type) {
-	case string:
-		s.String = value
-	case []byte:
-		s.String = string(value)
-	default:
-		return fmt.Errorf("scan text %T", value)
-	}
-	s.Valid = true
-	return nil
+	return float64(n) / float64(d)
 }
 func writeJSONFile(path string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	temp := path + ".part"
@@ -250,122 +228,56 @@ func writeJSONFile(path string, value any) error {
 	}
 	return os.Rename(temp, path)
 }
-
 func Verify(ctx context.Context, store *Store, repair bool) (map[string]any, error) {
 	info, err := store.Info(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := store.db.QueryContext(ctx, "SELECT title_id,chapter_id,page_index,relative_path,archive_entry,sha256 FROM pages WHERE state='valid' ORDER BY title_id,chapter_id,page_index")
-	if err != nil {
-		return nil, err
+	store.mu.RLock()
+	pages := make([]Page, 0, len(store.data.Pages))
+	for _, page := range store.data.Pages {
+		pages = append(pages, page)
 	}
-	defer rows.Close()
+	store.mu.RUnlock()
 	checked, invalid := 0, 0
-	invalidArchives := map[string]struct{}{}
-	for rows.Next() {
-		var titleID, chapterID, path, hash string
-		var index int
-		var entry sqlString
-		if err := rows.Scan(&titleID, &chapterID, &index, &path, &entry, &hash); err != nil {
-			return nil, err
+	for _, page := range pages {
+		if page.State != "valid" {
+			continue
 		}
 		checked++
-		if entry.Valid {
-			if _, alreadyInvalid := invalidArchives[chapterID]; alreadyInvalid {
-				continue
-			}
-			archivePath := filepath.Join(store.Root(), filepath.FromSlash(path))
-			archiveErr := verifyArchiveEntry(archivePath, titleID, chapterID, entry.String, hash, info.Config.Validation)
-			if !info.Config.Output.Format.IsArchive() || !strings.EqualFold(filepath.Ext(archivePath), info.Config.Output.Format.Extension()) || archiveErr != nil {
-				invalid++
-				if repair {
-					invalidArchives[chapterID] = struct{}{}
-					if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
-						return nil, fmt.Errorf("remove corrupt archive %q: %w", archivePath, err)
-					}
-					if _, err := store.db.ExecContext(ctx, "UPDATE pages SET state='pending',last_error='archive missing or modified' WHERE chapter_id=?", chapterID); err != nil {
-						return nil, err
-					}
-					if _, err := store.db.ExecContext(ctx, "UPDATE chapters SET state='partial',archive_path=NULL,last_error='archive missing or modified',claim_owner=NULL,claimed_at=NULL WHERE id=?", chapterID); err != nil {
-						return nil, err
-					}
+		path := filepath.Join(store.Root(), filepath.FromSlash(page.RelativePath))
+		validated, _, err := ValidateFile(path, info.Config.Validation)
+		bad := err != nil || (page.SHA256 != "" && validated.SHA256 != page.SHA256) || !matchesOutputFormat(path, validated.MIMEType, info.Config.Output.Format)
+		if bad {
+			invalid++
+			if repair {
+				if err := store.setPagePending(page.ChapterID, page.Index, "file missing or modified"); err != nil {
+					return nil, err
 				}
 			}
-			continue
-		}
-		if info.Config.Output.Format.IsArchive() {
-			invalid++
-			if repair {
-				_, _ = store.db.ExecContext(ctx, "UPDATE pages SET state='pending',last_error='archive page is stored as a file' WHERE chapter_id=? AND page_index=?", chapterID, index)
-			}
-			continue
-		}
-		validated, _, err := ValidateFile(filepath.Join(store.Root(), filepath.FromSlash(path)), info.Config.Validation)
-		if err != nil || (hash != "" && validated.SHA256 != hash) || !matchesOutputFormat(path, validated.MIMEType, info.Config.Output.Format) {
-			invalid++
-			if repair {
-				_, _ = store.db.ExecContext(ctx, "UPDATE pages SET state='pending',last_error='file missing or modified' WHERE chapter_id=? AND page_index=?", chapterID, index)
-			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	adoptedArchives := 0
 	if repair {
-		adoptedArchives, err = adoptCompletedArchives(ctx, store, info.Config)
-		if err != nil {
+		if err := store.repairState(); err != nil {
 			return nil, err
 		}
-		temporary, err := temporaryFiles(store.Root())
-		if err != nil {
-			return nil, err
-		}
-		for _, path := range temporary {
+		for _, path := range mustTemporaryFiles(store.Root()) {
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return nil, fmt.Errorf("remove abandoned temporary file %q: %w", path, err)
+				return nil, err
 			}
 		}
-		staging, err := archiveStagingDirectories(store.Root())
-		if err != nil {
-			return nil, err
-		}
-		for _, path := range staging {
+		for _, path := range mustStaging(store.Root()) {
 			if err := os.RemoveAll(path); err != nil {
-				return nil, fmt.Errorf("remove abandoned archive staging directory %q: %w", path, err)
+				return nil, err
 			}
-		}
-		if _, err := store.db.ExecContext(ctx, `UPDATE chapters SET state='partial', claim_owner=NULL, claimed_at=NULL, last_error=COALESCE(last_error, 'interrupted work claim') WHERE state='downloading' AND claim_owner IS NOT NULL`); err != nil {
-			return nil, err
-		}
-		if _, err := store.db.ExecContext(ctx, `UPDATE chapters SET state='partial' WHERE id IN (SELECT DISTINCT chapter_id FROM pages WHERE state='pending')`); err != nil {
-			return nil, err
-		}
-		if _, err := store.db.ExecContext(ctx, `UPDATE chapters SET state='partial', last_error=COALESCE(last_error, 'completed chapter has incomplete page state') WHERE selected=1 AND state='completed' AND expected_pages>0 AND expected_pages!=(SELECT COUNT(*) FROM pages WHERE pages.chapter_id=chapters.id AND pages.state='valid')`); err != nil {
-			return nil, err
-		}
-		if _, err := store.db.ExecContext(ctx, `UPDATE titles SET state=CASE WHEN EXISTS(SELECT 1 FROM chapters WHERE chapters.title_id=titles.id AND selected=1 AND state!='completed') THEN 'partial' ELSE 'completed' END`); err != nil {
-			return nil, err
 		}
 		if err := Export(ctx, store, ExportOptions{}); err != nil {
 			return nil, err
 		}
 	}
-	var splitLeakage int
-	err = store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT p.sha256 FROM pages p JOIN titles t ON t.id=p.title_id WHERE p.state='valid' AND p.sha256 IS NOT NULL AND t.split<>'' GROUP BY p.sha256 HAVING COUNT(DISTINCT t.split)>1)`).Scan(&splitLeakage)
-	if err != nil {
-		return nil, err
-	}
-	stateInconsistencies, err := stateInconsistencies(ctx, store)
-	if err != nil {
-		return nil, err
-	}
-	duplicateReferences, err := invalidDuplicateReferences(ctx, store)
-	if err != nil {
-		return nil, err
-	}
-	manifestInconsistencies, err := verifyManifest(ctx, store, info)
+	state := store.stateInconsistencies()
+	duplicates := store.invalidDuplicates()
+	manifest, err := verifyManifest(store, info)
 	if err != nil {
 		return nil, err
 	}
@@ -377,56 +289,144 @@ func Verify(ctx context.Context, store *Store, repair bool) (map[string]any, err
 	if err != nil {
 		return nil, err
 	}
-	unexpected, err := unexpectedDataFiles(ctx, store)
+	unexpected, err := unexpectedDataFiles(store)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"datasetRoot": store.Root(), "checkedPages": checked, "invalidPages": invalid, "adoptedArchives": adoptedArchives, "stateInconsistencies": stateInconsistencies, "invalidDuplicateReferences": duplicateReferences, "manifestInconsistencies": manifestInconsistencies, "temporaryFiles": len(temporary), "stagingDirectories": len(staging), "unexpectedFiles": len(unexpected), "splitLeakage": splitLeakage, "repair": repair, "valid": invalid == 0 && stateInconsistencies == 0 && duplicateReferences == 0 && manifestInconsistencies == 0 && splitLeakage == 0 && len(temporary) == 0 && len(staging) == 0 && len(unexpected) == 0}, nil
+	leakage := store.splitLeakage()
+	return map[string]any{"datasetRoot": store.Root(), "checkedPages": checked, "invalidPages": invalid, "adoptedArchives": 0, "stateInconsistencies": state, "invalidDuplicateReferences": duplicates, "manifestInconsistencies": manifest, "temporaryFiles": len(temporary), "stagingDirectories": len(staging), "unexpectedFiles": len(unexpected), "splitLeakage": leakage, "repair": repair, "valid": invalid == 0 && state == 0 && duplicates == 0 && manifest == 0 && leakage == 0 && len(temporary) == 0 && len(staging) == 0 && len(unexpected) == 0}, nil
 }
-
-func matchesOutputFormat(path, mimeType string, format archive.Format) bool {
+func matchesOutputFormat(path, mime string, format archive.Format) bool {
 	switch format {
 	case archive.FormatPNG:
-		return strings.EqualFold(filepath.Ext(path), ".png") && mimeType == "image/png"
+		return strings.EqualFold(filepath.Ext(path), ".png") && mime == "image/png"
 	case archive.FormatJPEG:
-		return strings.EqualFold(filepath.Ext(path), ".jpeg") && mimeType == "image/jpeg"
+		return strings.EqualFold(filepath.Ext(path), ".jpeg") && mime == "image/jpeg"
 	case archive.FormatDirectory:
 		return true
-	default:
-		return false
 	}
+	return false
 }
-
-func stateInconsistencies(ctx context.Context, store *Store) (int, error) {
-	var incompleteChapters, incompleteTitles int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chapters WHERE selected=1 AND state='completed' AND expected_pages>0 AND expected_pages!=(SELECT COUNT(*) FROM pages WHERE pages.chapter_id=chapters.id AND pages.state='valid')`).Scan(&incompleteChapters); err != nil {
-		return 0, err
-	}
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM titles WHERE state='completed' AND EXISTS(SELECT 1 FROM chapters WHERE chapters.title_id=titles.id AND chapters.selected=1 AND chapters.state!='completed')`).Scan(&incompleteTitles); err != nil {
-		return 0, err
-	}
-	return incompleteChapters + incompleteTitles, nil
+func (s *Store) setPagePending(chapter string, index int, message string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := pageKey(chapter, index)
+	page := s.data.Pages[key]
+	page.State, page.ErrorMessage = "pending", message
+	s.data.Pages[key] = page
+	return s.saveLocked()
 }
-
-func invalidDuplicateReferences(ctx context.Context, store *Store) (int, error) {
-	var invalid int
-	query := `SELECT COUNT(*) FROM pages p WHERE p.state='valid' AND (
-		(p.exact_duplicate_of IS NOT NULL AND (instr(p.exact_duplicate_of,':')=0 OR NOT EXISTS(SELECT 1 FROM pages original WHERE original.state='valid' AND original.chapter_id=substr(p.exact_duplicate_of,1,instr(p.exact_duplicate_of,':')-1) AND original.page_index=CAST(substr(p.exact_duplicate_of,instr(p.exact_duplicate_of,':')+1) AS INTEGER)))) OR
-		(p.near_duplicate_of IS NOT NULL AND (instr(p.near_duplicate_of,':')=0 OR NOT EXISTS(SELECT 1 FROM pages original WHERE original.state='valid' AND original.chapter_id=substr(p.near_duplicate_of,1,instr(p.near_duplicate_of,':')-1) AND original.page_index=CAST(substr(p.near_duplicate_of,instr(p.near_duplicate_of,':')+1) AS INTEGER))))
-	)`
-	if err := store.db.QueryRowContext(ctx, query).Scan(&invalid); err != nil {
-		return 0, err
+func (s *Store) repairState() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, chapter := range s.data.Chapters {
+		valid := 0
+		for _, page := range s.data.Pages {
+			if page.ChapterID == id && page.State == "valid" {
+				valid++
+			}
+		}
+		if chapter.State == "downloading" || valid < chapter.ExpectedPages {
+			chapter.State = "partial"
+			chapter.ClaimOwner = ""
+			if chapter.LastError == "" {
+				chapter.LastError = "incomplete chapter"
+			}
+			s.data.Chapters[id] = chapter
+		}
+		s.refreshTitleLocked(chapter.TitleID)
 	}
-	return invalid, nil
+	return s.saveLocked()
 }
-
-func verifyManifest(ctx context.Context, store *Store, info DatasetInfo) (int, error) {
+func (s *Store) stateInconsistencies() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	bad := 0
+	for _, chapter := range s.data.Chapters {
+		valid := 0
+		for _, page := range s.data.Pages {
+			if page.ChapterID == chapter.ID && page.State == "valid" {
+				valid++
+			}
+		}
+		if chapter.State == "completed" && chapter.ExpectedPages > 0 && valid != chapter.ExpectedPages {
+			bad++
+		}
+	}
+	for _, title := range s.data.Titles {
+		if title.State != "completed" {
+			continue
+		}
+		for _, chapter := range s.data.Chapters {
+			if chapter.TitleID == title.ID && chapter.State != "completed" {
+				bad++
+				break
+			}
+		}
+	}
+	return bad
+}
+func (s *Store) invalidDuplicates() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	bad := 0
+	for _, page := range s.data.Pages {
+		if page.State != "valid" {
+			continue
+		}
+		for _, ref := range []string{page.ExactDuplicateOf, page.NearDuplicateOf} {
+			if ref == "" {
+				continue
+			}
+			parts := strings.Split(ref, ":")
+			if len(parts) != 2 {
+				bad++
+				continue
+			}
+			found := false
+			for _, candidate := range s.data.Pages {
+				if candidate.ChapterID == parts[0] && fmt.Sprint(candidate.Index) == parts[1] && candidate.State == "valid" {
+					found = true
+				}
+			}
+			if !found {
+				bad++
+			}
+		}
+	}
+	return bad
+}
+func (s *Store) splitLeakage() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	hashes := map[string]map[string]bool{}
+	for _, page := range s.data.Pages {
+		title := s.data.Titles[page.TitleID]
+		if page.State == "valid" && page.SHA256 != "" && title.Split != "" {
+			if hashes[page.SHA256] == nil {
+				hashes[page.SHA256] = map[string]bool{}
+			}
+			hashes[page.SHA256][title.Split] = true
+		}
+	}
+	n := 0
+	for _, splits := range hashes {
+		if len(splits) > 1 {
+			n++
+		}
+	}
+	return n
+}
+func verifyManifest(store *Store, info DatasetInfo) (int, error) {
 	options, err := manifestExportOptions(store.Root())
 	if err != nil {
 		return 0, err
 	}
-	path := filepath.Join(store.Root(), "manifest.jsonl")
-	file, err := os.Open(path)
+	want, err := manifestRecords(store, options)
+	if err != nil {
+		return 0, err
+	}
+	file, err := os.Open(filepath.Join(store.Root(), "manifest.jsonl"))
 	if os.IsNotExist(err) {
 		return 1, nil
 	}
@@ -434,44 +434,28 @@ func verifyManifest(ctx context.Context, store *Store, info DatasetInfo) (int, e
 		return 0, err
 	}
 	defer file.Close()
-	inconsistencies := 0
-	lines := 0
-	var previousTitle, previousChapter string
-	previousPage := 0
+	got := []ManifestRecord{}
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
-		lines++
-		var record ManifestRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			inconsistencies++
-			continue
+		var r ManifestRecord
+		if json.Unmarshal(scanner.Bytes(), &r) != nil {
+			return 1, nil
 		}
-		if record.SchemaVersion != 1 || record.DatasetID != info.Config.DatasetID || record.Provider != info.Config.Provider || record.Format != string(info.Config.Output.Format) || !manifestOrderAfter(previousTitle, previousChapter, previousPage, record.TitleID, record.ChapterID, record.PageIndex) {
-			inconsistencies++
-			continue
-		}
-		if ok, err := manifestRecordMatches(ctx, store, options, record); err != nil {
-			return 0, err
-		} else if !ok {
-			inconsistencies++
-			continue
-		}
-		previousTitle, previousChapter, previousPage = record.TitleID, record.ChapterID, record.PageIndex
+		got = append(got, r)
 	}
 	if err := scanner.Err(); err != nil {
 		return 0, err
 	}
-	expected, err := manifestRecordCount(ctx, store, options)
-	if err != nil {
-		return 0, err
+	if len(want) != len(got) {
+		return abs(len(want) - len(got)), nil
 	}
-	if lines != expected {
-		inconsistencies += abs(lines - expected)
+	for i := range want {
+		if want[i] != got[i] {
+			return 1, nil
+		}
 	}
-	return inconsistencies, nil
+	return 0, nil
 }
-
 func manifestExportOptions(root string) (ExportOptions, error) {
 	data, err := os.ReadFile(filepath.Join(root, "summary.json"))
 	if os.IsNotExist(err) {
@@ -484,277 +468,68 @@ func manifestExportOptions(root string) (ExportOptions, error) {
 		ManifestOptions ExportOptions `json:"manifestOptions"`
 	}
 	if err := json.Unmarshal(data, &summary); err != nil {
-		return ExportOptions{}, fmt.Errorf("decode dataset summary: %w", err)
+		return ExportOptions{}, err
 	}
 	return summary.ManifestOptions, nil
 }
-
-func manifestOrderAfter(previousTitle, previousChapter string, previousPage int, title, chapter string, page int) bool {
-	if previousTitle == "" && previousChapter == "" && previousPage == 0 {
-		return true
+func abs(n int) int {
+	if n < 0 {
+		return -n
 	}
-	if title != previousTitle {
-		return title > previousTitle
-	}
-	if chapter != previousChapter {
-		return chapter > previousChapter
-	}
-	return page > previousPage
+	return n
 }
-
-func manifestRecordMatches(ctx context.Context, store *Store, options ExportOptions, record ManifestRecord) (bool, error) {
-	query := `SELECT COALESCE(p.storage_type,''),COALESCE(p.relative_path,''),COALESCE(p.archive_entry,''),COALESCE(p.source_mime_type,''),COALESCE(p.mime_type,''),COALESCE(p.extension,''),COALESCE(p.width,0),COALESCE(p.height,0),COALESCE(p.bytes,0),COALESCE(p.sha256,''),COALESCE(p.perceptual_hash,''),COALESCE(p.exact_duplicate_of,''),COALESCE(p.near_duplicate_of,''),COALESCE(t.split,'') FROM pages p JOIN titles t ON t.id=p.title_id WHERE p.title_id=? AND p.chapter_id=? AND p.page_index=? AND p.state='valid'`
-	if options.IncludeRejected {
-		query = strings.Replace(query, "p.state='valid'", "p.state IN ('valid','rejected')", 1)
-	}
-	args := []any{record.TitleID, record.ChapterID, record.PageIndex}
-	if options.Split != "" {
-		query += " AND t.split=?"
-		args = append(args, options.Split)
-	}
-	if !options.IncludeDuplicates {
-		query += " AND p.exact_duplicate_of IS NULL"
-	}
-	var storage, path, entry, sourceMIME, mimeType, extension, sha, perceptual, duplicate, nearDuplicate, split string
-	var width, height int
-	var bytes int64
-	err := store.db.QueryRowContext(ctx, query, args...).Scan(&storage, &path, &entry, &sourceMIME, &mimeType, &extension, &width, &height, &bytes, &sha, &perceptual, &duplicate, &nearDuplicate, &split)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	archiveEntry := ""
-	if record.ArchiveEntry != nil {
-		archiveEntry = *record.ArchiveEntry
-	}
-	exactDuplicate := ""
-	if record.ExactDuplicateOf != nil {
-		exactDuplicate = *record.ExactDuplicateOf
-	}
-	near := ""
-	if record.NearDuplicateOf != nil {
-		near = *record.NearDuplicateOf
-	}
-	return storage == record.StorageType && path == record.RelativePath && entry == archiveEntry && sourceMIME == record.SourceMIMEType && mimeType == record.MIMEType && extension == record.Extension && width == record.Width && height == record.Height && bytes == record.Bytes && sha == record.SHA256 && perceptual == record.PerceptualHash && duplicate == exactDuplicate && nearDuplicate == near && split == record.Split, nil
-}
-
-func manifestRecordCount(ctx context.Context, store *Store, options ExportOptions) (int, error) {
-	query := "SELECT COUNT(*) FROM pages p JOIN titles t ON t.id=p.title_id WHERE p.state='valid'"
-	if options.IncludeRejected {
-		query = strings.Replace(query, "p.state='valid'", "p.state IN ('valid','rejected')", 1)
-	}
-	args := []any{}
-	if options.Split != "" {
-		query += " AND t.split=?"
-		args = append(args, options.Split)
-	}
-	if !options.IncludeDuplicates {
-		query += " AND p.exact_duplicate_of IS NULL"
-	}
-	var count int
-	if err := store.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
-}
-
 func temporaryFiles(root string) ([]string, error) {
 	files := []string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(entry.Name(), ".part") {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".part") {
 			files = append(files, path)
 		}
 		return nil
 	})
 	return files, err
 }
-
-// archiveStagingDirectories returns the leaf staging directories that contain
-// interrupted archive page output. The .staging hierarchy itself is not an
-// error when it is empty.
+func mustTemporaryFiles(root string) []string { files, _ := temporaryFiles(root); return files }
 func archiveStagingDirectories(root string) ([]string, error) {
-	stagingRoot := filepath.Join(root, ".staging")
-	if _, err := os.Stat(stagingRoot); os.IsNotExist(err) {
+	base := filepath.Join(root, ".staging")
+	if _, err := os.Stat(base); os.IsNotExist(err) {
 		return nil, nil
-	} else if err != nil {
-		return nil, err
 	}
-	directories := map[string]struct{}{}
-	err := filepath.WalkDir(stagingRoot, func(path string, entry os.DirEntry, err error) error {
+	paths := map[string]bool{}
+	err := filepath.WalkDir(base, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() {
-			return nil
+		if !entry.IsDir() {
+			paths[filepath.Dir(path)] = true
 		}
-		directories[filepath.Dir(path)] = struct{}{}
 		return nil
 	})
-	if err != nil {
-		return nil, err
+	out := []string{}
+	for path := range paths {
+		out = append(out, path)
 	}
-	staging := make([]string, 0, len(directories))
-	for path := range directories {
-		staging = append(staging, path)
-	}
-	slices.Sort(staging)
-	return staging, nil
+	sort.Strings(out)
+	return out, err
 }
-
-// adoptCompletedArchives reconciles the narrow interruption window after an
-// archive is finalized but before its page records are committed. It accepts
-// only the canonical archive for a planned, incomplete chapter and validates
-// every page before making the database state complete.
-func adoptCompletedArchives(ctx context.Context, store *Store, cfg Config) (int, error) {
-	if !cfg.Output.Format.IsArchive() {
-		return 0, nil
-	}
-	rows, err := store.db.QueryContext(ctx, `SELECT c.id,c.title_id,c.expected_pages,COALESCE(t.split,'') FROM chapters c JOIN titles t ON t.id=c.title_id WHERE c.selected=1 AND c.state!='completed' ORDER BY c.title_id,c.provider_order,c.id`)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-	adopted := 0
-	for rows.Next() {
-		var chapterID, titleID, split string
-		var expectedPages int
-		if err := rows.Scan(&chapterID, &titleID, &expectedPages, &split); err != nil {
-			return 0, err
+func mustStaging(root string) []string { paths, _ := archiveStagingDirectories(root); return paths }
+func unexpectedDataFiles(store *Store) ([]string, error) {
+	store.mu.RLock()
+	expected := map[string]bool{}
+	for _, page := range store.data.Pages {
+		if page.State == "valid" && page.RelativePath != "" {
+			expected[filepath.ToSlash(page.RelativePath)] = true
 		}
-		if expectedPages <= 0 {
-			continue
-		}
-		archivePath := filepath.Join(store.Root(), "data", safeSegment(cfg.Provider), safeSegment(titleID), safeSegment(chapterID)+cfg.Output.Format.Extension())
-		inspection, err := archive.Inspect(archivePath)
-		if err != nil || !inspection.Valid || !inspection.Complete || !inspection.IdentityConfirmed || inspection.TitleID != titleID || inspection.ChapterID != chapterID || inspection.PageCount != expectedPages || len(inspection.UnexpectedEntries) > 0 {
-			continue
-		}
-		if inspection.Metadata == nil || inspection.Metadata.Provider != cfg.Provider {
-			continue
-		}
-		pages, err := validateArchivePages(archivePath, cfg.Validation)
-		if err != nil {
-			continue
-		}
-		relative, err := filepath.Rel(store.Root(), archivePath)
-		if err != nil {
-			return 0, err
-		}
-		for index, page := range pages {
-			if err := store.RecordPage(ctx, Page{TitleID: titleID, ChapterID: chapterID, Index: index + 1, StorageType: "archive", RelativePath: filepath.ToSlash(relative), ArchiveEntry: page.entry, SourceMIMEType: page.image.MIMEType, MIMEType: page.image.MIMEType, Extension: filepath.Ext(page.entry), Width: page.image.Width, Height: page.image.Height, Bytes: page.image.Bytes, SHA256: page.image.SHA256, PerceptualHash: page.image.PerceptualHash, State: "valid", Split: split}); err != nil {
-				return 0, err
-			}
-		}
-		if err := store.CompleteChapter(ctx, chapterID, archivePath, true, ""); err != nil {
-			return 0, err
-		}
-		if _, err := store.db.ExecContext(ctx, "UPDATE chapters SET archive_path=? WHERE id=?", archivePath, chapterID); err != nil {
-			return 0, err
-		}
-		adopted++
 	}
-	return adopted, rows.Err()
-}
-
-type archivePage struct {
-	entry string
-	image ValidatedImage
-}
-
-func validateArchivePages(path string, validation Validation) ([]archivePage, error) {
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	pages := []archivePage{}
-	for _, file := range reader.File {
-		if file.Name == ".mangate.json" || file.Name == "ComicInfo.xml" {
-			continue
-		}
-		if filepath.Dir(file.Name) != "." || !isArchiveImageName(file.Name) {
-			return nil, fmt.Errorf("unexpected archive entry %q", file.Name)
-		}
-		image, err := validateArchiveFile(file, validation)
-		if err != nil {
-			return nil, err
-		}
-		pages = append(pages, archivePage{entry: file.Name, image: image})
-	}
-	return pages, nil
-}
-
-func isArchiveImageName(name string) bool {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".avif", ".bmp", ".img":
-		return true
-	default:
-		return false
-	}
-}
-
-func validateArchiveFile(file *zip.File, validation Validation) (ValidatedImage, error) {
-	source, err := file.Open()
-	if err != nil {
-		return ValidatedImage{}, err
-	}
-	defer source.Close()
-	temp, err := os.CreateTemp("", "mangate-archive-entry-*")
-	if err != nil {
-		return ValidatedImage{}, err
-	}
-	defer os.Remove(temp.Name())
-	if _, err := io.Copy(temp, source); err != nil {
-		_ = temp.Close()
-		return ValidatedImage{}, err
-	}
-	if err := temp.Close(); err != nil {
-		return ValidatedImage{}, err
-	}
-	validated, _, err := ValidateFile(temp.Name(), validation)
-	return validated, err
-}
-
-func unexpectedDataFiles(ctx context.Context, store *Store) ([]string, error) {
-	expected := map[string]struct{}{}
-	rows, err := store.db.QueryContext(ctx, "SELECT DISTINCT relative_path FROM pages WHERE state='valid' AND relative_path IS NOT NULL AND relative_path!=''")
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		expected[filepath.ToSlash(path)] = struct{}{}
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	dataRoot := filepath.Join(store.Root(), "data")
-	if _, err := os.Stat(dataRoot); os.IsNotExist(err) {
+	store.mu.RUnlock()
+	root := filepath.Join(store.Root(), "data")
+	if _, err := os.Stat(root); os.IsNotExist(err) {
 		return nil, nil
-	} else if err != nil {
-		return nil, err
 	}
-	unexpected := []string{}
-	err = filepath.WalkDir(dataRoot, func(path string, entry os.DirEntry, err error) error {
+	bad := []string{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -765,62 +540,16 @@ func unexpectedDataFiles(ctx context.Context, store *Store) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		relative = filepath.ToSlash(relative)
-		if _, ok := expected[relative]; ok {
-			return nil
+		if !expected[filepath.ToSlash(relative)] {
+			bad = append(bad, filepath.ToSlash(relative))
 		}
-		name := entry.Name()
-		if name == "title.json" || name == "chapter.json" || name == ".mangate.json" || strings.HasSuffix(name, ".cbz.json") || strings.HasSuffix(name, ".zip.json") {
-			return nil
-		}
-		unexpected = append(unexpected, relative)
 		return nil
 	})
-	return unexpected, err
+	return bad, err
 }
-
-func verifyArchiveEntry(path, expectedTitleID, expectedChapterID, entry, expectedHash string, validation Validation) error {
-	inspection, err := archive.Inspect(path)
-	if err != nil || !inspection.Complete {
-		if err == nil {
-			err = fmt.Errorf("archive is incomplete")
-		}
-		return err
-	}
-	if !inspection.IdentityConfirmed || inspection.TitleID != expectedTitleID || inspection.ChapterID != expectedChapterID {
-		return fmt.Errorf("archive identity does not match title %q chapter %q", expectedTitleID, expectedChapterID)
-	}
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	for _, file := range reader.File {
-		if file.Name != entry {
-			continue
-		}
-		validated, err := validateArchiveFile(file, validation)
-		if err != nil {
-			return err
-		}
-		if expectedHash != "" && validated.SHA256 != expectedHash {
-			return fmt.Errorf("archive entry checksum differs")
-		}
-		return nil
-	}
-	return fmt.Errorf("archive entry %q is missing", entry)
-}
-
-func Failures(ctx context.Context, store *Store) error {
-	rows, err := store.db.QueryContext(ctx, `SELECT entity_type,chapter_id,page_index,state,code,message FROM (
-		SELECT 'chapter' AS entity_type,id AS chapter_id,0 AS page_index,state,'' AS code,COALESCE(last_error,'') AS message FROM chapters WHERE state='failed'
-		UNION ALL
-		SELECT 'page' AS entity_type,chapter_id,page_index,state,COALESCE(rejection_code,''),COALESCE(last_error,'') FROM pages WHERE state IN ('rejected','failed')
-	) ORDER BY chapter_id,entity_type,page_index`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
+func Failures(_ context.Context, store *Store) error {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
 	path := filepath.Join(store.Root(), "reports", "failures.jsonl")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -829,20 +558,24 @@ func Failures(ctx context.Context, store *Store) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
 	w := bufio.NewWriter(tmp)
-	for rows.Next() {
-		var entityType, chapterID, state, code, message string
-		var index int
-		if err := rows.Scan(&entityType, &chapterID, &index, &state, &code, &message); err != nil {
-			return err
+	ids := make([]string, 0, len(store.data.Chapters))
+	for id := range store.data.Chapters {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		chapter := store.data.Chapters[id]
+		if chapter.State == "failed" {
+			data, _ := json.Marshal(map[string]any{"entityType": "chapter", "chapterId": id, "state": chapter.State, "code": "", "message": strings.TrimSpace(chapter.LastError)})
+			_, _ = w.Write(append(data, '\n'))
 		}
-		record := map[string]any{"entityType": entityType, "chapterId": chapterID, "state": state, "code": code, "message": strings.TrimSpace(message)}
-		if entityType == "page" {
-			record["pageIndex"] = index
+	}
+	for _, page := range store.data.Pages {
+		if page.State == "rejected" || page.State == "failed" {
+			data, _ := json.Marshal(map[string]any{"entityType": "page", "chapterId": page.ChapterID, "pageIndex": page.Index, "state": page.State, "code": page.RejectionCode, "message": strings.TrimSpace(page.ErrorMessage)})
+			_, _ = w.Write(append(data, '\n'))
 		}
-		data, _ := json.Marshal(record)
-		_, _ = w.Write(append(data, '\n'))
 	}
 	if err := w.Flush(); err != nil {
 		return err

@@ -1,6 +1,6 @@
 # Dataset collection
 
-`mangate dataset` collects a bounded image dataset through the same provider, downloader, and archive paths used by ordinary downloads. It keeps SQLite state at `<dataset-root>/dataset.sqlite`, stores data under stable provider, title, and chapter IDs, and writes `manifest.jsonl` plus `summary.json`.
+`mangate dataset` collects a bounded image dataset through the same provider and downloader used by ordinary downloads. It keeps resumable JSON state at `<dataset-root>/dataset-state.json`, stores ordered page files under readable title and chapter directories, and writes `manifest.jsonl` plus `summary.json`.
 
 Plan before a large run:
 
@@ -22,7 +22,7 @@ The collector browses provider catalog pages with Korean-origin and English-rele
 
 Use `--collection-config examples/dataset-config.json` for a reproducible run. Explicit command flags take precedence over this file. The saved normalized configuration and its hash are immutable for a dataset. A resume with different output format or collection settings fails instead of changing the persisted plan.
 
-Formats have exact behavior. `directory` preserves the downloaded encoding when it can be validated. `png` writes every final page as PNG. `jpeg` writes every final page as JPEG at quality 95 and flattens transparency to white. `cbz` and `zip` make one archive per chapter after page validation. Archive page metadata remains in the manifest even after staging files are removed.
+Formats have exact behavior. `directory` preserves the downloaded encoding when it can be validated. `png` writes every final page as PNG. `jpeg` writes every final page as JPEG at quality 95 and flattens transparency to white. Dataset collection does not create archives because each chapter directory contains its ordered page files.
 
 Every accepted page has dimensions, final byte count, SHA-256 when enabled, and a small perceptual hash. Exact duplicate pages remain in state with an explicit canonical reference. Splits are deterministic by title, so chapters from one title do not cross `train`, `validation`, and `test`.
 
@@ -37,17 +37,17 @@ mangate dataset verify <dataset-root> --repair
 mangate dataset export <dataset-root>
 ```
 
-`status`, `verify`, and `export` do not make provider requests. `verify` is read-only unless `--repair` is supplied. A resumed collection reuses completed pages when their stored state matches local output, and it leaves partial files clearly marked. Run `dataset export` to regenerate the manifest, summary, and failure report from SQLite.
+`status`, `verify`, and `export` do not make provider requests. `verify` is read-only unless `--repair` is supplied. A resumed collection reuses completed chapters when their stored state matches local output. Run `dataset export` to regenerate the manifest, summary, and failure report from `dataset-state.json`.
 
 Dataset layout:
 
 ```text
 dataset-root/
-  dataset.sqlite
+  dataset-state.json
   manifest.jsonl
   summary.json
   reports/failures.jsonl
-  data/<provider>/<title-id>/<chapter-id>/0001.png
+  data/<normalized-manga-title>/chapter-<number>/0001.png
 ```
 
-Archive datasets replace the chapter directory with `<chapter-id>.cbz` or `<chapter-id>.zip`. Dataset files can grow quickly. Set page, byte, title, chapter, and failure limits before a production run, and retain enough space for temporary archive staging.
+Dataset files can grow quickly. Set page, byte, title, chapter, and failure limits before a production run.

@@ -7,10 +7,12 @@ import (
 	"math/bits"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/downloader"
@@ -292,21 +294,19 @@ func validateDownloadedPages(ctx context.Context, cfg Validation, workers int, d
 
 func (s Service) collectChapter(ctx context.Context, cfg Config, chapter *source.Chapter, titleRecord Title, commitMu *sync.Mutex) error {
 	split := titleRecord.Split
-	providerDir := filepath.Join(s.Store.Root(), "data", safeSegment(cfg.Provider), safeSegment(chapter.From.ID))
-	if err := os.MkdirAll(providerDir, 0o755); err != nil {
+	titleDir := filepath.Join(s.Store.Root(), "data", normalizedTitle(chapter.From.Title))
+	if err := os.MkdirAll(titleDir, 0o755); err != nil {
 		return fmt.Errorf("create title directory: %w", err)
 	}
-	if err := writeJSONFile(filepath.Join(providerDir, "title.json"), map[string]any{"schemaVersion": 1, "provider": cfg.Provider, "titleId": chapter.From.ID, "title": chapter.From.Title, "alternativeTitle": titleRecord.AlternativeTitle, "titleUrl": chapter.From.URL, "originalLanguage": chapter.From.Metadata.Language, "status": chapter.From.Metadata.Status, "contentRating": chapter.From.Metadata.ContentType, "year": chapter.From.Metadata.Year, "tags": titleRecord.Tags, "availableLanguages": titleRecord.AvailableLanguages, "providerCreatedAt": titleRecord.ProviderCreatedAt, "providerUpdatedAt": titleRecord.ProviderUpdatedAt}); err != nil {
-		return fmt.Errorf("write title metadata: %w", err)
-	}
-	chapterDir := filepath.Join(providerDir, safeSegment(chapter.ID))
-	staging := chapterDir
-	if cfg.Output.Format.IsArchive() {
-		staging = filepath.Join(s.Store.Root(), ".staging", safeSegment(cfg.Provider), safeSegment(chapter.From.ID), safeSegment(chapter.ID))
-	}
-	results, err := s.Downloader.DownloadChapterTo(ctx, chapter, staging, s.Provider.Pages)
+	chapterDir := filepath.Join(titleDir, "chapter-"+normalizedChapterNumber(chapter.Index))
+	results, err := s.Downloader.DownloadChapterTo(ctx, chapter, chapterDir, s.Provider.Pages)
 	if err != nil {
 		return err
+	}
+	// Dataset state lives in dataset-state.json. Keep chapter directories to
+	// ordered page files so they remain straightforward to browse or copy.
+	if err := os.Remove(filepath.Join(chapterDir, ".mangate.json")); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove downloader state: %w", err)
 	}
 	validated, err := validateDownloadedPages(ctx, cfg.Validation, cfg.Runtime.ValidationWorkers, results)
 	if err != nil {
@@ -357,37 +357,15 @@ func (s Service) collectChapter(ctx context.Context, cfg Config, chapter *source
 			}
 		}
 		if allNew {
-			_ = os.RemoveAll(staging)
+			_ = os.RemoveAll(chapterDir)
 		}
 		return limitReachedError{reason: limitReason}
 	}
-	relativeBase := ""
-	archivePath := ""
-	if cfg.Output.Format.IsArchive() {
-		archivePath = filepath.Join(providerDir, safeSegment(chapter.ID)+cfg.Output.Format.Extension())
-		metadata := archive.Metadata{Provider: cfg.Provider, TitleID: chapter.From.ID, Title: chapter.From.Title, ChapterID: chapter.ID, Volume: chapter.Volume, ChapterNumber: chapter.Index, ChapterTitle: chapter.Title, Language: chapter.Language, ReleaseGroup: chapter.ReleaseGroup, PublishedAt: chapter.PublishedAt, ExpectedPages: len(results), SchemaVersion: "1", Completion: "complete"}
-		if _, err := archive.CreateFromDirectoryContext(ctx, archive.Options{Format: cfg.Output.Format, SourceDir: staging, OutputPath: archivePath, ExistingFileMode: cfg.Output.ExistingFiles, Metadata: metadata}); err != nil {
-			return err
-		}
-		relativeBase, err = filepath.Rel(s.Store.Root(), archivePath)
-		if err != nil {
-			return err
-		}
-	}
 	for _, item := range accepted {
 		result, record := item.result, item.image
-		relative := ""
-		entry := ""
-		storage := "file"
-		if cfg.Output.Format.IsArchive() {
-			relative = relativeBase
-			entry = filepath.Base(result.Path)
-			storage = "archive"
-		} else {
-			relative, err = filepath.Rel(s.Store.Root(), result.Path)
-			if err != nil {
-				return err
-			}
+		relative, err := filepath.Rel(s.Store.Root(), result.Path)
+		if err != nil {
+			return err
 		}
 		duplicate := ""
 		if record.SHA256 != "" {
@@ -397,31 +375,12 @@ func (s Service) collectChapter(ctx context.Context, cfg Config, chapter *source
 		if duplicate == "" && record.PerceptualHash != "" {
 			nearDuplicate, _ = s.findNearDuplicate(ctx, record.PerceptualHash, chapter.ID, result.PageIndex)
 		}
-		if err := s.Store.RecordPage(ctx, Page{TitleID: chapter.From.ID, ChapterID: chapter.ID, Index: result.PageIndex, StorageType: storage, RelativePath: filepath.ToSlash(relative), ArchiveEntry: entry, SourceMIMEType: result.SourceContentType, MIMEType: record.MIMEType, Extension: result.Extension, Width: record.Width, Height: record.Height, Bytes: record.Bytes, SHA256: record.SHA256, PerceptualHash: record.PerceptualHash, ExactDuplicateOf: duplicate, NearDuplicateOf: nearDuplicate, State: "valid", Split: split}); err != nil {
+		if err := s.Store.RecordPage(ctx, Page{TitleID: chapter.From.ID, ChapterID: chapter.ID, Index: result.PageIndex, StorageType: "file", RelativePath: filepath.ToSlash(relative), SourceMIMEType: result.SourceContentType, MIMEType: record.MIMEType, Extension: result.Extension, Width: record.Width, Height: record.Height, Bytes: record.Bytes, SHA256: record.SHA256, PerceptualHash: record.PerceptualHash, ExactDuplicateOf: duplicate, NearDuplicateOf: nearDuplicate, State: "valid", Split: split}); err != nil {
 			return err
 		}
 	}
-	output := chapterDir
-	if archivePath != "" {
-		output = archivePath
-	}
-	chapterMetadataPath := filepath.Join(chapterDir, "chapter.json")
-	if archivePath != "" {
-		chapterMetadataPath = archivePath + ".json"
-	}
-	if err := writeJSONFile(chapterMetadataPath, map[string]any{"schemaVersion": 1, "provider": cfg.Provider, "titleId": chapter.From.ID, "chapterId": chapter.ID, "chapterNumber": chapter.Index, "chapterTitle": chapter.Title, "volume": chapter.Volume, "language": chapter.Language, "releaseGroup": chapter.ReleaseGroup, "publishedAt": chapter.PublishedAt, "expectedPages": len(results), "format": cfg.Output.Format, "split": split}); err != nil {
-		return fmt.Errorf("write chapter metadata: %w", err)
-	}
-	if err := s.Store.CompleteChapter(ctx, chapter.ID, output, valid, ""); err != nil {
+	if err := s.Store.CompleteChapter(ctx, chapter.ID, chapterDir, valid, ""); err != nil {
 		return err
-	}
-	if archivePath != "" {
-		if err := s.Store.SetArchivePath(ctx, chapter.ID, archivePath); err != nil {
-			return err
-		}
-		if err := os.RemoveAll(staging); err != nil {
-			return fmt.Errorf("archive completed but remove staging: %w", err)
-		}
 	}
 	return nil
 }
@@ -430,31 +389,34 @@ func (s Service) findNearDuplicate(ctx context.Context, perceptualHash, chapterI
 	if err != nil {
 		return "", err
 	}
-	rows, err := s.Store.db.QueryContext(ctx, `SELECT chapter_id,page_index,perceptual_hash FROM pages WHERE state='valid' AND perceptual_hash IS NOT NULL AND NOT (chapter_id=? AND page_index=?) ORDER BY validated_at DESC LIMIT 1000`, chapterID, index)
-	if err != nil {
-		return "", err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id, hash string
-		var page int
-		if err := rows.Scan(&id, &page, &hash); err != nil {
-			return "", err
+	s.Store.mu.RLock()
+	defer s.Store.mu.RUnlock()
+	for _, candidatePage := range s.Store.data.Pages {
+		if candidatePage.State != "valid" || candidatePage.PerceptualHash == "" || (candidatePage.ChapterID == chapterID && candidatePage.Index == index) {
+			continue
 		}
+		id, page, hash := candidatePage.ChapterID, candidatePage.Index, candidatePage.PerceptualHash
 		candidate, err := strconv.ParseUint(hash, 16, 64)
 		if err == nil && bits.OnesCount64(want^candidate) <= 4 {
 			return id + ":" + strconv.Itoa(page), nil
 		}
 	}
-	return "", rows.Err()
+	return "", nil
 }
 func (s Service) findDuplicate(ctx context.Context, hash, chapterID string, index int) (string, error) {
-	var identity string
-	err := s.Store.db.QueryRowContext(ctx, "SELECT chapter_id || ':' || page_index FROM pages WHERE sha256=? AND state='valid' AND NOT (chapter_id=? AND page_index=?) ORDER BY chapter_id,page_index LIMIT 1", hash, chapterID, index).Scan(&identity)
-	if err != nil {
+	s.Store.mu.RLock()
+	defer s.Store.mu.RUnlock()
+	identities := []string{}
+	for _, page := range s.Store.data.Pages {
+		if page.State == "valid" && page.SHA256 == hash && !(page.ChapterID == chapterID && page.Index == index) {
+			identities = append(identities, page.ChapterID+":"+strconv.Itoa(page.Index))
+		}
+	}
+	if len(identities) == 0 {
 		return "", nil
 	}
-	return identity, nil
+	sort.Strings(identities)
+	return identities[0], nil
 }
 func (s Service) result(ctx context.Context, cfg Config, resume bool, state, reason string) (CollectResult, error) {
 	info, err := s.Store.Info(ctx)
@@ -463,12 +425,25 @@ func (s Service) result(ctx context.Context, cfg Config, resume bool, state, rea
 	}
 	return CollectResult{DatasetRoot: s.Store.Root(), DatasetID: cfg.DatasetID, Provider: cfg.Provider, Format: cfg.Output.Format, State: state, StoppingReason: reason, Counters: info.Counters, ManifestPath: filepath.Join(s.Store.Root(), "manifest.jsonl"), SummaryPath: filepath.Join(s.Store.Root(), "summary.json"), Resumed: resume}, nil
 }
-func safeSegment(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "unknown"
+func normalizedTitle(value string) string         { return normalizedSegment(value, false) }
+func normalizedChapterNumber(value string) string { return normalizedSegment(value, true) }
+
+func normalizedSegment(value string, allowDot bool) string {
+	var out strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || (allowDot && r == '.') {
+			out.WriteRune(r)
+			dash = false
+			continue
+		}
+		if !dash && out.Len() > 0 {
+			out.WriteByte('-')
+			dash = true
+		}
 	}
-	value = strings.ReplaceAll(value, "/", "_")
-	value = strings.ReplaceAll(value, "\\", "_")
-	return value
+	if normalized := strings.Trim(out.String(), "-."); normalized != "" {
+		return normalized
+	}
+	return "unknown"
 }
