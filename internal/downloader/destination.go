@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"mime"
 	"os"
@@ -51,7 +52,7 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 			}
 			return results, nil
 		}
-		_ = writeChapterState(directory, chapter, d.cfg.Provider, false)
+		err = errors.Join(err, writeChapterState(directory, chapter, d.cfg.Provider, false))
 		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
 			return nil, err
 		}
@@ -77,7 +78,12 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 	g.SetLimit(d.pageDownloadLimit())
 	for index, page := range chapter.Pages {
 		index, page := index, page
-		g.Go(func() error {
+		g.Go(func() (err error) {
+			defer func() {
+				if err != nil {
+					err = fmt.Errorf("manga %q chapter %q page %d to %q: %w", chapter.From.ID, chapter.ID, index+1, directory, err)
+				}
+			}()
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -91,9 +97,6 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 				case "fail":
 					return fmt.Errorf("download page: destination already exists for page %d", index+1)
 				case "replace":
-					if err := removeExistingPage(base); err != nil {
-						return err
-					}
 				default:
 					path := existingPagePath(base)
 					info, err := os.Stat(path)
@@ -112,6 +115,11 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 			path, sourceContentType, err := d.downloadPage(ctx, page, base)
 			if err != nil {
 				return err
+			}
+			if d.cfg.Download.ExistingFileMode == "replace" {
+				if err := removeExistingPage(base, path); err != nil {
+					return err
+				}
 			}
 			info, err := os.Stat(path)
 			if err != nil {
@@ -134,7 +142,7 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 }
 
 func existingPagePath(base string) string {
-	paths, err := filepath.Glob(base + ".*")
+	paths, err := pagePaths(base)
 	if err != nil {
 		return ""
 	}
@@ -146,4 +154,19 @@ func existingPagePath(base string) string {
 		}
 	}
 	return ""
+}
+
+func pagePaths(base string) ([]string, error) {
+	dir, prefix := filepath.Dir(base), filepath.Base(base)+"."
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read page directory %q: %w", dir, err)
+	}
+	var paths []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
+			paths = append(paths, filepath.Join(dir, entry.Name()))
+		}
+	}
+	return paths, nil
 }

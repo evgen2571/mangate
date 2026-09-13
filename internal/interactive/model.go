@@ -42,6 +42,7 @@ const (
 type model struct {
 	app           *app.App
 	ctx           context.Context
+	stop          context.CancelFunc
 	screen        screen
 	previous      screen
 	width, height int
@@ -57,6 +58,7 @@ type model struct {
 	status         string
 	query          string
 	languageFilter string
+	cover          coverState
 	results        []*source.Manga
 	resultCursor   int
 	chapters       []*source.Chapter
@@ -92,7 +94,8 @@ func NewWithContextAndLanguage(a *app.App, ctx context.Context, language string)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	m := &model{app: a, ctx: ctx, languageFilter: strings.TrimSpace(language), screen: searchScreen, selected: map[int]bool{}, rangeAnchor: -1, format: archive.FormatDirectory}
+	ctx, stop := context.WithCancel(ctx)
+	m := &model{app: a, ctx: ctx, stop: stop, languageFilter: strings.TrimSpace(language), screen: searchScreen, selected: map[int]bool{}, rangeAnchor: -1, format: archive.FormatDirectory}
 	m.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
 	m.progressBar = progress.New(progress.WithDefaultGradient())
 	m.progressBar.ShowPercentage = true
@@ -117,7 +120,9 @@ func NewWithSearchResultsAndLanguage(a *app.App, ctx context.Context, query stri
 	return m
 }
 
-func (m *model) Init() tea.Cmd { return tea.Batch(textinput.Blink, m.spinner.Tick) }
+func (m *model) Init() tea.Cmd {
+	return tea.Batch(textinput.Blink, m.spinner.Tick, m.loadSelectedCover())
+}
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -125,7 +130,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.resize()
 		return m, nil
+	case coverDone:
+		if msg.request != m.cover.request {
+			return m, nil
+		}
+		m.cover.loading, m.cover.image, m.cover.err = false, msg.image, msg.err
+		if m.cover.cancel != nil {
+			m.cover.cancel()
+			m.cover.cancel = nil
+		}
+		return m, nil
 	case searchDone:
+		m.loading = false
 		if msg.err != nil {
 			m.status = "search: " + msg.err.Error()
 			m.screen = searchScreen
@@ -133,8 +149,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.query, m.results, m.resultCursor, m.status, m.screen, m.loading = msg.query, msg.results, 0, "", resultsScreen, false
 		m.newResultsList(msg.results)
-		return m, nil
+		return m, m.loadSelectedCover()
 	case chaptersDone:
+		m.loading = false
 		if msg.err != nil {
 			m.status = "chapters: " + msg.err.Error()
 			m.screen = resultsScreen
@@ -153,11 +170,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case downloadProgress:
+		if m.screen != workingScreen {
+			return m, nil
+		}
 		m.progress = msg
 		return m, m.waitForProgress()
 	case downloadDone:
+		if m.cancel != nil {
+			m.cancel()
+		}
 		m.cancel = nil
 		m.screen = doneScreen
+		m.status = ""
 		m.loading = false
 		m.doneErr, m.doneCompleted, m.doneFailed = msg.err, msg.completed, msg.failed
 		m.completion = fmt.Sprintf("complete: %d  reused: %d  failed: %d", msg.completed, msg.skipped, msg.failed)
@@ -167,7 +191,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.paths) > 0 {
 			m.completion += "\n" + strings.Join(msg.paths, "\n")
 		}
-		m.doneViewport.SetContent(m.completion)
 		m.resize()
 		return m, nil
 	case tea.KeyMsg:
@@ -186,9 +209,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "cancelling"
 				return m, nil
 			}
+			m.clearCover()
+			m.stop()
 			return m, tea.Quit
 		}
-		if m.width > 0 && (m.width < minWidth || m.height < minHeight) {
+		if m.showHelp || (m.width > 0 && (m.width < minWidth || m.height < minHeight)) {
 			return m, nil
 		}
 		if msg.String() == "ctrl+g" && m.screen != workingScreen && !inputFocused {
@@ -242,9 +267,10 @@ func (m *model) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if q == "" {
 			return m, nil
 		}
+		m.clearCover()
 		m.status, m.loading = "Searching...", true
 		return m, func() tea.Msg {
-			results, err := m.app.UseCases().SearchManga(nil, q)
+			results, err := m.app.UseCases().SearchManga(m.ctx, q)
 			if err == nil {
 				_ = m.app.AddSearchQuery(q)
 			}
@@ -261,7 +287,7 @@ func (m *model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		var cmd tea.Cmd
 		m.resultsList, cmd = m.resultsList.Update(msg)
-		return m, cmd
+		return m, tea.Batch(cmd, m.loadSelectedCover())
 	}
 	switch key.String() {
 	case "esc", "backspace":
@@ -276,13 +302,13 @@ func (m *model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 		manga, all := item.manga, key.String() == "f"
 		m.status, m.loading = "Loading chapters...", true
 		return m, func() tea.Msg {
-			chapters, err := m.app.UseCases().Chapters(nil, manga)
+			chapters, err := m.app.UseCases().Chapters(m.ctx, manga)
 			return chaptersDone{manga, chapters, err, all}
 		}
 	}
 	var cmd tea.Cmd
 	m.resultsList, cmd = m.resultsList.Update(msg)
-	return m, cmd
+	return m, tea.Batch(cmd, m.loadSelectedCover())
 }
 
 func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -499,10 +525,10 @@ func (m *model) openFormat() {
 func (m *model) resetInput(prompt, value string) {
 	m.input = textinput.New()
 	m.input.Prompt = prompt
+	m.input.Width = m.inputContentWidth()
 	m.input.SetValue(value)
 	m.input.CursorEnd()
 	m.input.Focus()
-	m.input.Width = m.inputContentWidth()
 }
 func move(value, delta, length int) int {
 	if length <= 0 {
@@ -555,7 +581,7 @@ func validOutput(path string) error {
 	return nil
 }
 
-var configLabels = []string{"provider", "language", "output", "format", "existing files", "retain source", "http timeout", "page downloads", "chapter downloads", "history max", "cache"}
+var configLabels = []string{"provider", "language", "output", "format", "existing files", "http timeout", "page downloads", "chapter downloads", "history max", "cache"}
 
 func (m *model) configValue() string { return m.configValueAt(m.configCursor) }
 func (m *model) configValueAt(i int) string {
@@ -572,14 +598,12 @@ func (m *model) configValueAt(i int) string {
 	case 4:
 		return c.Download.ExistingFileMode
 	case 5:
-		return strconv.FormatBool(c.Download.RetainSource)
-	case 6:
 		return c.HTTP.Timeout.String()
-	case 7:
+	case 6:
 		return strconv.Itoa(c.Concurrency.PageDownloads)
-	case 8:
+	case 7:
 		return strconv.Itoa(c.Concurrency.ChapterDownloads)
-	case 9:
+	case 8:
 		return strconv.Itoa(c.Search.HistoryMax)
 	default:
 		return c.Dirs.Cache
@@ -603,38 +627,33 @@ func (m *model) setConfigValue(raw string) error {
 	case 4:
 		next.Download.ExistingFileMode = value
 	case 5:
-		v, e := strconv.ParseBool(value)
-		if e != nil {
-			return e
-		}
-		next.Download.RetainSource = v
-	case 6:
 		v, e := time.ParseDuration(value)
 		if e != nil {
 			return e
 		}
 		next.HTTP.Timeout = v
-	case 7:
+	case 6:
 		v, e := strconv.Atoi(value)
 		if e != nil {
 			return e
 		}
 		next.Concurrency.PageDownloads = v
-	case 8:
+	case 7:
 		v, e := strconv.Atoi(value)
 		if e != nil {
 			return e
 		}
 		next.Concurrency.ChapterDownloads = v
-	case 9:
+	case 8:
 		v, e := strconv.Atoi(value)
 		if e != nil {
 			return e
 		}
 		next.Search.HistoryMax = v
-	case 10:
+	case 9:
 		next.Dirs.Cache = value
 	}
+	next = next.Normalized()
 	if err := next.Validate(); err != nil {
 		return err
 	}

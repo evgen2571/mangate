@@ -37,7 +37,7 @@ func newArchiveConvertCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if format == archive.FormatDirectory {
+			if format != archive.FormatCBZ && format != archive.FormatZIP {
 				return fmt.Errorf("archive convert: choose --format cbz or --format zip")
 			}
 			sourceDir := strings.TrimSpace(args[0])

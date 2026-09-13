@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
 	"golang.org/x/sync/errgroup"
@@ -60,6 +61,9 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 	if reporter != nil {
 		reporter.chapterStarted(c)
 	}
+	if reused, err := d.reuseChapterArchive(c, chapterName, reporter); reused || err != nil {
+		return err
+	}
 
 	for attempt := 0; ; attempt++ {
 		err := d.downloadChapterAttempt(ctx, c, chapterName, reporter, pageLoader)
@@ -72,6 +76,34 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 		c.Pages = nil
 		c.PageCount = 0
 	}
+}
+
+func (d *Downloader) reuseChapterArchive(chapter *source.Chapter, name string, reporter *progressReporter) (bool, error) {
+	format := archive.Format(d.cfg.Download.Format)
+	if !format.IsArchive() || d.cfg.Download.ExistingFileMode == "replace" {
+		return false, nil
+	}
+	path := filepath.Join(d.cfg.Download.Dir, titleDirName(chapter.From), util.SanitizeString(name)) + format.Extension()
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspect chapter %q archive %q: %w", chapter.ID, path, err)
+	}
+	if d.cfg.Download.ExistingFileMode == "fail" {
+		return false, fmt.Errorf("chapter %q archive already exists: %s", chapter.ID, path)
+	}
+	inspection, err := archive.Inspect(path)
+	if err != nil {
+		return false, fmt.Errorf("existing archive %q is invalid; use --existing-files replace: %w", path, err)
+	}
+	if !inspection.Complete || inspection.TitleID != chapter.From.ID || inspection.ChapterID != chapter.ID {
+		return false, fmt.Errorf("existing archive %q is incomplete or belongs to another chapter; use --existing-files replace", path)
+	}
+	if reporter != nil {
+		reporter.chapterReused(chapter, inspection.PageCount)
+	}
+	return true, nil
 }
 
 func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
@@ -103,7 +135,12 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 		idx := idx
 		page := page
 
-		g.Go(func() error {
+		g.Go(func() (err error) {
+			defer func() {
+				if err != nil {
+					err = fmt.Errorf("manga %q chapter %q page %d to %q: %w", c.From.ID, c.ID, idx+1, chapterDir, err)
+				}
+			}()
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -124,14 +161,16 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 					return nil
 				case "fail":
 					return fmt.Errorf("download page: destination already exists for page %d", idx+1)
-				case "replace":
-					if err := removeExistingPage(filePathBase); err != nil {
-						return err
-					}
 				}
 			}
-			if _, _, err := d.downloadPage(ctx, page, filePathBase); err != nil {
+			path, _, err := d.downloadPage(ctx, page, filePathBase)
+			if err != nil {
 				return err
+			}
+			if d.cfg.Download.ExistingFileMode == "replace" {
+				if err := removeExistingPage(filePathBase, path); err != nil {
+					return err
+				}
 			}
 			if reporter != nil {
 				reporter.pageCompleted(c)
@@ -141,8 +180,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 	}
 
 	if err := g.Wait(); err != nil {
-		_ = writeChapterState(chapterDir, c, d.cfg.Provider, false)
-		return err
+		return errors.Join(err, writeChapterState(chapterDir, c, d.cfg.Provider, false))
 	}
 
 	if err := writeChapterState(chapterDir, c, d.cfg.Provider, true); err != nil {
@@ -161,12 +199,15 @@ func existingOutputMatchesFormat(path, format string) bool {
 	return want == "" || strings.EqualFold(filepath.Ext(path), want)
 }
 
-func removeExistingPage(base string) error {
-	paths, err := filepath.Glob(base + ".*")
+func removeExistingPage(base, keep string) error {
+	paths, err := pagePaths(base)
 	if err != nil {
 		return err
 	}
 	for _, path := range paths {
+		if path == keep {
+			continue
+		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove existing page %q: %w", path, err)
 		}
@@ -180,7 +221,7 @@ func titleDirName(manga *source.Manga) string {
 	}
 	title := util.SanitizeString(manga.Title)
 	if id := util.SanitizeString(manga.ID); id != "unknown" {
-		return title + "-" + id
+		return util.SanitizeString(title + "-" + id)
 	}
 	return title
 }
@@ -191,20 +232,7 @@ func TitleDirectoryName(manga *source.Manga) string {
 }
 
 func existingPage(base string) bool {
-	paths, err := filepath.Glob(base + ".*")
-	if err != nil {
-		return false
-	}
-	for _, path := range paths {
-		if strings.HasSuffix(path, ".part") {
-			continue
-		}
-		info, err := os.Stat(path)
-		if err == nil && !info.IsDir() && info.Size() > 0 {
-			return true
-		}
-	}
-	return false
+	return existingPagePath(base) != ""
 }
 
 type chapterState struct {
@@ -227,6 +255,7 @@ func writeChapterState(chapterDir string, chapter *source.Chapter, provider stri
 		return fmt.Errorf("encode chapter state: %w", err)
 	}
 	temp := filepath.Join(chapterDir, ".mangate.json.part")
+	defer os.Remove(temp)
 	final := filepath.Join(chapterDir, ".mangate.json")
 	if err := os.WriteFile(temp, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("write chapter state: %w", err)
@@ -261,7 +290,7 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 	}
 
 	var g errgroup.Group
-	g.SetLimit(d.cfg.Concurrency.ChapterDownloads)
+	g.SetLimit(max(1, d.cfg.Concurrency.ChapterDownloads))
 
 	chapterNames := uniqueChapterDirNames(m.Chapters)
 	for idx, chapter := range m.Chapters {
@@ -286,21 +315,22 @@ func uniqueChapterDirNames(chapters []*source.Chapter) []string {
 	used := make(map[string]struct{}, len(chapters))
 
 	for idx, chapter := range chapters {
-		baseName := chapterDirBaseName(chapter)
-		seenBase[baseName]++
+		baseName := util.SanitizeString(chapterDirBaseName(chapter))
+		key := strings.ToLower(baseName)
+		seenBase[key]++
 
 		name := baseName
-		if seenBase[baseName] > 1 {
-			name = disambiguatedChapterDirName(baseName, chapter, idx)
+		if seenBase[key] > 1 {
+			name = util.SanitizeString(disambiguatedChapterDirName(baseName, chapter, idx))
 		}
 		for suffix := 2; ; suffix++ {
-			if _, exists := used[name]; !exists {
+			if _, exists := used[strings.ToLower(name)]; !exists {
 				break
 			}
-			name = fmt.Sprintf("%s-%d", baseName, suffix)
+			name = util.SanitizeString(fmt.Sprintf("%s-%d", baseName, suffix))
 		}
 
-		used[name] = struct{}{}
+		used[strings.ToLower(name)] = struct{}{}
 		names[idx] = name
 	}
 
@@ -352,7 +382,9 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 		return "", "", fmt.Errorf("download page: empty page url")
 	}
 
-	d.acquirePageDownload()
+	if err := d.acquirePageDownload(ctx); err != nil {
+		return "", "", err
+	}
 	defer d.releasePageDownload()
 
 	resp, err := d.getPageResponseWithRetry(ctx, p.URL)
@@ -473,7 +505,7 @@ func (d *Downloader) getPageResponseWithRetry(ctx context.Context, rawURL string
 			return nil, err
 		}
 
-		if resp.StatusCode != http.StatusTooManyRequests || attempt >= d.pageRetryLimit {
+		if !retryablePageStatus(resp.StatusCode) || attempt >= d.pageRetryLimit {
 			return resp, nil
 		}
 
@@ -485,8 +517,12 @@ func (d *Downloader) getPageResponseWithRetry(ctx context.Context, rawURL string
 	}
 }
 
+func retryablePageStatus(status int) bool {
+	return status == 429 || status == 500 || status == 502 || status == 503 || status == 504
+}
+
 func pageRetryAfterDelay(value string, attempt int) time.Duration {
-	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds >= 0 && seconds <= int64((1<<63-1)/time.Second) {
 		return time.Duration(seconds) * time.Second
 	}
 
@@ -518,11 +554,16 @@ func sleepWithContext(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-func (d *Downloader) acquirePageDownload() {
+func (d *Downloader) acquirePageDownload(ctx context.Context) error {
 	if d.pageDownloads == nil {
-		return
+		return ctx.Err()
 	}
-	d.pageDownloads <- struct{}{}
+	select {
+	case d.pageDownloads <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (d *Downloader) pageDownloadLimit() int {

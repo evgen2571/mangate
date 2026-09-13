@@ -53,7 +53,7 @@ func (m *model) header() string {
 		context = util.SanitizeTerminalText(m.manga.Title)
 	}
 	line := s.brand.Render("MANGATE") + s.muted.Render("  /  ") + s.heading.Render(title)
-	if context != "" && m.screen != chaptersScreen {
+	if context != "" && m.screen > chaptersScreen {
 		line += "\n" + s.muted.Render(context)
 	}
 	if m.screen >= resultsScreen && m.screen <= reviewScreen && m.width >= 70 {
@@ -106,7 +106,12 @@ func (m *model) resultsView() string {
 		return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render("No titles found"), "", s.muted.Render("No matches for "+m.query+". Press esc to change the search."))
 	}
 	heading := fmt.Sprintf("Results for %q · %d titles", m.query, len(m.results))
-	return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render(heading), "", m.resultsList.View())
+	body := m.resultsList.View()
+	if m.contentWidth() >= 70 {
+		body = lipgloss.NewStyle().Width(m.resultListWidth()).Render(body)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, body, "  ", m.resultDetails())
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, s.heading.Render(heading), "", body)
 }
 
 func (m *model) chaptersView() string {
@@ -121,6 +126,9 @@ func (m *model) chaptersView() string {
 		parts = append(parts, "", m.inputView(s))
 	}
 	if len(visible) == 0 {
+		if len(m.chapters) == 0 {
+			return lipgloss.JoinVertical(lipgloss.Left, append(parts, "", s.warning.Render("No chapters available"), s.muted.Render("Press esc to choose another title."))...)
+		}
 		return lipgloss.JoinVertical(lipgloss.Left, append(parts, "", s.warning.Render("No chapters match this filter"), s.muted.Render("Edit the filter or press esc, then / to try again."))...)
 	}
 	available := max(3, m.mainHeight()-len(parts)-2)
@@ -145,7 +153,7 @@ func (m *model) formatView() string {
 		if f == m.format {
 			marker, style = "●", s.selected
 		}
-		parts = append(parts, style.Render(marker+" "+string(f)), s.muted.Render("    "+descriptions[f]))
+		parts = append(parts, style.Render(marker+" "+string(f)), s.muted.Render("    "+truncate(descriptions[f], m.contentWidth()-4)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
@@ -202,7 +210,14 @@ func (m *model) doneView() string {
 func (m *model) configView() string {
 	s := newStyles()
 	parts := []string{s.heading.Render("Settings")}
+	compact := m.height > 0 && m.height < 24
+	if compact {
+		parts = nil
+	}
 	for i, label := range configLabels {
+		if m.configEditing && i != m.configCursor {
+			continue
+		}
 		marker := "  "
 		style := s.muted
 		if i == m.configCursor {
@@ -213,7 +228,11 @@ func (m *model) configView() string {
 	if m.configEditing {
 		parts = append(parts, "", m.inputView(s))
 	}
-	parts = append(parts, "", s.muted.Render("a apply for this session · s save permanently"))
+	if compact {
+		parts = append(parts, s.muted.Render("a apply · s save"))
+	} else {
+		parts = append(parts, "", s.muted.Render("a apply for this session · s save permanently"))
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 

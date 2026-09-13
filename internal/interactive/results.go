@@ -40,7 +40,7 @@ func (m *model) newResultsList(results []*source.Manga) {
 	d.SetHeight(2)
 	d.Styles.SelectedTitle = d.Styles.SelectedTitle.Copy().Foreground(lipgloss.Color("12")).Bold(true)
 	d.Styles.SelectedDesc = d.Styles.SelectedDesc.Copy().Foreground(lipgloss.Color("8"))
-	m.resultsList = list.New(items, d, max(1, m.contentWidth()), max(1, m.mainHeight()))
+	m.resultsList = list.New(items, d, max(1, m.resultListWidth()), max(1, m.mainHeight()))
 	m.resultsList.Title = ""
 	m.resultsList.SetShowTitle(false)
 	m.resultsList.SetShowStatusBar(false)

@@ -3,7 +3,6 @@ package mangadex
 import (
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/evgen2571/mangate/internal/config"
@@ -18,7 +17,7 @@ type Provider struct {
 	uploadsURL string
 	language   string
 
-	atHomeMu          sync.Mutex
+	atHomeGate        chan struct{}
 	lastAtHomeRequest time.Time
 	atHomeMinInterval time.Duration
 }
@@ -31,6 +30,7 @@ func New(cfg config.Config, client *http.Client) (*Provider, error) {
 		uploadsURL:        cfg.Providers.MangaDex.UploadsURL,
 		language:          cfg.Language,
 		atHomeMinInterval: defaultAtHomeMinInterval,
+		atHomeGate:        make(chan struct{}, 1),
 	}, nil
 }
 
@@ -48,4 +48,8 @@ func (pr *Provider) site(path string) string {
 
 func (pr *Provider) uploads(path string) string {
 	return strings.TrimRight(pr.uploadsURL, "/") + "/" + strings.TrimLeft(path, "/")
+}
+
+func validPathSegment(value string) bool {
+	return strings.TrimSpace(value) != "" && value != "." && value != ".." && !strings.ContainsAny(value, "/\\\x00")
 }

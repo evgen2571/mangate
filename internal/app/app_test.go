@@ -24,7 +24,7 @@ func TestNewUsesDefaultRegistry(t *testing.T) {
 
 func TestNewWithRegistryUsesCustomRegistry(t *testing.T) {
 	cfg := config.DefaultConfig()
-	registry := providers.NewRegistry()
+	registry := providers.NewDefaultRegistry()
 
 	a, err := New(cfg, WithRegistry(registry))
 	if err != nil {
@@ -240,5 +240,34 @@ func TestApplyAndSaveConfigReturnsSaveFailureForEmptyPathAfterApplying(t *testin
 	}
 	if a.Cfg != updated {
 		t.Fatalf("app config was not applied before save failure")
+	}
+}
+
+func TestApplyConfigNormalizesEnums(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Provider, cfg.Language = " MangaDex ", " EN "
+	cfg.Download.Format, cfg.Download.ExistingFileMode = " CBZ ", " SKIP "
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Cfg.Provider != "mangadex" || a.Cfg.Language != "en" || a.Cfg.Download.Format != "cbz" || a.Cfg.Download.ExistingFileMode != "skip" {
+		t.Fatalf("configuration was not normalized: %+v", a.Cfg)
+	}
+}
+
+func TestApplyConfigRejectsUnknownProviderWithoutChangingRuntime(t *testing.T) {
+	a, err := New(config.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, client := a.Cfg, a.Client
+	cfg := before
+	cfg.Provider = "missing"
+	if err := a.ApplyConfig(cfg); err == nil {
+		t.Fatal("unknown provider accepted")
+	}
+	if a.Cfg != before || a.Client != client {
+		t.Fatal("invalid configuration changed the running application")
 	}
 }

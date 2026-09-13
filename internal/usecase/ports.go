@@ -34,11 +34,13 @@ type MangaDownloader interface {
 }
 
 type ChapterDownloadProgress struct {
+	ChapterID      string
 	Name           string
 	CompletedPages int
 	TotalPages     int
 	Active         bool
 	Completed      bool
+	Reused         bool
 }
 
 type DownloadProgress struct {

@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/cache"
@@ -82,6 +83,7 @@ func New(cfg config.Config, opts ...Option) (*App, error) {
 }
 
 func (a *App) ApplyConfig(cfg config.Config) error {
+	cfg = cfg.Normalized()
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -91,6 +93,9 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 
 	if a.Registry == nil {
 		a.Registry = providers.NewDefaultRegistry()
+	}
+	if !slices.Contains(a.Registry.Names(), cfg.Provider) {
+		return fmt.Errorf("unknown provider %q (available: %s)", cfg.Provider, strings.Join(a.Registry.Names(), ", "))
 	}
 
 	client := &http.Client{Timeout: cfg.HTTP.Timeout}

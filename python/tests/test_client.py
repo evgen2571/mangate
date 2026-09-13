@@ -37,8 +37,16 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(Client(output_format="jpeg").output_format, "jpeg")
 
     def test_download_forwards_png_and_jpeg_formats(self) -> None:
-        payload = {"formatVersion": "1", "operation": "download.plan", "status": "success", "data": {}}
-        with patch("mangate.client.subprocess.Popen", return_value=_CompletedProcess(payload, 0)) as popen:
+        payload = {
+            "formatVersion": "1",
+            "operation": "download.plan",
+            "status": "success",
+            "data": {},
+        }
+        with patch(
+            "mangate.client.subprocess.Popen",
+            return_value=_CompletedProcess(payload, 0),
+        ) as popen:
             Client().download("title-id", latest=True, output_format="png")
             Client().download("title-id", latest=True, output_format="jpeg")
         commands = [call.args[0] for call in popen.call_args_list]
@@ -46,9 +54,19 @@ class ClientTests(unittest.TestCase):
         self.assertIn("jpeg", commands[1])
 
     def test_dataset_collect_forwards_resume_and_configuration(self) -> None:
-        payload = {"formatVersion": "1", "operation": "dataset.collect", "status": "success", "data": {"state": "completed"}}
-        with patch("mangate.client.subprocess.Popen", return_value=_CompletedProcess(payload, 0)) as popen:
-            result = Client().dataset_collect(collection_config="dataset.json", resume=True)
+        payload = {
+            "formatVersion": "1",
+            "operation": "dataset.collect",
+            "status": "success",
+            "data": {"state": "completed"},
+        }
+        with patch(
+            "mangate.client.subprocess.Popen",
+            return_value=_CompletedProcess(payload, 0),
+        ) as popen:
+            result = Client().dataset_collect(
+                collection_config="dataset.json", resume=True
+            )
         command = popen.call_args.args[0]
         self.assertIn("dataset", command)
         self.assertIn("collect", command)
@@ -89,7 +107,13 @@ class ClientTests(unittest.TestCase):
         }
         process = _CompletedProcess(payload, 0)
         with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
-            result = Client().convert("chapter", output_format="cbz", remove_source=True, dry_run=True, assume_yes=True)
+            result = Client().convert(
+                "chapter",
+                output_format="cbz",
+                remove_source=True,
+                dry_run=True,
+                assume_yes=True,
+            )
         command = popen.call_args.args[0]
         self.assertIn("archive", command)
         self.assertIn("convert", command)
@@ -108,7 +132,13 @@ class ClientTests(unittest.TestCase):
         }
         process = _CompletedProcess(payload, 0)
         with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
-            result = Client().download("title-id", latest=True, output_format="zip", dry_run=True, assume_yes=True)
+            result = Client().download(
+                "title-id",
+                latest=True,
+                output_format="zip",
+                dry_run=True,
+                assume_yes=True,
+            )
         command = popen.call_args.args[0]
         self.assertIn("--dry-run", command)
         self.assertIn("--yes", command)
@@ -116,11 +146,37 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(result["status"], "planned")
 
     def test_convert_many_preserves_input_and_output_order(self) -> None:
-        first = _CompletedProcess({"formatVersion": "1", "operation": "archive.convert", "status": "success", "data": {"outputPath": "first.cbz"}}, 0)
-        second = _CompletedProcess({"formatVersion": "1", "operation": "archive.convert", "status": "success", "data": {"outputPath": "second.cbz"}}, 0)
-        with patch("mangate.client.subprocess.Popen", side_effect=[first, second]) as popen:
-            results = Client().convert_many(["first", "second"], output_format="cbz", outputs=["first.cbz", "second.cbz"], dry_run=True, assume_yes=True)
-        self.assertEqual([result["outputPath"] for result in results], ["first.cbz", "second.cbz"])
+        first = _CompletedProcess(
+            {
+                "formatVersion": "1",
+                "operation": "archive.convert",
+                "status": "success",
+                "data": {"outputPath": "first.cbz"},
+            },
+            0,
+        )
+        second = _CompletedProcess(
+            {
+                "formatVersion": "1",
+                "operation": "archive.convert",
+                "status": "success",
+                "data": {"outputPath": "second.cbz"},
+            },
+            0,
+        )
+        with patch(
+            "mangate.client.subprocess.Popen", side_effect=[first, second]
+        ) as popen:
+            results = Client().convert_many(
+                ["first", "second"],
+                output_format="cbz",
+                outputs=["first.cbz", "second.cbz"],
+                dry_run=True,
+                assume_yes=True,
+            )
+        self.assertEqual(
+            [result["outputPath"] for result in results], ["first.cbz", "second.cbz"]
+        )
         first_command, second_command = [call.args[0] for call in popen.call_args_list]
         self.assertEqual(first_command[-1], "first")
         self.assertEqual(second_command[-1], "second")
@@ -135,3 +191,12 @@ class ClientTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_configuration_enum_normalization() -> None:
+    client = Client(
+        provider=" MangaDex ", output_format=" CBZ ", existing_files=" SKIP "
+    )
+    assert client.provider == "mangadex"
+    assert client.output_format == "cbz"
+    assert client.existing_files == "skip"

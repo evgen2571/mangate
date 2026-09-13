@@ -1,53 +1,69 @@
 # Dataset collection
 
-`mangate dataset` collects a bounded image dataset through the same provider and downloader used by ordinary downloads. It keeps resumable JSON state at `<dataset-root>/dataset-state.json`, stores ordered page files under readable title and chapter directories, and writes `manifest.jsonl` plus `summary.json`.
+Use ordinary [download commands](cli.md) to save chapters for reading. `mangate dataset` is a separate workflow for bounded image collection with a persisted plan, validation, provenance, and exports. It writes ordered page directories rather than chapter archives.
 
-Plan before a large run:
+## Plan a small collection
 
-```bash
-mangate --output ./datasets/manhwa-raw-v1 dataset plan \
-  --original-language ko --chapter-language en --max-titles 1000 \
-  --max-chapters-per-title 20 --max-bytes 500GiB
+```sh
+mangate --output ./datasets/sample dataset plan --original-language ko --chapter-language en --candidate-pool-size 20 --max-titles 2 --max-chapters-per-title 1 --max-pages 100
 ```
 
-Then collect with an explicit confirmation:
+Planning contacts the provider and writes `dataset-state.json`; it is not a read-only preview. Review the plan before collecting pages. Keep the same configuration when resuming:
 
-```bash
-mangate --format png --output ./datasets/manhwa-raw-v1 dataset collect \
-  --original-language ko --chapter-language en --max-titles 1000 \
-  --max-chapters-per-title 20 --max-bytes 500GiB --resume --yes
+```sh
+mangate --output ./datasets/sample dataset collect --original-language ko --chapter-language en --candidate-pool-size 20 --max-titles 2 --max-chapters-per-title 1 --max-pages 100 --resume --yes
 ```
 
-The collector browses provider catalog pages with Korean-origin and English-release filters, then persists a deterministic plan. Title strategies are `sequential`, `random`, and `stratified`. Stratified sampling uses a stable year bucket and publication status. Chapter strategies are `all`, `first`, `latest`, `random`, and `uniform`. Uniform selection spreads picks across the chapter sequence. When duplicate releases are disabled, Mangate prefers a release with pages, then the earliest publication time, then its stable ID.
+`collect --dry-run` creates or shows the plan without downloading pages. Collection requires explicit confirmation. `--resume` reuses persisted state and rejects configuration changes rather than silently changing the plan. Choose a new dataset root for different settings.
 
-Use `--collection-config examples/dataset-config.json` for a reproducible run. Explicit command flags take precedence over this file. The saved normalized configuration and its hash are immutable for a dataset. A resume with different output format or collection settings fails instead of changing the persisted plan.
+## Bounds and selection
 
-Formats have exact behavior. `directory` preserves the downloaded encoding when it can be validated. `png` writes every final page as PNG. `jpeg` writes every final page as JPEG at quality 95 and flattens transparency to white. Dataset collection does not create archives because each chapter directory contains its ordered page files.
+Set at least one positive stopping condition such as a title, page, or byte limit. Useful flags include:
 
-Every accepted page has dimensions, final byte count, SHA-256 when enabled, and a small perceptual hash. Exact duplicate pages remain in state with an explicit canonical reference. Splits are deterministic by title, so chapters from one title do not cross `train`, `validation`, and `test`.
+| Flag | Purpose |
+| --- | --- |
+| `--candidate-pool-size` | Maximum catalog candidates considered |
+| `--max-titles` | Maximum selected titles |
+| `--max-chapters-per-title` | Maximum chapters from each title |
+| `--max-pages` | Maximum final pages |
+| `--max-bytes` | Final-byte budget, such as `1GiB` |
+| `--max-failures` | Failed-chapter stopping threshold |
+| `--seed` | Deterministic sampling seed |
+| `--title-strategy` | `sequential`, `random`, or `stratified` |
+| `--chapter-strategy` | `all`, `first`, `latest`, `random`, or `uniform` |
 
-The main commands are:
+Zero disables supported count/byte limits; do not disable every stopping condition. Discovery filters include `--original-language`, `--chapter-language`, `--status`, `--content-rating`, `--include-tag`, and `--exclude-tag`. `--keep-duplicate-releases` retains multiple releases of a logical chapter.
+
+Defaults target Korean-origin titles with English chapters. Set filters deliberately for your collection. Use `mangate dataset plan --help` for the complete flag list.
+
+## Formats and configuration
+
+`--format directory` preserves downloaded encodings that pass validation. `png` and `jpeg` convert final page files. CBZ and ZIP are rejected for datasets.
+
+`--collection-config PATH` reads a separate JSON collection configuration. Explicit collection flags override that file. The normalized configuration and its hash are persisted with the plan. Its sections are `output`, `discovery`, `sampling`, `limits`, `validation`, `splits`, and `runtime`, plus `version`, `datasetId`, and `provider`. The exact fields and validation rules are defined by `internal/dataset/config.go`.
+
+Validation records image dimensions, byte counts, optional SHA-256, and perceptual hashes. Duplicate and rejected records remain distinguishable from accepted pages. Dataset splits are assigned by title so a title's chapters stay in one split.
+
+## Inspect, verify, and export
+
+```sh
+mangate dataset status ./datasets/sample
+mangate dataset verify ./datasets/sample
+mangate dataset export ./datasets/sample
+```
+
+These commands operate on local state without provider downloads. `verify --repair` changes state and regenerates exports; omit `--repair` for inspection. `export` supports `--split`, `--include-duplicates`, and `--include-rejected`.
+
+The dataset root contains:
 
 ```text
-mangate dataset plan
-mangate dataset collect --yes
-mangate dataset status <dataset-root>
-mangate dataset verify <dataset-root>
-mangate dataset verify <dataset-root> --repair
-mangate dataset export <dataset-root>
+dataset-state.json
+manifest.jsonl
+summary.json
+reports/failures.jsonl
+data/<title>/chapter-<number>/0001.png
 ```
 
-`status`, `verify`, and `export` do not make provider requests. `verify` is read-only unless `--repair` is supplied. A resumed collection reuses completed chapters when their stored state matches local output. Run `dataset export` to regenerate the manifest, summary, and failure report from `dataset-state.json`.
+The extension depends on output format. Treat `dataset-state.json` as the resumable source of truth; exports can be regenerated. Keep completed page directories when recovering a failed collection. Resume with the original settings, then inspect the failure report and verification output before using the dataset.
 
-Dataset layout:
-
-```text
-dataset-root/
-  dataset-state.json
-  manifest.jsonl
-  summary.json
-  reports/failures.jsonl
-  data/<normalized-manga-title>/chapter-<number>/0001.png
-```
-
-Dataset files can grow quickly. Set page, byte, title, chapter, and failure limits before a production run.
+Python equivalents are described in the [Python guide](python.md). Dataset runtime limits and validation are separate from ordinary downloader settings; do not assume the two configuration files are interchangeable.

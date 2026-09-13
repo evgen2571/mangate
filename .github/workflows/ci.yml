@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: macos-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - name: Formatting, analysis, tests, and builds
+        shell: bash
+        run: bash scripts/check.sh
+      - name: Race detection
+        if: runner.os == 'Linux'
+        run: go test -race ./internal/downloader ./internal/cache ./internal/providers/... ./internal/usecase ./internal/interactive
+      - name: Installation smoke test
+        run: uv run --project python --locked python scripts/install_smoke.py

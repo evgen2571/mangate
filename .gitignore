@@ -40,3 +40,13 @@ datasets/
 *.sqlite-shm
 *.sqlite-wal
 *.part
+
+# Python development and packaging
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+python/dist/
+python/build/

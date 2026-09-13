@@ -1,13 +1,19 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,16 +64,15 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 	}
 
 	path := c.coverPath(provider.Name(), manga.ID, remoteURL)
-	if _, err := os.Stat(path); err == nil {
-		return path, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("stat cover cache file %q: %w", path, err)
-	}
 
-	key := provider.Name() + ":" + manga.ID
+	key := path
 	download, owner := c.beginInflight(key)
 	if !owner {
-		<-download.done
+		select {
+		case <-download.done:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 		if download.err != nil {
 			return "", download.err
 		}
@@ -83,6 +88,20 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 	defer func() {
 		c.finishInflight(key, download, downloadErr)
 	}()
+
+	cached, err := os.ReadFile(path)
+	if err == nil {
+		if validateCover(cached) == nil {
+			return path, nil
+		}
+		if err := os.Remove(path); err != nil {
+			downloadErr = fmt.Errorf("remove invalid cover cache file %q: %w", path, err)
+			return "", downloadErr
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		downloadErr = fmt.Errorf("read cover cache file %q: %w", path, err)
+		return "", downloadErr
+	}
 
 	if err := util.EnsureDir(filepath.Dir(path), "cover cache directory"); err != nil {
 		downloadErr = err
@@ -106,6 +125,20 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		downloadErr = fmt.Errorf("download cover: unexpected status %s", resp.Status)
 		return "", downloadErr
 	}
+	const maxCoverBytes = 20 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxCoverBytes+1))
+	if err != nil {
+		downloadErr = fmt.Errorf("read cover: %w", err)
+		return "", downloadErr
+	}
+	if len(data) > maxCoverBytes {
+		downloadErr = fmt.Errorf("cover exceeds %d bytes", maxCoverBytes)
+		return "", downloadErr
+	}
+	if err := validateCover(data); err != nil {
+		downloadErr = fmt.Errorf("download cover: %w", err)
+		return "", downloadErr
+	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), "cover-*.tmp")
 	if err != nil {
@@ -116,7 +149,7 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		_ = os.Remove(tmp.Name())
 	}()
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		downloadErr = fmt.Errorf("save cover: %w", err)
 		return "", downloadErr
@@ -135,16 +168,33 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 	return path, nil
 }
 
+func validateCover(data []byte) error {
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("invalid cover image: %w", err)
+	}
+	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 40_000_000 {
+		return fmt.Errorf("invalid cover dimensions %dx%d", config.Width, config.Height)
+	}
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("invalid cover image: %w", err)
+	}
+	return nil
+}
+
 func (c *Cache) coverPath(providerName, mangaID, remoteURL string) string {
-	ext := filepath.Ext(remoteURL)
-	if ext == "" {
-		ext = ".img"
+	ext := ".img"
+	if parsed, err := url.Parse(remoteURL); err == nil {
+		switch candidate := strings.ToLower(filepath.Ext(parsed.Path)); candidate {
+		case ".png", ".jpg", ".jpeg", ".gif":
+			ext = candidate
+		}
 	}
 
 	sum := sha1.Sum([]byte(remoteURL))
-	name := mangaID + "-" + hex.EncodeToString(sum[:8]) + ext
+	name := util.SanitizeString(mangaID) + "-" + hex.EncodeToString(sum[:8]) + ext
 
-	return filepath.Join(c.cfg.Dirs.Cache, "covers", providerName, name)
+	return filepath.Join(c.cfg.Dirs.Cache, "covers", util.SanitizeString(providerName), name)
 }
 
 func (c *Cache) beginInflight(key string) (*inflightDownload, bool) {

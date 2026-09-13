@@ -51,11 +51,11 @@ func TestProviderChaptersFetchesAllPages(t *testing.T) {
 
 		switch offset {
 		case 0:
-			writeMangaDexChaptersResponse(t, w, 0, 500, 501, []testMangaDexChapter{
+			writeMangaDexChaptersResponse(t, w, 0, 500, 2, []testMangaDexChapter{
 				{ID: "chapter-2", Chapter: "2", Title: "Second", Language: "en"},
 			})
-		case 500:
-			writeMangaDexChaptersResponse(t, w, 500, 500, 501, []testMangaDexChapter{
+		case 1:
+			writeMangaDexChaptersResponse(t, w, 1, 500, 2, []testMangaDexChapter{
 				{ID: "chapter-1", Chapter: "1", Title: "First", Language: "en"},
 			})
 		default:
@@ -70,8 +70,8 @@ func TestProviderChaptersFetchesAllPages(t *testing.T) {
 		t.Fatalf("Chapters() error = %v", err)
 	}
 
-	if !reflect.DeepEqual(requestedOffsets, []int{0, 500}) {
-		t.Fatalf("requested offsets = %#v, want %#v", requestedOffsets, []int{0, 500})
+	if !reflect.DeepEqual(requestedOffsets, []int{0, 1}) {
+		t.Fatalf("requested offsets = %#v, want %#v", requestedOffsets, []int{0, 1})
 	}
 
 	gotIDs := make([]string, 0, len(chapters))

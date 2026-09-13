@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -47,7 +49,6 @@ type DownloadConfig struct {
 	Dir              string `json:"dir"`
 	Format           string `json:"format"`
 	ExistingFileMode string `json:"existingFileMode"`
-	RetainSource     bool   `json:"retainSource"`
 }
 
 type ConcurrencyConfig struct {
@@ -91,9 +92,7 @@ type fileHTTPConfig struct {
 type fileDownloadConfig struct {
 	Dir              *string `json:"dir,omitempty"`
 	Format           *string `json:"format,omitempty"`
-	Type             *string `json:"type,omitempty"`
 	ExistingFileMode *string `json:"existingFileMode,omitempty"`
-	RetainSource     *bool   `json:"retainSource,omitempty"`
 }
 
 type fileConcurrencyConfig struct {
@@ -127,7 +126,6 @@ func DefaultConfig() Config {
 			Dir:              defaultDownloadDir(),
 			Format:           "directory",
 			ExistingFileMode: "skip",
-			RetainSource:     true,
 		},
 		Concurrency: ConcurrencyConfig{
 			PageDownloads:    8,
@@ -144,6 +142,22 @@ func DefaultConfig() Config {
 
 func (c Config) Clone() Config {
 	return c
+}
+
+// Normalized returns canonical enum values without altering filesystem paths.
+func (c Config) Normalized() Config {
+	c.Provider = strings.ToLower(strings.TrimSpace(c.Provider))
+	c.Language = strings.ToLower(strings.TrimSpace(c.Language))
+	c.Download.Format = strings.ToLower(strings.TrimSpace(c.Download.Format))
+	c.Download.ExistingFileMode = strings.ToLower(strings.TrimSpace(c.Download.ExistingFileMode))
+	c.Providers.MangaDex.SiteURL = strings.TrimSpace(c.Providers.MangaDex.SiteURL)
+	c.Providers.MangaDex.BaseURL = strings.TrimSpace(c.Providers.MangaDex.BaseURL)
+	c.Providers.MangaDex.UploadsURL = strings.TrimSpace(c.Providers.MangaDex.UploadsURL)
+	return c
+}
+
+func (c Config) MarshalJSON() ([]byte, error) {
+	return json.Marshal(newFileConfig(c))
 }
 
 func (c Config) Validate() error {
@@ -216,15 +230,24 @@ func LoadFromPath(path string) (Config, error) {
 		return cfg, fmt.Errorf("read config file %q: %w", path, err)
 	}
 
-	var raw fileConfig
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var raw *fileConfig
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&raw); err != nil {
 		return cfg, fmt.Errorf("decode config file %q: %w", path, err)
+	}
+	if raw == nil {
+		return cfg, fmt.Errorf("config file %q must contain an object", path)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return cfg, fmt.Errorf("config file %q must contain exactly one JSON object", path)
 	}
 
 	if err := raw.applyTo(&cfg); err != nil {
 		return cfg, fmt.Errorf("apply config file %q: %w", path, err)
 	}
 
+	cfg = cfg.Normalized()
 	if err := cfg.Validate(); err != nil {
 		return cfg, fmt.Errorf("validate config file %q: %w", path, err)
 	}
@@ -233,6 +256,7 @@ func LoadFromPath(path string) (Config, error) {
 }
 
 func Save(path string, cfg Config) error {
+	cfg = cfg.Normalized()
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("config path cannot be empty")
 	}
@@ -249,8 +273,20 @@ func Save(path string, cfg Config) error {
 	}
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	file, err := os.CreateTemp(filepath.Dir(path), ".config-*")
+	if err != nil {
+		return fmt.Errorf("create temporary config file for %q: %w", path, err)
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		file.Close()
 		return fmt.Errorf("write config file %q: %w", path, err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close config file %q: %w", path, err)
+	}
+	if err := os.Rename(file.Name(), path); err != nil {
+		return fmt.Errorf("replace config file %q: %w", path, err)
 	}
 
 	return nil
@@ -290,16 +326,10 @@ func (f fileConfig) applyTo(cfg *Config) error {
 			cfg.Download.Dir = *f.Download.Dir
 		}
 		if f.Download.Format != nil {
-			cfg.Download.Format = strings.ToLower(strings.TrimSpace(*f.Download.Format))
-		}
-		if f.Download.Type != nil {
-			return fmt.Errorf("download type is no longer configurable; only plain is supported by this legacy field, use download.format")
+			cfg.Download.Format = *f.Download.Format
 		}
 		if f.Download.ExistingFileMode != nil {
 			cfg.Download.ExistingFileMode = *f.Download.ExistingFileMode
-		}
-		if f.Download.RetainSource != nil {
-			cfg.Download.RetainSource = *f.Download.RetainSource
 		}
 	}
 	if f.Concurrency != nil {
@@ -340,7 +370,6 @@ func newFileConfig(cfg Config) fileConfig {
 			Dir:              stringPtr(cfg.Download.Dir),
 			Format:           stringPtr(cfg.Download.Format),
 			ExistingFileMode: stringPtr(cfg.Download.ExistingFileMode),
-			RetainSource:     boolPtr(cfg.Download.RetainSource),
 		},
 		Concurrency: &fileConcurrencyConfig{
 			PageDownloads:    intPtr(cfg.Concurrency.PageDownloads),
@@ -360,10 +389,6 @@ func stringPtr(v string) *string {
 }
 
 func intPtr(v int) *int {
-	return &v
-}
-
-func boolPtr(v bool) *bool {
 	return &v
 }
 

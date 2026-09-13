@@ -7,11 +7,30 @@ import (
 )
 
 type ChapterDownloadProgress struct {
+	ChapterID      string
 	Name           string
 	CompletedPages int
 	TotalPages     int
 	Active         bool
 	Completed      bool
+	Reused         bool
+}
+
+func (r *progressReporter) chapterReused(chapter *source.Chapter, pages int) {
+	if r == nil || r.notify == nil {
+		return
+	}
+	r.mu.Lock()
+	if current := r.chapterProgress(chapter); current != nil {
+		r.progress.TotalPages += pages - current.TotalPages
+		current.TotalPages, current.CompletedPages = pages, pages
+		current.Completed, current.Reused, current.Active = true, true, false
+		r.progress.CompletedPages += pages
+		r.progress.CompletedChapters++
+	}
+	progress := r.snapshotLocked()
+	r.mu.Unlock()
+	r.notify(progress)
 }
 
 type DownloadProgress struct {
@@ -26,13 +45,13 @@ type progressReporter struct {
 	mu       sync.Mutex
 	progress DownloadProgress
 	notify   func(DownloadProgress)
-	order    []string
+	indices  map[*source.Chapter]int
 }
 
 func newProgressReporter(manga *source.Manga, notify func(DownloadProgress)) *progressReporter {
 	totalPages := 0
 	chapters := make([]ChapterDownloadProgress, 0)
-	order := make([]string, 0)
+	indices := make(map[*source.Chapter]int)
 
 	if manga != nil {
 		for _, chapter := range manga.Chapters {
@@ -43,11 +62,12 @@ func newProgressReporter(manga *source.Manga, notify func(DownloadProgress)) *pr
 			name := chapter.DisplayName()
 			pageCount := knownPageCount(chapter)
 			totalPages += pageCount
+			indices[chapter] = len(chapters)
 			chapters = append(chapters, ChapterDownloadProgress{
+				ChapterID:  chapter.ID,
 				Name:       name,
 				TotalPages: pageCount,
 			})
-			order = append(order, name)
 		}
 	}
 
@@ -57,8 +77,8 @@ func newProgressReporter(manga *source.Manga, notify func(DownloadProgress)) *pr
 			TotalChapters: len(chapters),
 			Chapters:      chapters,
 		},
-		notify: notify,
-		order:  order,
+		notify:  notify,
+		indices: indices,
 	}
 }
 
@@ -130,12 +150,11 @@ func (r *progressReporter) chapterCompleted(chapter *source.Chapter) {
 }
 
 func (r *progressReporter) chapterProgress(chapter *source.Chapter) *ChapterDownloadProgress {
-	name := chapter.DisplayName()
-	for idx := range r.progress.Chapters {
-		if r.progress.Chapters[idx].Name == name {
-			return &r.progress.Chapters[idx]
-		}
+	index, ok := r.indices[chapter]
+	if ok {
+		return &r.progress.Chapters[index]
 	}
+
 	return nil
 }
 

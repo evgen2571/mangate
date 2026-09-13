@@ -100,3 +100,40 @@ func TestProviderPagesPacesAtHomeRequests(t *testing.T) {
 		t.Fatalf("request spacing = %s, want at least %s", spacing, minSpacing)
 	}
 }
+
+func TestPagesRejectsInvalidImageLocations(t *testing.T) {
+	for _, body := range []string{
+		`{"baseUrl":"https://example.org","chapter":{"hash":"hash","data":[]}}`,
+		`{"baseUrl":"https://example.org","chapter":{"hash":"","data":["1.png"]}}`,
+		`{"baseUrl":"file:///tmp","chapter":{"hash":"hash","data":["1.png"]}}`,
+		`{"baseUrl":"https://example.org","chapter":{"hash":"hash","data":[""]}}`,
+		`{"baseUrl":"https://example.org","chapter":{"hash":"hash","data":["../1.png"]}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+			defer server.Close()
+			if _, err := newTestProvider(t, server.URL, "en").Pages(context.Background(), &source.Chapter{ID: "chapter"}); err == nil {
+				t.Fatal("expected invalid pages response error")
+			}
+		})
+	}
+}
+
+func TestAtHomeQueueDoesNotDelayCancellation(t *testing.T) {
+	p := newTestProvider(t, "http://127.0.0.1:1", "en")
+	p.atHomeMinInterval = 200 * time.Millisecond
+	p.lastAtHomeRequest = time.Now()
+	waiting := make(chan struct{})
+	go func() { defer close(waiting); p.paceAtHomeRequest(context.Background()) }()
+	defer func() { <-waiting }()
+	time.Sleep(20 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if err := p.paceAtHomeRequest(ctx); err != context.Canceled {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
+		t.Fatalf("canceled request waited %s for another caller", elapsed)
+	}
+}

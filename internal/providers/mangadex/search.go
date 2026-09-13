@@ -2,9 +2,7 @@ package mangadex
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -40,32 +38,31 @@ func (pr *Provider) Search(ctx context.Context, title string) ([]*source.Manga, 
 	params.Set("title", title)
 	params.Set("limit", "100")
 
-	url := pr.api("manga/?" + params.Encode())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create search request in %q: %w", pr.Name(), err)
-	}
-
-	resp, err := pr.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("execute search request in %q: %w", pr.Name(), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search request in %q returned unexpected status: %s", pr.Name(), resp.Status)
-	}
-
-	var mangaDexResponse mangaDexResponse[mangaDexManga]
-	if err := json.NewDecoder(resp.Body).Decode(&mangaDexResponse); err != nil {
-		return nil, fmt.Errorf("decode search response in %q: %w", pr.Name(), err)
-	}
-
-	mangas := make([]*source.Manga, 0, len(mangaDexResponse.Data))
-	for _, mangaDexManga := range mangaDexResponse.Data {
-		mangaDexManga.URL = pr.site("title/" + mangaDexManga.ID)
-		manga := mangaDexManga.toSource(pr.language)
-		mangas = append(mangas, manga)
+	mangas := make([]*source.Manga, 0)
+	for offset := 0; ; {
+		params.Set("offset", strconv.Itoa(offset))
+		var payload mangaDexResponse[mangaDexManga]
+		if err := pr.getJSON(ctx, "search", "manga/?"+params.Encode(), &payload); err != nil {
+			return nil, err
+		}
+		if payload.Total > maxCollectionResults {
+			return nil, fmt.Errorf("MangaDex search has %d results; narrow the query to at most %d results", payload.Total, maxCollectionResults)
+		}
+		next, more, err := payload.nextOffset(offset, 100)
+		if err != nil {
+			return nil, fmt.Errorf("search: %w", err)
+		}
+		for _, item := range payload.Data {
+			if strings.TrimSpace(item.ID) == "" {
+				return nil, fmt.Errorf("search response contains a manga without an id")
+			}
+			item.URL = pr.site("title/" + url.PathEscape(item.ID))
+			mangas = append(mangas, item.toSource(pr.language))
+		}
+		if !more {
+			break
+		}
+		offset = next
 	}
 
 	return mangas, nil
@@ -111,28 +108,21 @@ func (pr *Provider) BrowseManga(ctx context.Context, browse source.BrowseRequest
 		direction = "desc"
 	}
 	params.Set("order["+orderBy+"]", direction)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pr.api("manga/?"+params.Encode()), nil)
-	if err != nil {
-		return source.BrowsePage{}, fmt.Errorf("create browse request in %q: %w", pr.Name(), err)
-	}
-	resp, err := pr.doWithRateLimitRetry(req)
-	if err != nil {
-		return source.BrowsePage{}, fmt.Errorf("execute browse request in %q: %w", pr.Name(), err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return source.BrowsePage{}, fmt.Errorf("browse request in %q returned unexpected status: %s", pr.Name(), resp.Status)
-	}
 	var payload mangaDexResponse[mangaDexManga]
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return source.BrowsePage{}, fmt.Errorf("decode browse response in %q: %w", pr.Name(), err)
+	if err := pr.getJSON(ctx, "browse", "manga/?"+params.Encode(), &payload); err != nil {
+		return source.BrowsePage{}, err
 	}
-	result := source.BrowsePage{Offset: payload.Offset, Total: payload.Total}
+
+	next, more, err := payload.nextOffset(browse.Offset, limit)
+	if err != nil {
+		return source.BrowsePage{}, fmt.Errorf("browse: %w", err)
+	}
+	result := source.BrowsePage{Offset: payload.Offset, Total: payload.Total, NextOffset: next, HasMore: more}
 	for _, item := range payload.Data {
 		if strings.TrimSpace(item.ID) == "" {
 			continue
 		}
-		item.URL = pr.site("title/" + item.ID)
+		item.URL = pr.site("title/" + url.PathEscape(item.ID))
 		tags := make([]string, 0, len(item.Attributes.Tags))
 		for _, tag := range item.Attributes.Tags {
 			if name := localizedValue(tag.Attributes.Name, pr.language); name != "" {
@@ -141,8 +131,6 @@ func (pr *Provider) BrowseManga(ctx context.Context, browse source.BrowseRequest
 		}
 		result.Titles = append(result.Titles, source.BrowseTitle{Manga: item.toSource(pr.language), AvailableLanguages: append([]string(nil), item.Attributes.AvailableTranslatedLanguages...), Tags: tags, CreatedAt: item.Attributes.CreatedAt, UpdatedAt: item.Attributes.UpdatedAt})
 	}
-	result.NextOffset = payload.Offset + len(payload.Data)
-	result.HasMore = len(payload.Data) > 0 && (payload.Total == 0 || result.NextOffset < payload.Total)
 	return result, nil
 }
 
@@ -155,32 +143,17 @@ func (pr *Provider) Title(ctx context.Context, id string) (*source.Manga, error)
 		return nil, fmt.Errorf("title id cannot be empty")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pr.api("manga/"+url.PathEscape(id)), nil)
-	if err != nil {
-		return nil, fmt.Errorf("create title request in %q: %w", pr.Name(), err)
-	}
-	resp, err := pr.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("execute title request in %q: %w", pr.Name(), err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("title %q not found", id)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("title request in %q returned unexpected status: %s", pr.Name(), resp.Status)
-	}
-
 	var payload struct {
 		Data mangaDexManga `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode title response in %q: %w", pr.Name(), err)
+	if err := pr.getJSON(ctx, "title "+id, "manga/"+url.PathEscape(id), &payload); err != nil {
+		return nil, err
 	}
+
 	if payload.Data.ID == "" {
 		return nil, fmt.Errorf("title response in %q did not include an id", pr.Name())
 	}
-	payload.Data.URL = pr.site("title/" + payload.Data.ID)
+	payload.Data.URL = pr.site("title/" + url.PathEscape(payload.Data.ID))
 	return payload.Data.toSource(pr.language), nil
 }
 

@@ -359,3 +359,131 @@ func TestCompletionStatesAreDistinct(t *testing.T) {
 		t.Fatal("partial failure did not have its own state")
 	}
 }
+
+func TestFailedRequestsLeaveLoadingAndAllowRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		message tea.Msg
+		want    screen
+	}{
+		{"search", searchDone{err: errors.New("service unavailable")}, searchScreen},
+		{"chapters", chaptersDone{err: errors.New("service unavailable")}, resultsScreen},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testModel(t)
+			resize(t, m, 80, 24)
+			m.loading = true
+			m.Update(tc.message)
+			if m.loading || m.screen != tc.want {
+				t.Fatalf("loading=%v screen=%v", m.loading, m.screen)
+			}
+			if view := ansi.Strip(m.View()); !strings.Contains(view, "service unavailable") {
+				t.Fatalf("failure missing from view: %s", view)
+			}
+			if tc.want == searchScreen {
+				m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("retry")})
+				if m.input.Value() != "retry" {
+					t.Fatal("search input remains blocked")
+				}
+			}
+		})
+	}
+}
+
+func TestQuitCancelsOutstandingRequests(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if m.ctx.Err() != context.Canceled {
+		t.Fatal("quit left request context active")
+	}
+}
+
+func TestViewsFitTerminalHeight(t *testing.T) {
+	m := testModel(t)
+	m.manga = &source.Manga{Title: "Fixture One"}
+	m.results = []*source.Manga{m.manga}
+	m.newResultsList(m.results)
+	m.chapters = []*source.Chapter{{Index: "1", Title: "Opening"}}
+	for _, height := range []int{24, 30, 40} {
+		for _, screen := range []screen{resultsScreen, chaptersScreen, formatScreen, outputScreen, reviewScreen, doneScreen, configScreen} {
+			for _, help := range []bool{false, true} {
+				m.screen, m.showHelp = screen, help
+				resize(t, m, 100, height)
+				if got := lipgloss.Height(m.View()); got > height {
+					t.Errorf("screen %v help %v: height %d exceeds %d", screen, help, got, height)
+				}
+			}
+		}
+	}
+}
+
+func TestResultsMetadataHasFixedColumn(t *testing.T) {
+	m := testModel(t)
+	m.results = []*source.Manga{{Title: "One"}}
+	m.newResultsList(m.results)
+	m.screen = resultsScreen
+	resize(t, m, 100, 30)
+	line := strings.Split(ansi.Strip(m.resultsView()), "\n")[2]
+	if column := strings.LastIndex(line, "One"); column != m.resultListWidth()+2 {
+		t.Fatalf("metadata column = %d, want %d: %q", column, m.resultListWidth()+2, line)
+	}
+}
+
+func TestCompletionWrapsErrorsAndPaths(t *testing.T) {
+	m := testModel(t)
+	m.screen = doneScreen
+	m.completion = "load pages for chapter bad: " + strings.Repeat("chapter context ", 8) + "HTTP 404 (Not Found)"
+	m.doneViewport.SetContent(m.completion)
+	resize(t, m, 100, 30)
+	if view := ansi.Strip(m.doneViewport.View()); !strings.Contains(view, "HTTP 404") {
+		t.Fatalf("error detail clipped: %q", view)
+	}
+}
+
+func TestNarrowViewsStayWithinTerminal(t *testing.T) {
+	m := testModel(t)
+	m.manga = &source.Manga{Title: "Fixture One"}
+	m.results = []*source.Manga{m.manga}
+	m.newResultsList(m.results)
+	m.chapters = []*source.Chapter{{Index: "1", Title: "Opening"}}
+	for _, width := range []int{48, 60, 80} {
+		for _, screen := range []screen{searchScreen, resultsScreen, chaptersScreen, formatScreen, outputScreen, reviewScreen, doneScreen, configScreen} {
+			m.screen = screen
+			resize(t, m, width, 24)
+			view := m.View()
+			if w, h := lipgloss.Width(view), lipgloss.Height(view); w > width || h > 24 {
+				t.Errorf("screen %v terminal %dx24: view is %dx%d", screen, width, w, h)
+			}
+		}
+	}
+}
+
+func TestMinimumTerminalShowsWorkflow(t *testing.T) {
+	m := testModel(t)
+	m.manga = &source.Manga{Title: "Fixture One"}
+	m.results = []*source.Manga{m.manga}
+	m.newResultsList(m.results)
+	m.chapters = []*source.Chapter{{Index: "1", Title: "Opening"}}
+	for _, screen := range []screen{searchScreen, resultsScreen, chaptersScreen, formatScreen, outputScreen, reviewScreen, workingScreen, doneScreen, configScreen} {
+		m.screen = screen
+		resize(t, m, minWidth, minHeight)
+		view := m.View()
+		if w, h := lipgloss.Width(view), lipgloss.Height(view); w > minWidth || h > minHeight {
+			t.Errorf("screen %v view is %dx%d, want at most %dx%d", screen, w, h, minWidth, minHeight)
+		}
+		if !strings.Contains(view, "MANGATE") {
+			t.Errorf("screen %v missing header", screen)
+		}
+	}
+}
+
+func TestNarrowInputKeepsOneContentRow(t *testing.T) {
+	m := testModel(t)
+	resize(t, m, 48, 14)
+	for _, prompt := range []string{"Search: ", "Output: ", "Value: "} {
+		m.resetInput(prompt, strings.Repeat("long-path/", 10))
+		if view := m.inputView(newStyles()); lipgloss.Height(view) != 3 {
+			t.Fatalf("%s input wraps: %q", prompt, view)
+		}
+	}
+}

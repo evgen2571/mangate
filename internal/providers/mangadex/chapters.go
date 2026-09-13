@@ -2,12 +2,11 @@ package mangadex
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/evgen2571/mangate/internal/source"
 )
@@ -36,54 +35,37 @@ type mangaDexChapter struct {
 func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*source.Chapter, error) {
 	allChapters := make([]mangaDexChapter, 0)
 
-	for offset := 0; ; offset += mangaDexChapterPageLimit {
+	for offset := 0; ; {
 		params := url.Values{}
 		params.Set("limit", strconv.Itoa(mangaDexChapterPageLimit))
 		params.Set("offset", strconv.Itoa(offset))
 		params.Add("includes[]", "scanlation_group")
 
-		url := pr.api("manga/" + manga.ID + "/feed?" + params.Encode())
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create chapters request in %q: %w", pr.Name(), err)
-		}
-
-		resp, err := pr.client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("execute chapters request in %q: %w", pr.Name(), err)
-		}
-
 		var mangaDexResponse mangaDexResponse[mangaDexChapter]
-		decodeErr := func() error {
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("chapters request in %q returned unexpected status: %s", pr.Name(), resp.Status)
-			}
-
-			if err := json.NewDecoder(resp.Body).Decode(&mangaDexResponse); err != nil {
-				return fmt.Errorf("decode chapters response in %q: %w", pr.Name(), err)
-			}
-
-			return nil
-		}()
-		if decodeErr != nil {
-			return nil, decodeErr
+		if err := pr.getJSON(ctx, "chapters for "+manga.ID, "manga/"+url.PathEscape(manga.ID)+"/feed?"+params.Encode(), &mangaDexResponse); err != nil {
+			return nil, err
 		}
 
+		next, more, err := mangaDexResponse.nextOffset(offset, mangaDexChapterPageLimit)
+		if err != nil {
+			return nil, fmt.Errorf("chapters for %s: %w", manga.ID, err)
+		}
 		allChapters = append(allChapters, mangaDexResponse.Data...)
 
-		if len(mangaDexResponse.Data) == 0 || mangaDexResponse.Total <= mangaDexResponse.Offset+len(mangaDexResponse.Data) {
+		if !more {
 			break
 		}
+		offset = next
 	}
 
 	sortChaptersByChapter(allChapters)
 
 	chapters := make([]*source.Chapter, 0, len(allChapters))
 	for _, mdc := range allChapters {
-		mdc.URL = pr.site("chapter/" + mdc.ID)
+		if strings.TrimSpace(mdc.ID) == "" {
+			return nil, fmt.Errorf("chapters response contains a chapter without an id")
+		}
+		mdc.URL = pr.site("chapter/" + url.PathEscape(mdc.ID))
 		chapter := mdc.toSource()
 		chapter.From = manga
 		chapters = append(chapters, chapter)
@@ -92,27 +74,13 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 	return chapters, nil
 }
 
-func (mdc *mangaDexChapter) getTitle() string {
-	return mdc.Attributes.Title
-}
-
-func (mdc *mangaDexChapter) getIndex() string {
-	var index string = "0"
-
-	if mdc.Attributes.Chapter != "" {
-		index = mdc.Attributes.Chapter
-	}
-
-	return index
-}
-
 func (mdc *mangaDexChapter) toSource() *source.Chapter {
 	return &source.Chapter{
 		ID:           mdc.ID,
 		URL:          mdc.URL,
 		Volume:       mdc.Attributes.Volume,
-		Index:        mdc.getIndex(),
-		Title:        mdc.getTitle(),
+		Index:        mdc.Attributes.Chapter,
+		Title:        mdc.Attributes.Title,
 		Language:     mdc.Attributes.Language,
 		ReleaseGroup: mdc.releaseGroup(),
 		PublishedAt:  mdc.Attributes.PublishAt,

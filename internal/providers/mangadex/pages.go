@@ -2,9 +2,8 @@ package mangadex
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,33 +11,16 @@ import (
 )
 
 func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*source.Page, error) {
-	if err := pr.paceAtHomeRequest(ctx); err != nil {
-		return nil, fmt.Errorf("wait for at-home request slot in %q: %w", pr.Name(), err)
-	}
-
-	url := pr.api("at-home/server/" + chapter.ID)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create pages request in %q: %w", pr.Name(), err)
-	}
-
-	resp, err := pr.doWithRateLimitRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("execute pages request in %q: %w", pr.Name(), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pages request in %q returned unexpected status: %s", pr.Name(), resp.Status)
-	}
-
 	var pageResp mangaDexPageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&pageResp); err != nil {
-		return nil, fmt.Errorf("decode pages response in %q: %w", pr.Name(), err)
+	if err := pr.getJSON(ctx, "pages for "+chapter.ID, "at-home/server/"+url.PathEscape(chapter.ID), &pageResp); err != nil {
+		return nil, err
 	}
 
-	return pageResp.toSourcePages(), nil
+	pages, err := pageResp.toSourcePages()
+	if err != nil {
+		return nil, fmt.Errorf("pages response for chapter %q: %w", chapter.ID, err)
+	}
+	return pages, nil
 }
 
 func (pr *Provider) paceAtHomeRequest(ctx context.Context) error {
@@ -46,8 +28,12 @@ func (pr *Provider) paceAtHomeRequest(ctx context.Context) error {
 		return nil
 	}
 
-	pr.atHomeMu.Lock()
-	defer pr.atHomeMu.Unlock()
+	select {
+	case pr.atHomeGate <- struct{}{}:
+		defer func() { <-pr.atHomeGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	if !pr.lastAtHomeRequest.IsZero() {
 		wait := pr.atHomeMinInterval - time.Since(pr.lastAtHomeRequest)
@@ -61,17 +47,27 @@ func (pr *Provider) paceAtHomeRequest(ctx context.Context) error {
 	return nil
 }
 
-func (mdpr *mangaDexPageResponse) toSourcePages() []*source.Page {
+func (mdpr *mangaDexPageResponse) toSourcePages() ([]*source.Page, error) {
+	base, err := url.Parse(mdpr.BaseURL)
+	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+		return nil, fmt.Errorf("invalid image base URL")
+	}
+	if !validPathSegment(mdpr.Chapter.Hash) || len(mdpr.Chapter.Data) == 0 {
+		return nil, fmt.Errorf("missing chapter hash or page filenames")
+	}
 	pages := make([]*source.Page, 0, len(mdpr.Chapter.Data))
 	urlStart := strings.TrimRight(mdpr.BaseURL, "/") + "/data/"
 
 	for _, fileName := range mdpr.Chapter.Data {
+		if !validPathSegment(fileName) {
+			return nil, fmt.Errorf("invalid page filename %q", fileName)
+		}
 		page := &source.Page{
-			URL: fmt.Sprintf("%s%s/%s", urlStart, mdpr.Chapter.Hash, fileName),
+			URL: urlStart + url.PathEscape(mdpr.Chapter.Hash) + "/" + url.PathEscape(fileName),
 		}
 
 		pages = append(pages, page)
 	}
 
-	return pages
+	return pages, nil
 }

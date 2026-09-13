@@ -172,3 +172,20 @@ func TestArchiveInspectMissingPathExplainsArchiveArgument(t *testing.T) {
 		t.Fatalf("Execute() error = %v, want archive path guidance", err)
 	}
 }
+
+func TestArchiveConvertDryRunRejectsImageFormats(t *testing.T) {
+	for _, format := range []string{"png", "jpeg"} {
+		t.Run(format, func(t *testing.T) {
+			a, err := app.New(config.DefaultConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := NewRootCmd(a)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs([]string{"--format", format, "archive", "convert", t.TempDir(), "--dry-run"})
+			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "choose --format cbz or --format zip") {
+				t.Fatalf("unsupported archive format: %v", err)
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,8 +136,8 @@ func TestLoadRejectsLegacyDownloadType(t *testing.T) {
 	}
 
 	_, err := LoadFromPath(configPath)
-	if err == nil || !strings.Contains(err.Error(), "only plain is supported") {
-		t.Fatalf("LoadFromPath() error = %v, want plain-format rejection", err)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("LoadFromPath() error = %v, want unknown-field rejection", err)
 	}
 }
 
@@ -157,5 +158,81 @@ func TestValidateRejectsInvalidMangaDexURL(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("Validate() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsUnknownAndNullConfiguration(t *testing.T) {
+	for _, body := range []string{`null`, `{"download":{"formatt":"cbz"}}`, `{"http":{"timout":"1s"}}`} {
+		t.Run(body, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadFromPath(path); err == nil {
+				t.Fatal("accepted malformed configuration")
+			}
+		})
+	}
+}
+
+func TestSerializedConfigurationCanBeLoaded(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.HTTP.Timeout = 45 * time.Second
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadFromPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != cfg {
+		t.Fatalf("configuration changed on round trip: %#v", got)
+	}
+}
+
+func TestLoadNormalizesConfigurationEnums(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"provider":" MangaDex ","language":" EN ","download":{"format":" CBZ ","existingFileMode":" SKIP "}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFromPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Provider != "mangadex" || cfg.Language != "en" || cfg.Download.Format != "cbz" || cfg.Download.ExistingFileMode != "skip" {
+		t.Fatalf("configuration was not normalized: %+v", cfg)
+	}
+}
+
+func TestSaveReplacementAndFailureCleanup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := DefaultConfig()
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Download.Format = " CBZ "
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadFromPath(path)
+	if err != nil || got.Download.Format != "cbz" {
+		t.Fatalf("replacement = %q, %v", got.Download.Format, err)
+	}
+	blocked := filepath.Join(dir, "directory")
+	if err := os.Mkdir(blocked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(blocked, cfg); err == nil {
+		t.Fatal("saving over a directory succeeded")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("temporary file leaked: %v, %v", entries, err)
 	}
 }

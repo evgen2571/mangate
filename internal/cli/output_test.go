@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"math"
 	"os"
@@ -23,7 +24,11 @@ func TestErrorDiagnosticUsesStableCategoryAndExitCode(t *testing.T) {
 func TestEffectiveDatasetConfigLetsExplicitFalseOverrideFile(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "collection.json")
-	if err := os.WriteFile(configPath, []byte(`{"version":1,"datasetId":"test","provider":"mangadex","output":{"directory":"`+filepath.Join(root, "data")+`","format":"directory","existingFiles":"skip"},"discovery":{"candidatePoolSize":1,"orderDirection":"desc"},"sampling":{"maxTitles":1,"keepDuplicateChapterReleases":true},"limits":{},"validation":{"minimumWidth":1,"minimumHeight":1,"maximumWidth":2,"maximumHeight":2,"maximumDecodedPixels":4},"splits":{},"runtime":{"titleWorkers":1,"chapterWorkers":1,"pageWorkers":1,"validationWorkers":1,"retryLimit":0}}`), 0o644); err != nil {
+	directory, err := json.Marshal(filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"version":1,"datasetId":"test","provider":"mangadex","output":{"directory":`+string(directory)+`,"format":"directory","existingFiles":"skip"},"discovery":{"candidatePoolSize":1,"orderDirection":"desc"},"sampling":{"maxTitles":1,"keepDuplicateChapterReleases":true},"limits":{},"validation":{"minimumWidth":1,"minimumHeight":1,"maximumWidth":2,"maximumHeight":2,"maximumDecodedPixels":4},"splits":{},"runtime":{"titleWorkers":1,"chapterWorkers":1,"pageWorkers":1,"validationWorkers":1,"retryLimit":0}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a, err := app.New(config.DefaultConfig())

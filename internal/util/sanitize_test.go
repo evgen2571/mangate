@@ -1,6 +1,34 @@
 package util
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
+
+func TestSanitizeStringPortableNames(t *testing.T) {
+	for input, want := range map[string]string{
+		".": "unknown", "name. ": "name", "con": "_con", "NUL.txt": "_NUL.txt",
+		"COM1": "_COM1", "lpt9.png": "_lpt9.png", "COM¹": "_COM¹", "LPT²": "_LPT²",
+		"COM10": "COM10", "chapter\x00name\x1b": "chapter_name",
+	} {
+		if got := SanitizeString(input); got != want {
+			t.Errorf("SanitizeString(%q) = %q, want %q", input, got, want)
+		}
+	}
+	for _, input := range []string{strings.Repeat("a", 400), strings.Repeat("界", 200)} {
+		got := SanitizeString(input)
+		if len(got) > 200 || !utf8.ValidString(got) {
+			t.Errorf("long name has %d bytes, valid UTF-8 = %v", len(got), utf8.ValidString(got))
+		}
+		if got == SanitizeString(input+"b") {
+			t.Error("different long names collide")
+		}
+		if SanitizeString(got) != got {
+			t.Error("sanitizing twice changes the name")
+		}
+	}
+}
 
 func TestSanitizeStringRemovesDotDotPathTraversal(t *testing.T) {
 	got := SanitizeString("../evil")

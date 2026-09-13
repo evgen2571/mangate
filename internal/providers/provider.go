@@ -21,9 +21,7 @@ type Provider interface {
 
 type Factory func(cfg config.Config, client *http.Client) (Provider, error)
 
-// BrowseProvider is an optional provider capability for catalog-scale title
-// discovery. It deliberately sits beside Provider so integrations that only
-// support search remain source compatible.
+// BrowseProvider is the optional capability for catalog title discovery.
 type BrowseProvider interface {
 	BrowseManga(context.Context, source.BrowseRequest) (source.BrowsePage, error)
 }

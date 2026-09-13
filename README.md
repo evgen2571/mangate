@@ -1,121 +1,65 @@
 # Mangate
 
-Mangate is a Go command-line application for searching and downloading manga / manhwa from supported providers. It offers a direct CLI for quick commands and scripts, a minimal full-screen TUI for interactive use, extensible provider support, and Python bindings.
+Search MangaDex, inspect manga and chapters, and download chapters as image directories, PNG, JPEG, CBZ, or ZIP. Use the command line, the interactive terminal interface, or the Python wrapper.
 
-## Features
+## Install
 
-- Search supported manga and manhwa providers.
-- View title information and available chapters.
-- Select individual chapters, ranges, or multiple chapters to download.
-- Download through the CLI or the interactive TUI, with progress and partial-failure reporting.
-- Save chapters as ordered image directories, PNG, JPEG, CBZ, or ZIP output.
-- Collect bounded, resumable datasets with provenance and validation records.
-- Skip and reuse existing downloads, or choose a replacement policy.
-- Produce machine-readable JSON output for scripts.
-- Use Mangate's main operations from Python.
+You need Go 1.26 or newer. To install the current checkout:
 
-## Installation
-
-Install with Go 1.26 or newer:
-
-```bash
-go install github.com/evgen2571/mangate/cmd/mangate@latest
+```sh
+git clone https://github.com/evgen2571/mangate.git
+cd mangate
+go install ./cmd/mangate
 ```
 
-To build the current checkout instead:
+Add Go's binary directory to your `PATH` if needed. On Linux and macOS:
 
-```bash
-go build -o mangate ./cmd/mangate
+```sh
+export PATH="$(go env GOPATH)/bin:$PATH"
+mangate --version
 ```
 
-The repository also includes an installation script that places the executable in `~/.local/bin`:
+Alternatively, `bash scripts/install.sh` installs into `~/.local/bin`. Set `MANGATE_BIN_DIR` to use another absolute directory. No configuration file is required.
 
-```bash
-./scripts/install.sh
-```
+## Download a chapter
 
-## Quick start
-
-Search for a title, then use its ID from the results to inspect chapters or download one:
-
-```bash
+```sh
 mangate search "title"
-mangate title <title-id>
-mangate chapters <title-id>
-mangate --format cbz download <title-id> --chapter 1
+mangate title TITLE_ID
+mangate chapters TITLE_ID
+mangate --format cbz --output ./library download TITLE_ID --chapter-id CHAPTER_ID --yes
 ```
 
-Open the full-screen TUI with:
+Replace `TITLE_ID` and `CHAPTER_ID` with IDs from the preceding commands. Download only chapters you are authorized to save. Use `--dry-run` to inspect a download plan before writing files.
 
-```bash
+## Use the terminal interface
+
+```sh
 mangate tui
 ```
-or simply
-```bash
-mangate
+
+Type a search and press Enter. Choose a title with the arrow keys, press Enter to load chapters, toggle chapters with Space, then continue through format, output directory, and review. Press `?` for help outside text inputs, Escape to go back, and `q` to cancel a download. A wide results screen shows the selected title's cover and synopsis.
+
+A chapter selection screen using the test fixture:
+
+```text
+MANGATE  /  Chapters
+Search › Title › Chapters › Format › Output › Review
+
+Fixture One
+2 chapters · 1 selected
+› ●  Chapter 1 - Opening          en  2 pages
+  ○  Chapter 2 - Unavailable      en  2 pages
+
+space toggle · enter continue · / filter · ? help
 ```
 
-Use the built-in help for other commands and options:
+## Python and reference
 
-```bash
-mangate --help
-mangate <command> --help
-```
+Install the wrapper from this checkout with `uv pip install ./python`, then use `Client` with the installed executable. See the [Python guide](docs/python.md) for complete examples and error handling.
 
-## Documentation
-
-- [CLI documentation](docs/cli.md)
-- [Python bindings](docs/python.md)
+- [CLI commands](docs/cli.md)
+- [Configuration](docs/configuration.md)
 - [Dataset collection](docs/dataset.md)
-
-## Output formats
-
-- `directory` - ordered image files in a chapter directory.
-- `png` - lossless PNG page output.
-- `jpeg` - JPEG page output at quality 95, with transparent pixels flattened to white.
-- `cbz` - one comic-book archive per chapter.
-- `zip` - one standard ZIP archive per chapter.
-
-## Dataset collection
-
-Build a bounded collection without manually finding title IDs:
-
-```bash
-mangate --format directory --output ./datasets/manhwa-raw-v1 dataset collect \
-  --original-language ko --chapter-language en --max-titles 1000 \
-  --max-chapters-per-title 20 --max-bytes 500GiB --resume --yes
-```
-
-Use only provider access and content you are authorized to download. Provider terms and availability can change.
-
-## Python bindings
-
-Mangate's main operations are available from Python. Install the package from this repository with:
-
-```bash
-python -m pip install ./python
-```
-
-```python
-from mangate import Client
-
-client = Client()
-titles = client.search("title", limit=5)
-chapters = client.chapters(titles[0]["id"])
-```
-
-See the [full Python bindings guide](docs/python.md) for configuration, downloads,
-archive operations, cancellation, and error handling.
-
-
-## Project status
-
-Mangate is a pet project.
-
-## Contributing
-
-Bug reports and contributions are welcome. Please open an issue or pull request with a clear description of the change.
-
-## License
-
-[MIT License](LICENSE).
+- [Troubleshooting](docs/troubleshooting.md)
+- [Architecture and development](docs/architecture.md)

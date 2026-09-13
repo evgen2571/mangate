@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,7 +43,10 @@ func NewRootCmd(a *app.App) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.Version = "0.1.0"
+	cmd.Version = "dev"
+	if build, ok := debug.ReadBuildInfo(); ok && build.Main.Version != "" && build.Main.Version != "(devel)" {
+		cmd.Version = build.Main.Version
+	}
 	cmd.SetVersionTemplate("{{.Name}} {{.Version}} (" + runtime.GOOS + ")\n")
 
 	bindPersistentConfigFlags(cmd, &a.Cfg)

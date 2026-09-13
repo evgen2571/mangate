@@ -7,9 +7,10 @@ import os
 import signal
 import subprocess
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from threading import Event
-from typing import Any, Iterable
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -28,7 +29,7 @@ class Client:
     """Run Mangate operations without parsing terminal-oriented output.
 
     Args:
-        executable: Path or command name for a compatible Mangate 0.1 CLI.
+        executable: Path or command name for the Mangate CLI.
         provider: Default provider identifier.
         output_dir: Optional root directory for downloaded chapters.
         timeout: Per-command timeout in seconds.
@@ -47,21 +48,21 @@ class Client:
         chapter_downloads: int | None = None,
         existing_files: str = "skip",
         output_format: str = "directory",
-        retain_source: bool = True,
     ) -> None:
         self.executable = os.fspath(executable)
-        self.provider = provider
+        self.provider = provider.strip().lower()
         self.output_dir = None if output_dir is None else os.fspath(output_dir)
         self.timeout = timeout
         self.page_downloads = page_downloads
         self.chapter_downloads = chapter_downloads
+        existing_files = existing_files.strip().lower()
+        output_format = output_format.strip().lower()
         if existing_files not in {"skip", "replace", "fail"}:
             raise ValueError("existing_files must be skip, replace, or fail")
-        if output_format.lower() not in {"directory", "png", "jpeg", "cbz", "zip"}:
+        if output_format not in {"directory", "png", "jpeg", "cbz", "zip"}:
             raise ValueError("output_format must be directory, png, jpeg, cbz, or zip")
         self.existing_files = existing_files
-        self.output_format = output_format.lower()
-        self.retain_source = retain_source
+        self.output_format = output_format
 
     def version(self) -> str:
         return self._text(["--version"]).strip()
@@ -70,9 +71,18 @@ class Client:
         return self._json(["providers"])["data"]
 
     def provider_info(self, provider: str | None = None) -> dict[str, Any]:
-        return self._json(["--provider", provider or self.provider, "provider", provider or self.provider])["data"]
+        return self._json(
+            [
+                "--provider",
+                provider or self.provider,
+                "provider",
+                provider or self.provider,
+            ]
+        )["data"]
 
-    def search(self, query: str, *, provider: str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+    def search(
+        self, query: str, *, provider: str | None = None, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         args = ["--provider", provider or self.provider, "search"]
         if limit is not None:
             args.extend(["--limit", str(limit)])
@@ -80,7 +90,9 @@ class Client:
         return self._json(args)["data"]["results"]
 
     def title(self, title_id: str, *, provider: str | None = None) -> dict[str, Any]:
-        return self._json(["--provider", provider or self.provider, "title", title_id])["data"]
+        return self._json(["--provider", provider or self.provider, "title", title_id])[
+            "data"
+        ]
 
     def chapters(
         self,
@@ -111,7 +123,6 @@ class Client:
         all_chapters: bool = False,
         language: str | None = None,
         output_format: str | None = None,
-        retain_source: bool | None = None,
         dry_run: bool = False,
         assume_yes: bool = False,
         cancel_event: Event | None = None,
@@ -133,10 +144,10 @@ class Client:
             args.extend(["--chapter-language", language])
         if output_format is not None:
             if output_format.lower() not in {"directory", "png", "jpeg", "cbz", "zip"}:
-                raise ValueError("output_format must be directory, png, jpeg, cbz, or zip")
+                raise ValueError(
+                    "output_format must be directory, png, jpeg, cbz, or zip"
+                )
             args.extend(["--format", output_format.lower()])
-        if retain_source is not None:
-            args.append("--retain-source" if retain_source else "--retain-source=false")
         if dry_run:
             args.append("--dry-run")
         if assume_yes:
@@ -186,9 +197,13 @@ class Client:
         destination reuse across a batch.
         """
         directories = [os.fspath(directory) for directory in chapter_directories]
-        destinations = None if outputs is None else [os.fspath(output) for output in outputs]
+        destinations = (
+            None if outputs is None else [os.fspath(output) for output in outputs]
+        )
         if destinations is not None and len(destinations) != len(directories):
-            raise ValueError("outputs must contain exactly one path per chapter directory")
+            raise ValueError(
+                "outputs must contain exactly one path per chapter directory"
+            )
         return [
             self.convert(
                 directory,
@@ -249,7 +264,9 @@ class Client:
     def dataset_status(self, dataset_root: str | os.PathLike[str]) -> dict[str, Any]:
         return self._json(["dataset", "status", os.fspath(dataset_root)])["data"]
 
-    def dataset_verify(self, dataset_root: str | os.PathLike[str], *, repair: bool = False) -> dict[str, Any]:
+    def dataset_verify(
+        self, dataset_root: str | os.PathLike[str], *, repair: bool = False
+    ) -> dict[str, Any]:
         args = ["dataset", "verify", os.fspath(dataset_root)]
         if repair:
             args.append("--repair")
@@ -282,13 +299,15 @@ class Client:
             args.extend(["--chapter-downloads", str(self.chapter_downloads)])
         args.extend(["--existing-files", self.existing_files])
         args.extend(["--format", self.output_format])
-        if not self.retain_source:
-            args.append("--retain-source=false")
         return args
 
-    def _json(self, args: list[str], *, cancel_event: Event | None = None) -> dict[str, Any]:
+    def _json(
+        self, args: list[str], *, cancel_event: Event | None = None
+    ) -> dict[str, Any]:
         command = self._base_args() + ["--json", "--quiet"] + args
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
         deadline = None if self.timeout is None else time.monotonic() + self.timeout
         while proc.poll() is None:
             if cancel_event is not None and cancel_event.is_set():
@@ -305,8 +324,12 @@ class Client:
             payload = json.loads(stdout)
         except json.JSONDecodeError:
             if proc.returncode != 0:
-                raise MangateError(_category(stderr), stderr.strip() or "Mangate failed", stderr) from None
-            raise MangateError("internal", "Mangate returned invalid JSON", stderr) from None
+                raise MangateError(
+                    _category(stderr), stderr.strip() or "Mangate failed", stderr
+                ) from None
+            raise MangateError(
+                "internal", "Mangate returned invalid JSON", stderr
+            ) from None
         # A partial download is a usable result with failed chapters recorded in
         # its data. Preserve it for callers instead of discarding completed
         # archive paths because the CLI correctly returned exit status 5.
@@ -325,9 +348,18 @@ class Client:
 
     def _text(self, args: list[str]) -> str:
         try:
-            return subprocess.check_output(self._base_args() + args, text=True, stderr=subprocess.PIPE, timeout=self.timeout)
+            return subprocess.check_output(
+                self._base_args() + args,
+                text=True,
+                stderr=subprocess.PIPE,
+                timeout=self.timeout,
+            )
         except subprocess.CalledProcessError as error:
-            raise MangateError(_category(error.stderr), error.stderr.strip() or "Mangate failed", error.stderr) from None
+            raise MangateError(
+                _category(error.stderr),
+                error.stderr.strip() or "Mangate failed",
+                error.stderr,
+            ) from None
 
 
 def _category(message: str) -> str:

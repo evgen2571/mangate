@@ -31,13 +31,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Output format: directory, png, jpeg, cbz, or zip",
 	)
 
-	f.BoolVar(
-		&cfg.Download.RetainSource,
-		"retain-source",
-		cfg.Download.RetainSource,
-		"Legacy setting; archive downloads always remove temporary page directories",
-	)
-
 	f.Bool(
 		"non-interactive",
 		false,

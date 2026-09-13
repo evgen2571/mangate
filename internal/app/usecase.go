@@ -75,11 +75,13 @@ func toUsecaseDownloadProgress(progress downloader.DownloadProgress) usecase.Dow
 	chapters := make([]usecase.ChapterDownloadProgress, 0, len(progress.Chapters))
 	for _, chapter := range progress.Chapters {
 		chapters = append(chapters, usecase.ChapterDownloadProgress{
+			ChapterID:      chapter.ChapterID,
 			Name:           chapter.Name,
 			CompletedPages: chapter.CompletedPages,
 			TotalPages:     chapter.TotalPages,
 			Active:         chapter.Active,
 			Completed:      chapter.Completed,
+			Reused:         chapter.Reused,
 		})
 	}
 
