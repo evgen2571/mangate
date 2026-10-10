@@ -15,7 +15,7 @@ class _CompletedProcess:
     def poll(self) -> int:
         return self.returncode
 
-    def communicate(self) -> tuple[str, str]:
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
         return json.dumps(self.payload), ""
 
     @property

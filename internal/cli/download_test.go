@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -209,5 +210,56 @@ func TestSelectChaptersRejectsConflictingSelectorsBeforeMatching(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
 			t.Fatalf("selectChapters(%#v) error = %v, want conflict", selection, err)
 		}
+	}
+}
+
+func TestChapterRecordDoesNotTrustCompletionWithoutImages(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte(`{"complete":true,"expectedPages":2}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory}}}
+	if err := updateChapterRecordStates(&record); err == nil || record.Chapters[0].Status == "complete" {
+		t.Fatalf("record = %#v, error = %v", record, err)
+	}
+}
+
+func TestReportDownloadCancellationHasDedicatedStatus(t *testing.T) {
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", Status: "incomplete"}}}
+	err := reportDownloadResult(newJSONTestCommand(&bytes.Buffer{}), &record, context.Canceled)
+	var reported *ReportedError
+	if !errors.As(err, &reported) || reported.Code != 7 || record.Status != "cancelled" || record.Chapters[0].Status != "cancelled" {
+		t.Fatalf("record = %#v, error = %v", record, err)
+	}
+}
+
+func TestChapterRecordKeepsOrderedPathsAfterPartialFailure(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte(`{"complete":false,"expectedPages":3}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"0001.png", "0003.png"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte("image"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory}}}
+	if err := updateChapterRecordStates(&record); err == nil {
+		t.Fatal("expected partial acquisition error")
+	}
+	paths := record.Chapters[0].ImagePaths
+	if len(paths) != 2 || filepath.Base(paths[0]) != "0001.png" || filepath.Base(paths[1]) != "0003.png" || record.Chapters[0].Status == "complete" || record.Chapters[0].ExpectedPages != 3 {
+		t.Fatalf("record = %#v", record)
+	}
+}
+
+func TestIncompleteStateIsNeverSuccessful(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte(`{"complete":false,"expectedPages":2}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory}}}
+	if err := updateChapterRecordStates(&record); err == nil {
+		t.Fatal("incomplete chapter must produce an acquisition error")
 	}
 }

@@ -113,6 +113,48 @@ func TestExecutableWorkflow(t *testing.T) {
 			t.Fatalf("unexpected empty response %s", output)
 		}
 	})
+	t.Run("exact destination rejects archives", func(t *testing.T) {
+		directory := filepath.Join(t.TempDir(), "exact")
+		run(t, 2, "--json", "--format", "cbz", "download", "title-id", "--chapter-id", "chapter-id", "--chapter-output", directory)
+		if _, err := os.Stat(directory); !os.IsNotExist(err) {
+			t.Fatalf("invalid destination was created: %v", err)
+		}
+	})
+	t.Run("exact chapter destination", func(t *testing.T) {
+		directory := filepath.Join(t.TempDir(), "exact")
+		output := run(t, 0, "--json", "download", "title-id", "--chapter-id", "chapter-id", "--chapter-output", directory)
+		var result struct {
+			Data struct {
+				Status   string
+				Chapters []struct {
+					OutputPath    string
+					ImagePaths    []string
+					Chapter       struct{ ID, Language string }
+					ExpectedPages int
+				}
+			}
+		}
+		if err := json.Unmarshal(output, &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Data.Status != "complete" || len(result.Data.Chapters) != 1 {
+			t.Fatalf("result: %s", output)
+		}
+		chapter := result.Data.Chapters[0]
+		if chapter.OutputPath != directory || chapter.Chapter.ID != "chapter-id" || chapter.Chapter.Language != "en" || chapter.ExpectedPages != 2 || len(chapter.ImagePaths) != 2 {
+			t.Fatalf("result: %s", output)
+		}
+		for index, path := range chapter.ImagePaths {
+			if path != filepath.Join(directory, fmt.Sprintf("%04d.png", index+1)) {
+				t.Fatalf("unexpected path %q", path)
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatal(err)
+			}
+		}
+		run(t, 0, "--json", "download", "title-id", "--chapter-id", "chapter-id", "--chapter-output", directory)
+		run(t, 5, "--json", "--existing-files", "fail", "download", "title-id", "--chapter-id", "chapter-id", "--chapter-output", directory)
+	})
 	for _, format := range []string{"directory", "png", "jpeg", "cbz", "zip"} {
 		t.Run(format, func(t *testing.T) {
 			root := t.TempDir()

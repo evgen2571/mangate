@@ -17,7 +17,6 @@ import (
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/usecase"
-	"github.com/evgen2571/mangate/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -42,6 +41,8 @@ type chapterDownload struct {
 	ArchivePath   string              `json:"archivePath,omitempty"`
 	Validation    *archive.Validation `json:"validation,omitempty"`
 	ExpectedPages int                 `json:"expectedPages,omitempty"`
+	Chapter       *source.Chapter     `json:"chapter"`
+	ImagePaths    []string            `json:"imagePaths"`
 }
 
 func NewDownloadCmd(a *app.App) *cobra.Command {
@@ -52,6 +53,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 	var before, after, language string
 	var dryRun bool
 	var assumeYes bool
+	var chapterOutput string
 
 	cmd := &cobra.Command{
 		Use:     "download <title-id>",
@@ -103,15 +105,40 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				return err
 			}
 
+			if cmd.Flags().Changed("chapter-output") {
+				if strings.TrimSpace(chapterOutput) == "" {
+					return fmt.Errorf("chapter output cannot be empty")
+				}
+				if len(selection) != 1 || format.IsArchive() {
+					return fmt.Errorf("select chapters: --chapter-output requires one chapter and directory, png, or jpeg format")
+				}
+				chapterOutput, err = filepath.Abs(chapterOutput)
+				if err != nil {
+					return fmt.Errorf("resolve chapter output: %w", err)
+				}
+				chapter := *selection[0]
+				chapter.From = title
+				if err := downloader.ValidateExactDestination(chapterOutput, &chapter, provider.Name()); err != nil {
+					return err
+				}
+			}
+			outputRoot, err := filepath.Abs(a.Cfg.Download.Dir)
+			if err != nil {
+				return fmt.Errorf("resolve output root: %w", err)
+			}
 			started := time.Now().UTC()
 			record := downloadRecord{
 				Provider:   provider.Name(),
 				Title:      title,
 				Format:     format,
-				OutputRoot: a.Cfg.Download.Dir,
+				OutputRoot: outputRoot,
 				Status:     "in_progress",
 				StartedAt:  started,
-				Chapters:   chapterRecords(a.Cfg.Download.Dir, title, selection, format, "pending"),
+				Chapters:   chapterRecords(outputRoot, title, selection, format, "pending"),
+			}
+			if chapterOutput != "" {
+				record.OutputRoot = chapterOutput
+				record.Chapters[0].OutputPath = chapterOutput
 			}
 			if dryRun {
 				if format.IsArchive() && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
@@ -139,7 +166,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 					provider.Name(),
 					len(selection),
 					format,
-					a.Cfg.Download.Dir,
+					record.OutputRoot,
 				)
 				for _, chapter := range record.Chapters {
 					path := chapter.OutputPath
@@ -158,7 +185,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			}
 
 			if !wantsJSON(cmd) && !isQuiet(cmd) {
-				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, a.Cfg.Download.Dir, a.Cfg.Download.ExistingFileMode)
+				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, record.OutputRoot, a.Cfg.Download.ExistingFileMode)
 			}
 
 			pendingSelection := selection
@@ -190,9 +217,24 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				return nil
 			}
 
-			err = a.UseCases().DownloadChapters(cmd.Context(), title, pendingSelection, notify)
+			if chapterOutput != "" {
+				chapter := *selection[0]
+				chapter.From = title
+				chapter.Pages = nil
+				var pages []downloader.PageDownloadResult
+				pages, err = a.Downloader.DownloadChapterTo(cmd.Context(), &chapter, chapterOutput, provider.Pages)
+				chapterCopy := chapter
+				chapterCopy.Pages = nil
+				record.Chapters[0].Chapter = &chapterCopy
+				record.Chapters[0].ExpectedPages = len(chapter.Pages)
+				for _, page := range pages {
+					record.Chapters[0].ImagePaths = append(record.Chapters[0].ImagePaths, page.Path)
+				}
+			} else {
+				err = a.UseCases().DownloadChapters(cmd.Context(), title, pendingSelection, notify)
+			}
 			record.CompletedAt = time.Now().UTC()
-			updateChapterRecordStates(&record)
+			err = errors.Join(err, updateChapterRecordStates(&record))
 			if err != nil {
 				record.Error = err.Error()
 				if format.IsArchive() {
@@ -225,6 +267,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
+	flags.StringVar(&chapterOutput, "chapter-output", "", "Exact directory for one chapter (directory, png, or jpeg)")
 	flags.StringSliceVar(&chapterIDs, "chapter-id", nil, "Stable chapter ID to download, repeatable")
 	flags.StringSliceVar(&chapterNumbers, "chapter", nil, "Chapter number to download, repeatable")
 	flags.StringVar(&chapterRange, "range", "", "Inclusive chapter number range, for example 1-10")
@@ -291,12 +334,25 @@ func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause erro
 		code = 8
 	}
 
-	if completed > 0 {
+	hasPages := false
+	for _, chapter := range record.Chapters {
+		hasPages = hasPages || len(chapter.ImagePaths) > 0
+	}
+	if completed > 0 || hasPages {
 		record.Status = "partial"
 	} else {
-		record.Status = "incomplete"
+		record.Status = "failed"
 	}
 
+	if errors.Is(cause, context.Canceled) || (cmd.Context() != nil && errors.Is(cmd.Context().Err(), context.Canceled)) {
+		record.Status = "cancelled"
+		code = 7
+		for index := range record.Chapters {
+			if record.Chapters[index].Status != "complete" && record.Chapters[index].Status != "skipped" {
+				record.Chapters[index].Status = "cancelled"
+			}
+		}
+	}
 	if wantsJSON(cmd) {
 		if err := writeJSONStatus(cmd, "download", record.Status, record); err != nil {
 			return err
@@ -351,7 +407,8 @@ func writeDownloadSummary(out io.Writer, record downloadRecord) {
 	}
 }
 
-func updateChapterRecordStates(record *downloadRecord) {
+func updateChapterRecordStates(record *downloadRecord) error {
+	var failures []error
 	for index := range record.Chapters {
 		if record.Chapters[index].Status == "skipped" {
 			continue
@@ -360,18 +417,44 @@ func updateChapterRecordStates(record *downloadRecord) {
 		stateData, err := os.ReadFile(filepath.Join(record.Chapters[index].OutputPath, ".mangate.json"))
 		if err != nil {
 			record.Chapters[index].Status = "incomplete"
+			failures = append(failures, fmt.Errorf("read chapter state: %w", err))
 			continue
 		}
 
 		var state struct {
-			Complete bool `json:"complete"`
+			Complete      bool `json:"complete"`
+			ExpectedPages int  `json:"expectedPages"`
 		}
-		if json.Unmarshal(stateData, &state) == nil && state.Complete {
+		if err := json.Unmarshal(stateData, &state); err != nil {
+			record.Chapters[index].Status = "incomplete"
+			failures = append(failures, fmt.Errorf("decode chapter state: %w", err))
+			continue
+		}
+		record.Chapters[index].ExpectedPages = state.ExpectedPages
+		if record.Chapters[index].Chapter != nil {
+			record.Chapters[index].Chapter.PageCount = state.ExpectedPages
+		}
+		if state.Complete {
+			paths, err := archive.ValidatedImagePaths(record.Chapters[index].OutputPath, state.ExpectedPages)
+			if err != nil {
+				record.Chapters[index].Status = "incomplete"
+				failures = append(failures, err)
+				continue
+			}
+			record.Chapters[index].ImagePaths = paths
 			record.Chapters[index].Status = "complete"
 		} else {
 			record.Chapters[index].Status = "incomplete"
+			failures = append(failures, fmt.Errorf("chapter %q output is incomplete", record.Chapters[index].ID))
+			paths, err := downloader.AvailablePagePaths(record.Chapters[index].OutputPath, state.ExpectedPages)
+			if err != nil {
+				failures = append(failures, err)
+			} else {
+				record.Chapters[index].ImagePaths = paths
+			}
 		}
 	}
+	return errors.Join(failures...)
 }
 
 func reusableArchiveSelection(record *downloadRecord, selection []*source.Chapter, title *source.Manga) ([]*source.Chapter, error) {
@@ -578,15 +661,14 @@ func chaptersWithNumber(chapters []*source.Chapter, number string) []*source.Cha
 
 func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter, format archive.Format, status string) []chapterDownload {
 	records := make([]chapterDownload, 0, len(chapters))
-	titleDir := util.SanitizeString(title.Title)
-	if id := util.SanitizeString(title.ID); id != "unknown" {
-		titleDir += "-" + id
-	}
+	titleDir := downloader.TitleDirectoryName(title)
 
 	names := downloader.ChapterDirectoryNames(chapters)
 	for index, chapter := range chapters {
 		directory := filepath.Join(root, titleDir, names[index])
-		record := chapterDownload{ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: directory, ExpectedPages: chapter.PageCount}
+		chapterCopy := *chapter
+		chapterCopy.Pages = nil
+		record := chapterDownload{Chapter: &chapterCopy, ImagePaths: []string{}, ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: directory, ExpectedPages: chapter.PageCount}
 		if format.IsArchive() {
 			record.ArchivePath = directory + format.Extension()
 		}
@@ -632,6 +714,9 @@ func finalizeArchives(ctx context.Context, record downloadRecord, title *source.
 		}
 
 		chapterRecord.Validation = &result.Validation
+		if result.SourceRemoved {
+			chapterRecord.ImagePaths = []string{}
+		}
 		if result.Status == archive.StatusSkipped {
 			chapterRecord.Status = "skipped"
 		}
