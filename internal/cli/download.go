@@ -235,6 +235,11 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			}
 			record.CompletedAt = time.Now().UTC()
 			err = errors.Join(err, updateChapterRecordStates(&record))
+			for index := range record.Chapters {
+				if errors.Is(err, &downloader.ChapterPreflightError{ChapterID: record.Chapters[index].ID}) {
+					record.Chapters[index].Status = "failed"
+				}
+			}
 			if err != nil {
 				record.Error = err.Error()
 				if format.IsArchive() {
@@ -336,7 +341,7 @@ func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause erro
 
 	hasPages := false
 	for _, chapter := range record.Chapters {
-		hasPages = hasPages || len(chapter.ImagePaths) > 0
+		hasPages = hasPages || (chapter.Status != "failed" && len(chapter.ImagePaths) > 0)
 	}
 	if completed > 0 || hasPages {
 		record.Status = "partial"
@@ -422,12 +427,21 @@ func updateChapterRecordStates(record *downloadRecord) error {
 		}
 
 		var state struct {
-			Complete      bool `json:"complete"`
-			ExpectedPages int  `json:"expectedPages"`
+			Complete      bool   `json:"complete"`
+			ExpectedPages int    `json:"expectedPages"`
+			TitleID       string `json:"titleId"`
+			ChapterID     string `json:"chapterId"`
+			Provider      string `json:"provider"`
 		}
 		if err := json.Unmarshal(stateData, &state); err != nil {
 			record.Chapters[index].Status = "incomplete"
 			failures = append(failures, fmt.Errorf("decode chapter state: %w", err))
+			continue
+		}
+		if record.Title != nil && (state.TitleID != record.Title.ID || state.ChapterID != record.Chapters[index].ID || state.Provider != record.Provider) {
+			record.Chapters[index].Status = "incomplete"
+			record.Chapters[index].ImagePaths = []string{}
+			failures = append(failures, fmt.Errorf("chapter destination belongs to a different chapter or provider"))
 			continue
 		}
 		record.Chapters[index].ExpectedPages = state.ExpectedPages

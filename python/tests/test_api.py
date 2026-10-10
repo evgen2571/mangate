@@ -11,7 +11,7 @@ import mangate
 
 # A valid one-pixel PNG, served locally instead of contacting a provider.
 PNG = bytes.fromhex(
-    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63606060f80f00010401005fe5c34b0000000049454e44ae426082"
 )
 
 
@@ -203,7 +203,8 @@ def test_destination_does_not_overwrite_unidentified_files(binary, provider, tmp
 
 
 @pytest.mark.parametrize(
-    "mutation", ["order", "missing", "escape", "count", "identity", "status"]
+    "mutation",
+    ["order", "missing", "escape", "count", "identity", "status", "chapter_status"],
 )
 def test_typed_result_rejects_contradictory_contract(tmp_path, monkeypatch, mutation):
     output = tmp_path / "chapter"
@@ -239,6 +240,8 @@ def test_typed_result_rejects_contradictory_contract(tmp_path, monkeypatch, muta
         item["expectedPages"] = 3
     elif mutation == "identity":
         item["chapter"]["id"] = "other"
+    elif mutation == "chapter_status":
+        item["status"] = "incomplete"
     else:
         record["status"] = "unexpected"
     monkeypatch.setattr("mangate.api.Client.download", lambda *args, **kwargs: record)
@@ -324,3 +327,65 @@ def test_cancelled_download_does_not_resolve_title(tmp_path):
             cancel_event=event,
         )
     assert caught.value.category == "cancelled"
+
+
+@pytest.mark.parametrize("complete", [False, True])
+@pytest.mark.parametrize("exact", [False, True])
+def test_rejected_download_preserves_state_and_pages(
+    binary, provider, tmp_path, complete, exact
+):
+    provider["fail"] = not complete
+    arguments = {
+        "title_id": "title-id",
+        "chapter_id": "chapter-id",
+        "executable": binary,
+    }
+    if exact:
+        arguments["output"] = tmp_path / "chapter"
+    else:
+        # Use Session so ordinary hierarchy stays within the test directory.
+        session = mangate.Session(executable=binary, output_dir=tmp_path / "organized")
+        arguments.pop("executable")
+    download = mangate.download if exact else session.download
+    if complete:
+        original = download(**arguments)
+    else:
+        with pytest.raises(mangate.DownloadError) as caught:
+            download(**arguments)
+        original = caught.value.result
+    directory = original.output
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    provider["fail"] = False
+    with pytest.raises(mangate.DownloadError) as caught:
+        download(**arguments, options=mangate.DownloadOptions(existing_files="fail"))
+    assert caught.value.result.status == "failed"
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    resumed = download(**arguments)
+    assert resumed.complete
+    assert (directory / "0001.png").read_bytes() == before["0001.png"]
+    replaced = download(
+        **arguments,
+        options=mangate.DownloadOptions(existing_files="replace", output_format="jpeg"),
+    )
+    assert replaced.complete
+    assert [path.suffix for path in replaced.image_paths] == [".jpeg", ".jpeg"]
+    assert not list(directory.glob("*.png"))
+
+
+def test_rejected_archive_download_does_not_remove_original_pages(
+    binary, provider, tmp_path
+):
+    client = mangate.Client(executable=binary, output_dir=tmp_path / "organized")
+    original = client.download("title-id", chapter_ids=["chapter-id"])
+    directory = Path(original["chapters"][0]["outputPath"])
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    rejecting = mangate.Client(
+        executable=binary, output_dir=tmp_path / "organized", existing_files="fail"
+    )
+    with pytest.raises(mangate.MangateError) as caught:
+        rejecting.download(
+            "title-id", chapter_ids=["chapter-id"], output_format="cbz", assume_yes=True
+        )
+    assert caught.value.result["status"] == "failed"
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    assert not directory.with_suffix(".cbz").exists()

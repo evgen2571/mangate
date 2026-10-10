@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/evgen2571/mangate/internal/source"
@@ -31,6 +33,19 @@ type PageDownloadResult struct {
 	Converted         bool   `json:"converted"`
 }
 
+// ChapterPreflightError identifies an operation rejected before transferring pages.
+type ChapterPreflightError struct {
+	ChapterID string
+	Cause     error
+}
+
+func (e *ChapterPreflightError) Error() string { return e.Cause.Error() }
+func (e *ChapterPreflightError) Unwrap() error { return e.Cause }
+func (e *ChapterPreflightError) Is(target error) bool {
+	other, ok := target.(*ChapterPreflightError)
+	return ok && e.ChapterID == other.ChapterID
+}
+
 // DownloadChapterTo uses the existing transfer, retry, conversion, and atomic
 // finalization code while letting a caller choose a stable chapter directory.
 // Ordinary downloads keep using their historical display-name destinations.
@@ -43,25 +58,14 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 		return nil, fmt.Errorf("download chapter to: directory cannot be empty")
 	}
 
-	stateData, stateErr := os.ReadFile(filepath.Join(directory, ".mangate.json"))
-	if stateErr == nil {
-		var state chapterState
-		if err := json.Unmarshal(stateData, &state); err != nil {
-			return nil, fmt.Errorf("read chapter state: %w", err)
-		}
-		if state.TitleID != chapter.From.ID || state.ChapterID != chapter.ID || state.Provider != d.cfg.Provider {
-			return nil, fmt.Errorf("download chapter to: destination belongs to a different chapter or provider")
-		}
-	} else if !os.IsNotExist(stateErr) {
-		return nil, fmt.Errorf("read chapter state: %w", stateErr)
-	}
-
-	if err := util.EnsureDir(directory, "chapter directory"); err != nil {
-		return nil, err
-	}
-
 	for attempt := 0; ; attempt++ {
-		results, err := d.downloadChapterToAttempt(ctx, chapter, directory, pageLoader)
+		if err := d.prepareChapterPages(ctx, chapter, directory, pageLoader); err != nil {
+			return nil, &ChapterPreflightError{ChapterID: chapter.ID, Cause: err}
+		}
+		if err := util.EnsureDir(directory, "chapter directory"); err != nil {
+			return nil, err
+		}
+		results, err := d.downloadChapterToAttempt(ctx, chapter, directory)
 		if err == nil {
 			if err := writeChapterState(directory, chapter, d.cfg.Provider, true); err != nil {
 				return results, err
@@ -75,25 +79,18 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 			return results, err
 		}
 
+		if d.cfg.Download.ExistingFileMode == "fail" {
+			retry := *d
+			retry.cfg.Download.ExistingFileMode = "skip"
+			d = &retry
+		}
+
 		chapter.Pages = nil
 		chapter.PageCount = 0
 	}
 }
 
-func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *source.Chapter, directory string, pageLoader PageLoader) ([]PageDownloadResult, error) {
-	if len(chapter.Pages) == 0 && pageLoader != nil {
-		pages, err := pageLoader(ctx, chapter)
-		if err != nil {
-			return nil, fmt.Errorf("load pages for chapter %q: %w", chapter.ID, err)
-		}
-
-		chapter.Pages, chapter.PageCount = pages, len(pages)
-	}
-
-	if len(chapter.Pages) == 0 {
-		return nil, fmt.Errorf("download chapter %q: provider returned no pages", chapter.ID)
-	}
-
+func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *source.Chapter, directory string) ([]PageDownloadResult, error) {
 	results := make([]PageDownloadResult, len(chapter.Pages))
 	var g errgroup.Group
 	g.SetLimit(d.pageDownloadLimit())
@@ -268,4 +265,73 @@ func AvailablePagePaths(directory string, expected int) ([]string, error) {
 		paths = append(paths, path)
 	}
 	return paths, nil
+}
+
+// Preflight every page before workers can change any destination or metadata.
+func (d *Downloader) prepareChapterPages(ctx context.Context, chapter *source.Chapter, directory string, pageLoader PageLoader) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(directory); err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+		return fmt.Errorf("chapter destination must be a directory, not a file or symlink")
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect chapter destination: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("chapter destination contains a symlink: %s", entry.Name())
+		}
+		stem, _, _ := strings.Cut(entry.Name(), ".")
+		if number, err := strconv.Atoi(stem); err == nil && number > 0 && !entry.Type().IsRegular() {
+			return fmt.Errorf("chapter page destination is not a regular file: %s", entry.Name())
+		}
+		if entry.Name() == ".mangate.json.part" && !entry.Type().IsRegular() {
+			return fmt.Errorf("chapter state destination is not a regular file")
+		}
+	}
+	stateData, stateErr := os.ReadFile(filepath.Join(directory, ".mangate.json"))
+	if stateErr == nil {
+		var state chapterState
+		if err := json.Unmarshal(stateData, &state); err != nil {
+			return fmt.Errorf("read chapter state: %w", err)
+		}
+		if state.TitleID != chapter.From.ID || state.ChapterID != chapter.ID || state.Provider != d.cfg.Provider {
+			return fmt.Errorf("download chapter to: destination belongs to a different chapter or provider")
+		}
+	} else if !os.IsNotExist(stateErr) {
+		return fmt.Errorf("read chapter state: %w", stateErr)
+	}
+
+	if d.cfg.Download.ExistingFileMode == "fail" && len(entries) > 0 {
+		return fmt.Errorf("download chapter %q: destination already exists: %s", chapter.ID, directory)
+	}
+	if len(chapter.Pages) == 0 && pageLoader != nil {
+		pages, err := pageLoader(ctx, chapter)
+		if err != nil {
+			return fmt.Errorf("load pages for chapter %q: %w", chapter.ID, err)
+		}
+		chapter.Pages, chapter.PageCount = pages, len(pages)
+	}
+	if len(chapter.Pages) == 0 {
+		return fmt.Errorf("download chapter %q: provider returned no pages", chapter.ID)
+	}
+	for index, page := range chapter.Pages {
+		if page == nil || strings.TrimSpace(page.URL) == "" {
+			return fmt.Errorf("download chapter %q page %d: missing page URL", chapter.ID, index+1)
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, page.URL, nil)
+		if err != nil {
+			return fmt.Errorf("validate chapter %q page %d: %w", chapter.ID, index+1, err)
+		}
+		if (request.URL.Scheme != "http" && request.URL.Scheme != "https") || request.URL.Host == "" {
+			return fmt.Errorf("validate chapter %q page %d: expected an HTTP URL", chapter.ID, index+1)
+		}
+		base := filepath.Join(directory, fmt.Sprintf("%04d", index+1))
+		if path := existingPagePath(base); path != "" && d.cfg.Download.ExistingFileMode == "skip" && !existingOutputMatchesFormat(path, d.cfg.Download.Format) {
+			return fmt.Errorf("download page: existing output %q does not match requested %s format; use --existing-files replace", filepath.Ext(path), d.cfg.Download.Format)
+		}
+	}
+	return ctx.Err()
 }

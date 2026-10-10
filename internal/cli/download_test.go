@@ -263,3 +263,18 @@ func TestIncompleteStateIsNeverSuccessful(t *testing.T) {
 		t.Fatal("incomplete chapter must produce an acquisition error")
 	}
 }
+
+func TestChapterRecordRejectsForeignCompletionState(t *testing.T) {
+	directory := t.TempDir()
+	state := []byte(`{"complete":true,"expectedPages":1,"titleId":"title","chapterId":"other","provider":"mangadex"}`)
+	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), state, 0644); err != nil {
+		t.Fatal(err)
+	}
+	record := downloadRecord{Provider: "mangadex", Title: &source.Manga{ID: "title"}, Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory, ImagePaths: []string{"old"}}}}
+	if err := updateChapterRecordStates(&record); err == nil {
+		t.Fatal("expected identity rejection")
+	}
+	if record.Chapters[0].Status == "complete" || len(record.Chapters[0].ImagePaths) != 0 {
+		t.Fatalf("foreign files exposed: %#v", record)
+	}
+}

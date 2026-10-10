@@ -474,59 +474,82 @@ class Client:
     ) -> tuple[str, str, int]:
         if cancel_event is not None and cancel_event.is_set():
             raise MangateError("cancelled", "operation cancelled")
-        try:
-            proc = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                start_new_session=os.name != "nt",
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                if os.name == "nt"
-                else 0,
-            )
-        except OSError as error:
-            raise MangateError(
-                "executable", f"Cannot start Mangate: {error}"
-            ) from error
-        deadline = None if self.timeout is None else time.monotonic() + self.timeout
-        try:
-            while True:
-                category = None
-                if cancel_event is not None and cancel_event.is_set():
-                    category = "cancelled"
-                elif deadline is not None and time.monotonic() >= deadline:
-                    category = "timeout"
-                if category is not None:
-                    stdout, stderr = _stop_process(proc)
-                    try:
-                        result = json.loads(stdout).get("data")
-                    except (ValueError, AttributeError):
-                        result = None
-                    raise MangateError(
-                        category, f"operation {category}", stderr, result
-                    )
-                try:
-                    # communicate drains both pipes while waiting, and preserves
-                    # buffered output across TimeoutExpired retries.
-                    stdout, stderr = proc.communicate(timeout=0.1)
-                    return stdout, stderr, proc.returncode
-                except subprocess.TimeoutExpired:
-                    continue
-        except KeyboardInterrupt:
-            stdout, stderr = _stop_process(proc)
+        # Files avoid waiting for EOF from descendants that inherit output handles.
+        with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as diagnostic:
+            proc = None
+            job = None
+            category = None
+            creationflags = 0
             try:
-                result = json.loads(stdout).get("data")
-            except (ValueError, AttributeError):
-                result = None
-            raise MangateError(
-                "cancelled", "operation cancelled", stderr, result
-            ) from None
-        finally:
-            if proc.poll() is None:
-                _stop_process(proc)
+                if os.name == "nt":
+                    from ._windows import CREATE_SUSPENDED, ProcessJob
+
+                    job = ProcessJob()
+                    creationflags = (
+                        subprocess.CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED
+                    )
+                proc = subprocess.Popen(
+                    command,
+                    stdout=output,
+                    stderr=diagnostic,
+                    start_new_session=os.name != "nt",
+                    creationflags=creationflags,
+                )
+                if job is not None:
+                    try:
+                        job.start(proc)
+                    except OSError:
+                        # Assignment failure leaves an unowned, suspended child.
+                        proc.kill()
+                        try:
+                            proc.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            pass
+                        raise
+                deadline = (
+                    None if self.timeout is None else time.monotonic() + self.timeout
+                )
+                try:
+                    while True:
+                        if cancel_event is not None and cancel_event.is_set():
+                            category = "cancelled"
+                        elif deadline is not None and time.monotonic() >= deadline:
+                            category = "timeout"
+                        if category is not None:
+                            break
+                        try:
+                            proc.wait(timeout=0.1)
+                            break
+                        except subprocess.TimeoutExpired:
+                            continue
+                except KeyboardInterrupt:
+                    category = "cancelled"
+            except OSError as error:
+                raise MangateError(
+                    "executable", f"Cannot start or manage Mangate: {error}"
+                ) from error
+            finally:
+                try:
+                    if proc is not None:
+                        if proc.poll() is None:
+                            _stop_process(proc, job)
+                        _kill_process_tree(proc, job)
+                finally:
+                    if job is not None:
+                        job.close()
+            output.seek(0)
+            diagnostic.seek(0)
+            stdout = output.read().decode("utf-8", errors="replace")
+            stderr = diagnostic.read().decode("utf-8", errors="replace")
+            stdout = stdout.replace("\r\n", "\n").replace("\r", "\n")
+            stderr = stderr.replace("\r\n", "\n").replace("\r", "\n")
+            if category is not None:
+                try:
+                    result = json.loads(stdout).get("data")
+                except (ValueError, AttributeError):
+                    result = None
+                raise MangateError(category, f"operation {category}", stderr, result)
+            return stdout, stderr, proc.returncode
 
     def _text(self, args: list[str]) -> str:
         stdout, stderr, code = self._run(self._base_args() + args)
@@ -537,7 +560,23 @@ class Client:
         return stdout
 
 
-def _stop_process(proc: subprocess.Popen[str]) -> tuple[str, str]:
+def _kill_process_tree(proc: subprocess.Popen, job=None) -> None:
+    if job is not None:
+        job.terminate()
+    elif os.name != "nt":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    elif proc.poll() is None:
+        try:
+            proc.kill()
+        except OSError:
+            if proc.poll() is None:
+                raise
+
+
+def _stop_process(proc: subprocess.Popen, job=None) -> None:
     if proc.poll() is None:
         try:
             if os.name == "nt":
@@ -545,18 +584,19 @@ def _stop_process(proc: subprocess.Popen[str]) -> tuple[str, str]:
             else:
                 os.killpg(proc.pid, signal.SIGINT)
         except (OSError, ValueError):
-            proc.terminate()
-    try:
-        return proc.communicate(timeout=2)
-    except subprocess.TimeoutExpired:
-        if os.name == "nt":
-            proc.kill()
-        else:
             try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        return proc.communicate()
+                proc.terminate()
+            except OSError:
+                if proc.poll() is None:
+                    raise
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(proc, job)
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def _category(message: str) -> str:
