@@ -65,6 +65,7 @@ func (s Service) CoverPath(ctx context.Context, manga *source.Manga) (string, er
 	if manga == nil {
 		return "", fmt.Errorf("load cover: nil manga")
 	}
+
 	if s.deps.Cache == nil {
 		return "", fmt.Errorf("load cover: cache is not configured")
 	}
@@ -119,6 +120,7 @@ func (s Service) provider() (Provider, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if provider == nil {
 		return nil, fmt.Errorf("provider: resolver returned nil provider")
 	}
@@ -131,6 +133,7 @@ func (s Service) withTimeout(ctx context.Context) (context.Context, context.Canc
 	if s.deps.Timeout <= 0 {
 		return context.WithCancel(ctx)
 	}
+
 	return context.WithTimeout(ctx, s.deps.Timeout)
 }
 
@@ -138,6 +141,7 @@ func ctxOrBackground(ctx context.Context) context.Context {
 	if ctx == nil {
 		return context.Background()
 	}
+
 	return ctx
 }
 
@@ -145,6 +149,7 @@ func buildDownloadManga(manga *source.Manga, chapters []*source.Chapter) (*sourc
 	if manga == nil {
 		return nil, fmt.Errorf("download chapters: nil manga")
 	}
+
 	if len(chapters) == 0 {
 		return nil, fmt.Errorf("download chapters: no chapters selected")
 	}

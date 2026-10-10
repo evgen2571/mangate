@@ -35,9 +35,11 @@ func (r *Registry) Register(name string, factory Factory) {
 	if name == "" {
 		panic("providers: register called with empty name")
 	}
+
 	if factory == nil {
 		panic("providers: register called with nil factory")
 	}
+
 	if _, exists := r.factories[name]; exists {
 		panic(fmt.Sprintf("providers: provider %q already registered", name))
 	}
@@ -61,6 +63,7 @@ func (r *Registry) Names() []string {
 	for name := range r.factories {
 		names = append(names, name)
 	}
+
 	sort.Strings(names)
 	return names
 }

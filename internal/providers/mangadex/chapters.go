@@ -50,11 +50,13 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 		if err != nil {
 			return nil, fmt.Errorf("chapters for %s: %w", manga.ID, err)
 		}
+
 		allChapters = append(allChapters, mangaDexResponse.Data...)
 
 		if !more {
 			break
 		}
+
 		offset = next
 	}
 
@@ -65,6 +67,7 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 		if strings.TrimSpace(mdc.ID) == "" {
 			return nil, fmt.Errorf("chapters response contains a chapter without an id")
 		}
+
 		mdc.URL = pr.site("chapter/" + url.PathEscape(mdc.ID))
 		chapter := mdc.toSource()
 		chapter.From = manga
@@ -94,6 +97,7 @@ func (mdc *mangaDexChapter) releaseGroup() string {
 			return relationship.Attributes.Name
 		}
 	}
+
 	return ""
 }
 
@@ -105,9 +109,11 @@ func sortChaptersByChapter(chapters []mangaDexChapter) {
 		if errI != nil && errJ != nil {
 			return chapterTieBreak(chapters[i], chapters[j])
 		}
+
 		if errI != nil {
 			return false
 		}
+
 		if errJ != nil {
 			return true
 		}
@@ -115,6 +121,7 @@ func sortChaptersByChapter(chapters []mangaDexChapter) {
 		if chapterI != chapterJ {
 			return chapterI < chapterJ
 		}
+
 		return chapterTieBreak(chapters[i], chapters[j])
 	})
 }
@@ -127,5 +134,6 @@ func chapterTieBreak(left, right mangaDexChapter) bool {
 			return leftFields[index] < rightFields[index]
 		}
 	}
+
 	return false
 }

@@ -9,7 +9,6 @@ import (
 func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 	f := cmd.PersistentFlags()
 
-	// Top-level config
 	f.StringVar(
 		&cfg.Provider,
 		"provider",
@@ -47,7 +46,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Manga language",
 	)
 
-	// Download
 	f.StringVar(
 		&cfg.Download.Dir,
 		"download-dir",
@@ -62,7 +60,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Output root for downloaded titles and archives",
 	)
 
-	// Concurrency
 	f.IntVar(
 		&cfg.Concurrency.PageDownloads,
 		"page-downloads",
@@ -77,7 +74,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Number of concurrent chapter downloads",
 	)
 
-	// Search
 	f.IntVar(
 		&cfg.Search.HistoryMax,
 		"search-history-max",
@@ -85,7 +81,6 @@ func bindPersistentConfigFlags(cmd *cobra.Command, cfg *config.Config) {
 		"Maximum number of search queries to remember (0 disables history)",
 	)
 
-	// Directories
 	f.StringVar(
 		&cfg.Dirs.Cache,
 		"cache-dir",

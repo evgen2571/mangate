@@ -31,6 +31,7 @@ func (a *App) DatasetService(collection dataset.Config) (dataset.Service, error)
 	if a == nil || a.Client == nil {
 		return dataset.Service{}, fmt.Errorf("dataset service: app is not configured")
 	}
+
 	cfg := a.Cfg.Clone()
 	cfg.Provider = collection.Provider
 	cfg.Download.Dir = collection.Output.Directory
@@ -41,14 +42,17 @@ func (a *App) DatasetService(collection dataset.Config) (dataset.Service, error)
 	if err := cfg.Validate(); err != nil {
 		return dataset.Service{}, fmt.Errorf("dataset service configuration: %w", err)
 	}
+
 	provider, err := a.Registry.New(cfg.Provider, cfg, a.Client)
 	if err != nil {
 		return dataset.Service{}, err
 	}
+
 	store, err := dataset.Open(collection.Output.Directory)
 	if err != nil {
 		return dataset.Service{}, err
 	}
+
 	return dataset.Service{Store: store, Provider: provider, Downloader: downloader.NewWithPageRetryLimit(cfg, a.Client, collection.Runtime.RetryLimit)}, nil
 }
 
@@ -59,6 +63,7 @@ func WithRegistry(registry *providers.Registry) Option {
 		if registry == nil {
 			return fmt.Errorf("registry cannot be nil")
 		}
+
 		a.Registry = registry
 		return nil
 	}
@@ -72,13 +77,16 @@ func New(cfg config.Config, opts ...Option) (*App, error) {
 		if opt == nil {
 			continue
 		}
+
 		if err := opt(a); err != nil {
 			return nil, err
 		}
 	}
+
 	if err := a.ApplyConfig(cfg); err != nil {
 		return nil, err
 	}
+
 	return a, nil
 }
 
@@ -87,6 +95,7 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+
 	if a.hasApplied && a.Client != nil && a.Downloader != nil && a.Cache != nil && a.appliedCfg == cfg {
 		return nil
 	}
@@ -94,6 +103,7 @@ func (a *App) ApplyConfig(cfg config.Config) error {
 	if a.Registry == nil {
 		a.Registry = providers.NewDefaultRegistry()
 	}
+
 	if !slices.Contains(a.Registry.Names(), cfg.Provider) {
 		return fmt.Errorf("unknown provider %q (available: %s)", cfg.Provider, strings.Join(a.Registry.Names(), ", "))
 	}
@@ -113,15 +123,19 @@ func (a *App) ApplyAndSaveConfig(cfg config.Config) error {
 	if a == nil {
 		return fmt.Errorf("apply failed: app is nil")
 	}
+
 	if err := a.ApplyConfig(cfg); err != nil {
 		return fmt.Errorf("apply failed: %w", err)
 	}
+
 	if strings.TrimSpace(a.ConfigPath) == "" {
 		return fmt.Errorf("save failed: config path cannot be empty")
 	}
+
 	if err := config.Save(a.ConfigPath, a.Cfg); err != nil {
 		return fmt.Errorf("save failed: %w", err)
 	}
+
 	return nil
 }
 
@@ -129,6 +143,7 @@ func (a *App) SearchHistory() ([]string, error) {
 	if a == nil || a.Cache == nil {
 		return nil, nil
 	}
+
 	return a.Cache.SearchHistory()
 }
 
@@ -138,6 +153,7 @@ func (a *App) Provider() (providers.Provider, error) {
 	if a == nil || a.Registry == nil || a.Client == nil {
 		return nil, fmt.Errorf("provider: app is not configured")
 	}
+
 	return a.Registry.New(a.Cfg.Provider, a.Cfg, a.Client)
 }
 
@@ -145,5 +161,6 @@ func (a *App) AddSearchQuery(query string) error {
 	if a == nil || a.Cache == nil {
 		return nil
 	}
+
 	return a.Cache.AddSearchQuery(query)
 }

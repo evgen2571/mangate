@@ -21,6 +21,7 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 			if len(args) == 1 && strings.TrimSpace(args[0]) == "" {
 				return fmt.Errorf("manga id cannot be empty")
 			}
+
 			return requireOneArgument("a stable <title-id> from `mangate search`", "mangate chapters <title-id>")(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -33,19 +34,28 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load chapters for manga %q with provider %q: %w", mangaID, a.Cfg.Provider, err)
 			}
+
 			chapters = filterChaptersByLanguage(chapters, language)
 
 			out := cmd.OutOrStdout()
 			if len(chapters) == 0 {
 				if wantsJSON(cmd) {
-					return writeJSON(cmd, "chapters.list", chapterListRecord{Provider: a.Cfg.Provider, TitleID: mangaID, Order: "ascending provider chapter sequence", Chapters: []*source.Chapter{}})
+					return writeJSON(cmd, "chapters.list", chapterListRecord{
+						Provider: a.Cfg.Provider,
+						TitleID:  mangaID,
+						Order:    "ascending provider chapter sequence",
+						Chapters: []*source.Chapter{},
+					})
 				}
+
 				writeHuman(out, "no chapters found for manga %s\n", mangaID)
 				return nil
 			}
+
 			if limit > 0 && len(chapters) > limit {
 				chapters = chapters[:limit]
 			}
+
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "chapters.list", chapterListRecord{Provider: a.Cfg.Provider, TitleID: mangaID, Order: "ascending provider chapter sequence", Chapters: chapters})
 			}
@@ -60,24 +70,31 @@ func NewChaptersCmd(a *app.App) *cobra.Command {
 				if chapter.ID != "" {
 					writeHuman(out, "   ID:    %s\n", chapter.ID)
 				}
+
 				if chapter.PageCount > 0 {
 					writeHuman(out, "   Pages: %d\n", chapter.PageCount)
 				}
+
 				if chapter.Volume != "" {
 					writeHuman(out, "   Volume: %s\n", chapter.Volume)
 				}
+
 				if chapter.Language != "" {
 					writeHuman(out, "   Language: %s\n", chapter.Language)
 				}
+
 				if chapter.ReleaseGroup != "" {
 					writeHuman(out, "   Release group: %s\n", chapter.ReleaseGroup)
 				}
+
 				if chapter.PublishedAt != "" {
 					writeHuman(out, "   Published: %s\n", chapter.PublishedAt)
 				}
+
 				if chapter.URL != "" {
 					writeHuman(out, "   URL:   %s\n", chapter.URL)
 				}
+
 				writeHuman(out, "\n")
 			}
 
@@ -101,6 +118,7 @@ func filterChaptersByLanguage(chapters []*source.Chapter, language string) []*so
 			filtered = append(filtered, chapter)
 		}
 	}
+
 	return filtered
 }
 

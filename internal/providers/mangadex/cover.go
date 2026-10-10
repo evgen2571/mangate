@@ -30,6 +30,7 @@ func (pr *Provider) Cover(ctx context.Context, manga *source.Manga) (string, err
 	if !validPathSegment(filename) {
 		return "", fmt.Errorf("cover response for manga %q has an invalid filename", manga.ID)
 	}
+
 	coverURL := pr.uploads("covers/" + url.PathEscape(manga.ID) + "/" + url.PathEscape(filename))
 
 	return coverURL, nil

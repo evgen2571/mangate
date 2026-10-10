@@ -20,22 +20,27 @@ func (pr *Provider) getJSON(ctx context.Context, operation, path string, target 
 	if err != nil {
 		return fmt.Errorf("create %s request: %w", operation, err)
 	}
+
 	resp, err := pr.doWithRateLimitRetry(req, strings.HasPrefix(path, "at-home/server/"))
 	if err != nil {
 		return fmt.Errorf("%s request in %q: %w", operation, pr.Name(), err)
 	}
+
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s request in %q returned HTTP %d (%s)", operation, pr.Name(), resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
+
 	const maxResponseBytes = 16 << 20
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", operation, err)
 	}
+
 	if len(body) > maxResponseBytes {
 		return fmt.Errorf("%s response exceeds %d bytes", operation, maxResponseBytes)
 	}
+
 	var envelope struct {
 		Result  string          `json:"result"`
 		Data    json.RawMessage `json:"data"`
@@ -48,19 +53,24 @@ func (pr *Provider) getJSON(ctx context.Context, operation, path string, target 
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return fmt.Errorf("decode %s response: %w", operation, err)
 	}
+
 	if (envelope.Result != "" && envelope.Result != "ok") || len(envelope.Errors) > 0 {
 		details := make([]string, 0, len(envelope.Errors))
 		for _, apiError := range envelope.Errors {
 			details = append(details, strings.TrimSpace(apiError.Title+" "+apiError.Detail))
 		}
+
 		return fmt.Errorf("%s API error in %q: %s", operation, pr.Name(), strings.Join(details, "; "))
 	}
+
 	if (len(envelope.Data) == 0 || string(envelope.Data) == "null") && (len(envelope.Chapter) == 0 || string(envelope.Chapter) == "null") {
 		return fmt.Errorf("%s response has no data", operation)
 	}
+
 	if err := json.Unmarshal(body, target); err != nil {
 		return fmt.Errorf("decode %s response: %w", operation, err)
 	}
+
 	return nil
 }
 
@@ -73,6 +83,7 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request, atHome bool) (*http.
 				return nil, fmt.Errorf("wait for at-home request slot: %w", err)
 			}
 		}
+
 		resp, err := pr.client.Do(currentReq)
 		if err != nil {
 			return nil, err
@@ -88,6 +99,7 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request, atHome bool) (*http.
 				wait = delay
 			}
 		}
+
 		resp.Body.Close()
 
 		if err := sleepWithContext(currentReq.Context(), wait); err != nil {
@@ -99,7 +111,11 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request, atHome bool) (*http.
 }
 
 func retryableProviderStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status == http.StatusInternalServerError || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+	return status == http.StatusTooManyRequests ||
+		status == http.StatusInternalServerError ||
+		status == http.StatusBadGateway ||
+		status == http.StatusServiceUnavailable ||
+		status == http.StatusGatewayTimeout
 }
 
 func retryAfterDelay(value string, attempt int) time.Duration {
@@ -118,6 +134,7 @@ func retryAfterDelay(value string, attempt int) time.Duration {
 	if delay > 8*time.Second {
 		return 8 * time.Second
 	}
+
 	return delay
 }
 

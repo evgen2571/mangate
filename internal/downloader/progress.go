@@ -20,6 +20,7 @@ func (r *progressReporter) chapterReused(chapter *source.Chapter, pages int) {
 	if r == nil || r.notify == nil {
 		return
 	}
+
 	r.mu.Lock()
 	if current := r.chapterProgress(chapter); current != nil {
 		r.progress.TotalPages += pages - current.TotalPages
@@ -28,6 +29,7 @@ func (r *progressReporter) chapterReused(chapter *source.Chapter, pages int) {
 		r.progress.CompletedPages += pages
 		r.progress.CompletedChapters++
 	}
+
 	progress := r.snapshotLocked()
 	r.mu.Unlock()
 	r.notify(progress)
@@ -91,6 +93,7 @@ func (r *progressReporter) chapterStarted(chapter *source.Chapter) {
 	if current := r.chapterProgress(chapter); current != nil {
 		current.Active = true
 	}
+
 	progress := r.snapshotLocked()
 	r.mu.Unlock()
 
@@ -109,6 +112,7 @@ func (r *progressReporter) pagesDiscovered(chapter *source.Chapter) {
 		current.TotalPages = pageCount
 		r.progress.TotalPages += delta
 	}
+
 	progress := r.snapshotLocked()
 	r.mu.Unlock()
 
@@ -126,6 +130,7 @@ func (r *progressReporter) pageCompleted(chapter *source.Chapter) {
 		current.Active = true
 		current.CompletedPages++
 	}
+
 	progress := r.snapshotLocked()
 	r.mu.Unlock()
 
@@ -143,6 +148,7 @@ func (r *progressReporter) chapterCompleted(chapter *source.Chapter) {
 		current.Active = false
 		current.Completed = true
 	}
+
 	progress := r.snapshotLocked()
 	r.mu.Unlock()
 
@@ -175,8 +181,10 @@ func knownPageCount(chapter *source.Chapter) int {
 	if chapter == nil {
 		return 0
 	}
+
 	if chapter.PageCount > 0 {
 		return chapter.PageCount
 	}
+
 	return len(chapter.Pages)
 }

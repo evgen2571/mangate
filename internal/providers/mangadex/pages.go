@@ -20,6 +20,7 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 	if err != nil {
 		return nil, fmt.Errorf("pages response for chapter %q: %w", chapter.ID, err)
 	}
+
 	return pages, nil
 }
 
@@ -43,18 +44,27 @@ func (pr *Provider) paceAtHomeRequest(ctx context.Context) error {
 			}
 		}
 	}
+
 	pr.lastAtHomeRequest = time.Now()
 	return nil
 }
 
 func (mdpr *mangaDexPageResponse) toSourcePages() ([]*source.Page, error) {
 	base, err := url.Parse(mdpr.BaseURL)
-	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+	if err != nil ||
+		(base.Scheme != "https" &&
+			base.Scheme != "http") ||
+		base.Host == "" ||
+		base.User != nil ||
+		base.RawQuery != "" ||
+		base.Fragment != "" {
 		return nil, fmt.Errorf("invalid image base URL")
 	}
+
 	if !validPathSegment(mdpr.Chapter.Hash) || len(mdpr.Chapter.Data) == 0 {
 		return nil, fmt.Errorf("missing chapter hash or page filenames")
 	}
+
 	pages := make([]*source.Page, 0, len(mdpr.Chapter.Data))
 	urlStart := strings.TrimRight(mdpr.BaseURL, "/") + "/data/"
 
@@ -62,6 +72,7 @@ func (mdpr *mangaDexPageResponse) toSourcePages() ([]*source.Page, error) {
 		if !validPathSegment(fileName) {
 			return nil, fmt.Errorf("invalid page filename %q", fileName)
 		}
+
 		page := &source.Page{
 			URL: urlStart + url.PathEscape(mdpr.Chapter.Hash) + "/" + url.PathEscape(fileName),
 		}

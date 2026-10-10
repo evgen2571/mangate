@@ -16,19 +16,24 @@ func (i resultItem) Title() string {
 	if i.manga == nil {
 		return "Unknown title"
 	}
+
 	return util.SanitizeTerminalText(i.manga.Title)
 }
+
 func (i resultItem) Description() string {
 	if i.manga == nil {
 		return ""
 	}
+
 	m := i.manga.Metadata
 	parts := []string{m.AlternativeTitle, m.ContentType, m.Language}
 	if m.Year > 0 {
 		parts = append(parts, fmt.Sprintf("%d", m.Year))
 	}
+
 	return util.SanitizeTerminalText(strings.Join(nonEmpty(parts), " · "))
 }
+
 func (i resultItem) FilterValue() string { return i.Title() + " " + i.Description() }
 
 func (m *model) newResultsList(results []*source.Manga) {
@@ -36,6 +41,7 @@ func (m *model) newResultsList(results []*source.Manga) {
 	for _, manga := range results {
 		items = append(items, resultItem{manga})
 	}
+
 	d := list.NewDefaultDelegate()
 	d.SetHeight(2)
 	d.Styles.SelectedTitle = d.Styles.SelectedTitle.Copy().Foreground(lipgloss.Color("12")).Bold(true)
@@ -56,5 +62,6 @@ func nonEmpty(parts []string) []string {
 			out = append(out, part)
 		}
 	}
+
 	return out
 }

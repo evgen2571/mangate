@@ -31,15 +31,18 @@ func NewRootCmd(a *app.App) *cobra.Command {
 			if err := a.ApplyConfig(a.Cfg); err != nil {
 				return err
 			}
+
 			if isQuiet(cmd) && !wantsJSON(cmd) {
 				cmd.SetOut(io.Discard)
 			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if interactiveTerminal() && !wantsJSON(cmd) && !isNonInteractive(cmd) {
 				return runInteractive(cmd, a)
 			}
+
 			return cmd.Help()
 		},
 	}
@@ -47,6 +50,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 	if build, ok := debug.ReadBuildInfo(); ok && build.Main.Version != "" && build.Main.Version != "(devel)" {
 		cmd.Version = build.Main.Version
 	}
+
 	cmd.SetVersionTemplate("{{.Name}} {{.Version}} (" + runtime.GOOS + ")\n")
 
 	bindPersistentConfigFlags(cmd, &a.Cfg)
@@ -99,6 +103,7 @@ func tuiLanguage(cmd *cobra.Command) string {
 			return value
 		}
 	}
+
 	return ""
 }
 
@@ -106,9 +111,11 @@ func runTUI(cmd *cobra.Command, ui tea.Model) error {
 	if isNonInteractive(cmd) {
 		return fmt.Errorf("tui cannot run with --non-interactive")
 	}
+
 	if err := configureTUIColor(cmd); err != nil {
 		return err
 	}
+
 	if !interactiveTerminal() {
 		return fmt.Errorf("tui requires an interactive terminal; use direct commands such as search, chapters, or download")
 	}
@@ -124,19 +131,24 @@ func configureTUIColor(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+
 	noColor, err := cmd.Flags().GetBool("no-color")
 	if err != nil {
 		return err
 	}
+
 	if color && noColor {
 		return fmt.Errorf("--color and --no-color cannot be combined")
 	}
+
 	if noColor {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
+
 	if color {
 		lipgloss.SetColorProfile(termenv.TrueColor)
 	}
+
 	return nil
 }
 
@@ -149,6 +161,7 @@ func interactiveTerminal() bool {
 	if strings.EqualFold(os.Getenv("TERM"), "dumb") {
 		return false
 	}
+
 	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
 }
 
@@ -157,5 +170,6 @@ func commandError(cmd *cobra.Command, format string, args ...any) error {
 	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
 		fmt.Fprintf(cmd.ErrOrStderr(), "mangate: %v\n", err)
 	}
+
 	return err
 }

@@ -19,7 +19,17 @@ func NewConfigCmd(a *app.App) *cobra.Command {
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "config.inspect", record)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Configuration: %s\nProvider: %s\nLanguage: %s\nOutput: %s\nFormat: %s\nExisting files: %s\n", record.Path, a.Cfg.Provider, a.Cfg.Language, a.Cfg.Download.Dir, a.Cfg.Download.Format, a.Cfg.Download.ExistingFileMode)
+
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Configuration: %s\nProvider: %s\nLanguage: %s\nOutput: %s\nFormat: %s\nExisting files: %s\n",
+				record.Path,
+				a.Cfg.Provider,
+				a.Cfg.Language,
+				a.Cfg.Download.Dir,
+				a.Cfg.Download.Format,
+				a.Cfg.Download.ExistingFileMode,
+			)
 			return nil
 		},
 	}

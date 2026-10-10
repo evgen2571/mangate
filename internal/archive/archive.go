@@ -45,9 +45,11 @@ func (f Format) Extension() string {
 	if f == FormatCBZ {
 		return ".cbz"
 	}
+
 	if f == FormatZIP {
 		return ".zip"
 	}
+
 	return ""
 }
 
@@ -149,52 +151,74 @@ func CreateFromDirectoryContext(ctx context.Context, options Options) (Result, e
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if err := ctx.Err(); err != nil {
 		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
+
 	if options.Format != FormatCBZ && options.Format != FormatZIP {
 		return Result{}, fmt.Errorf("create archive: format must be cbz or zip")
 	}
+
 	if strings.TrimSpace(options.SourceDir) == "" || strings.TrimSpace(options.OutputPath) == "" {
 		return Result{}, fmt.Errorf("create archive: source directory and output path are required")
 	}
+
 	if strings.ToLower(filepath.Ext(options.OutputPath)) != options.Format.Extension() {
 		return Result{}, fmt.Errorf("create archive: %s output must use %s", options.Format, options.Format.Extension())
 	}
+
 	pages, state, err := sourcePages(options.SourceDir)
 	if err != nil {
 		return Result{}, err
 	}
+
 	if err := ctx.Err(); err != nil {
 		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
+
 	if state != nil {
 		if !state.Complete || state.ExpectedPages != len(pages) {
 			return Result{}, fmt.Errorf("create archive: source chapter is incomplete")
 		}
+
 		if options.Metadata.TitleID == "" {
 			options.Metadata.TitleID = state.TitleID
 		}
+
 		if options.Metadata.Provider == "" {
 			options.Metadata.Provider = state.Provider
 		}
+
 		if options.Metadata.ChapterID == "" {
 			options.Metadata.ChapterID = state.ChapterID
 		}
+
 		if options.Metadata.ExpectedPages == 0 {
 			options.Metadata.ExpectedPages = state.ExpectedPages
 		}
 	}
+
 	warnings := metadataIdentityWarnings(options.Metadata)
 
 	if options.ExistingFileMode == "" {
 		options.ExistingFileMode = ExistingSkip
 	}
+
 	if info, statErr := os.Stat(options.OutputPath); statErr == nil && !info.IsDir() {
 		inspection, inspectErr := Inspect(options.OutputPath)
 		if options.ExistingFileMode == ExistingSkip && inspectErr == nil && inspection.Complete && identitiesMatch(inspection.Validation, options.Metadata) {
-			return Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusSkipped, IncludedPages: inspection.PageCount, Validation: inspection.Validation, Warnings: warnings}, nil
+			return Result{
+				Format:        options.Format,
+				OutputPath:    options.OutputPath,
+				SourceDir:     options.SourceDir,
+				Status:        StatusSkipped,
+				IncludedPages: inspection.PageCount,
+				Validation:    inspection.Validation,
+				Warnings:      warnings,
+			}, nil
 		}
+
 		if options.ExistingFileMode != ExistingReplace {
 			return Result{}, fmt.Errorf("create archive: destination %q already exists; use --existing-files replace to replace it", options.OutputPath)
 		}
@@ -205,39 +229,57 @@ func CreateFromDirectoryContext(ctx context.Context, options Options) (Result, e
 	if err := os.MkdirAll(filepath.Dir(options.OutputPath), 0o755); err != nil {
 		return Result{}, fmt.Errorf("create archive: create output directory: %w", err)
 	}
+
 	temporary, err := os.CreateTemp(filepath.Dir(options.OutputPath), ".mangate-*"+options.Format.Extension())
 	if err != nil {
 		return Result{}, fmt.Errorf("create archive: create temporary file: %w", err)
 	}
+
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
 	if err := writeArchiveContext(ctx, temporary, pages, options.Format, options.Metadata); err != nil {
 		_ = temporary.Close()
 		return Result{}, err
 	}
+
 	if err := temporary.Close(); err != nil {
 		return Result{}, fmt.Errorf("create archive: close temporary file: %w", err)
 	}
+
 	if err := ctx.Err(); err != nil {
 		return Result{}, fmt.Errorf("create archive: %w", err)
 	}
+
 	inspection, err := Inspect(temporaryPath)
 	if err != nil || !inspection.Complete || inspection.PageCount != len(pages) {
 		if err == nil {
 			err = errors.New("archive did not validate as complete")
 		}
+
 		return Result{}, fmt.Errorf("create archive: validate temporary archive: %w", err)
 	}
+
 	if err := os.Rename(temporaryPath, options.OutputPath); err != nil {
 		return Result{}, fmt.Errorf("create archive: finalize archive: %w", err)
 	}
-	result := Result{Format: options.Format, OutputPath: options.OutputPath, SourceDir: options.SourceDir, Status: StatusComplete, IncludedPages: len(pages), Validation: inspection.Validation, Warnings: warnings}
+
+	result := Result{
+		Format:        options.Format,
+		OutputPath:    options.OutputPath,
+		SourceDir:     options.SourceDir,
+		Status:        StatusComplete,
+		IncludedPages: len(pages),
+		Validation:    inspection.Validation,
+		Warnings:      warnings,
+	}
 	if options.RemoveSource {
 		if err := os.RemoveAll(options.SourceDir); err != nil {
 			return result, fmt.Errorf("create archive: archive completed but remove source directory: %w", err)
 		}
+
 		result.SourceRemoved = true
 	}
+
 	return result, nil
 }
 
@@ -259,57 +301,71 @@ func sourcePages(directory string) ([]pageFile, *chapterState, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("create archive: read source directory: %w", err)
 	}
+
 	pages := make([]pageFile, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") || !isPageName(entry.Name()) {
 			continue
 		}
+
 		info, err := entry.Info()
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 			return nil, nil, fmt.Errorf("create archive: unreadable page %q", entry.Name())
 		}
+
 		actualExtension, err := validateImageFile(filepath.Join(directory, entry.Name()), entry.Name())
 		if err != nil {
 			return nil, nil, err
 		}
+
 		index, err := pageNumber(entry.Name())
 		if err != nil {
 			return nil, nil, err
 		}
+
 		name := entry.Name()
 		if strings.EqualFold(filepath.Ext(name), ".img") {
 			name = strings.TrimSuffix(name, filepath.Ext(name)) + actualExtension
 		}
+
 		pages = append(pages, pageFile{path: filepath.Join(directory, entry.Name()), name: name, index: index})
 	}
+
 	sort.Slice(pages, func(left, right int) bool { return pages[left].index < pages[right].index })
 	if len(pages) == 0 {
 		return nil, nil, fmt.Errorf("create archive: source directory has no page files")
 	}
+
 	for index := 1; index < len(pages); index++ {
 		if pages[index-1].index == pages[index].index {
 			return nil, nil, fmt.Errorf("create archive: source has duplicate page position %d", pages[index].index)
 		}
 	}
+
 	width := 4
 	for _, page := range pages {
 		width = max(width, len(strconv.Itoa(page.index)))
 	}
+
 	for index := range pages {
 		pages[index].name = fmt.Sprintf("%0*d%s", width, pages[index].index, strings.ToLower(filepath.Ext(pages[index].name)))
 	}
+
 	statePath := filepath.Join(directory, ".mangate.json")
 	data, err := os.ReadFile(statePath)
 	if os.IsNotExist(err) {
 		return pages, nil, nil
 	}
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("create archive: read source state: %w", err)
 	}
+
 	var state chapterState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, nil, fmt.Errorf("create archive: parse source state: %w", err)
 	}
+
 	return pages, &state, nil
 }
 
@@ -318,15 +374,18 @@ func pageNumber(name string) (int, error) {
 	if label == "" {
 		return 0, fmt.Errorf("create archive: page %q has no numeric order", name)
 	}
+
 	for _, character := range label {
 		if character < '0' || character > '9' {
 			return 0, fmt.Errorf("create archive: page %q has no numeric order", name)
 		}
 	}
+
 	value, err := strconv.Atoi(label)
 	if err != nil || value <= 0 {
 		return 0, fmt.Errorf("create archive: page %q has invalid numeric order", name)
 	}
+
 	return value, nil
 }
 
@@ -335,18 +394,21 @@ func validateImageFile(path, name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create archive: open page %q: %w", name, err)
 	}
+
 	defer file.Close()
 	header := make([]byte, 32)
 	count, err := io.ReadFull(file, header)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return "", fmt.Errorf("create archive: read page %q: %w", name, err)
 	}
+
 	header = header[:count]
 	actualExtension := imageExtension(header)
 	extension := strings.ToLower(filepath.Ext(name))
 	if actualExtension == "" || (extension != ".img" && !imageExtensionMatches(extension, actualExtension)) {
 		return "", fmt.Errorf("create archive: page %q does not contain a valid image matching its extension", name)
 	}
+
 	return actualExtension, nil
 }
 
@@ -359,9 +421,11 @@ func imageExtensionMatches(extension, actualExtension string) bool {
 	if extension == ".img" {
 		return false
 	}
+
 	if extension == ".jpeg" || extension == ".jfif" {
 		extension = ".jpg"
 	}
+
 	return extension == actualExtension
 }
 
@@ -383,6 +447,7 @@ func imageExtension(header []byte) string {
 	case hasPrefix([]byte("BM")):
 		return ".bmp"
 	}
+
 	return ""
 }
 
@@ -397,13 +462,16 @@ func writeArchiveContext(ctx context.Context, destination io.Writer, pages []pag
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("create archive: %w", err)
 		}
+
 		if !isSafeEntry(page.name) {
 			return fmt.Errorf("create archive: unsafe page filename %q", page.name)
 		}
+
 		if err := copyEntryContext(ctx, writer, page.name, page.path); err != nil {
 			return err
 		}
 	}
+
 	metadata.SchemaVersion = "1"
 	metadata.Completion = "complete"
 	metadata.CreatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -412,20 +480,25 @@ func writeArchiveContext(ctx context.Context, destination io.Writer, pages []pag
 		if err != nil {
 			return fmt.Errorf("create archive: encode ComicInfo.xml: %w", err)
 		}
+
 		if err := writeEntry(writer, "ComicInfo.xml", comicInfo); err != nil {
 			return err
 		}
 	}
+
 	data, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
 		return fmt.Errorf("create archive: encode metadata: %w", err)
 	}
+
 	if err := writeEntry(writer, ".mangate.json", append(data, '\n')); err != nil {
 		return err
 	}
+
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("create archive: close zip writer: %w", err)
 	}
+
 	return nil
 }
 
@@ -438,29 +511,35 @@ func copyEntryContext(ctx context.Context, writer *zip.Writer, name, path string
 	if err != nil {
 		return fmt.Errorf("create archive: open page %q: %w", path, err)
 	}
+
 	defer in.Close()
 	out, err := writer.Create(name)
 	if err != nil {
 		return fmt.Errorf("create archive: create entry %q: %w", name, err)
 	}
+
 	buffer := make([]byte, 32*1024)
 	for {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("create archive: %w", err)
 		}
+
 		count, readErr := in.Read(buffer)
 		if count > 0 {
 			if _, err := out.Write(buffer[:count]); err != nil {
 				return fmt.Errorf("create archive: write entry %q: %w", name, err)
 			}
 		}
+
 		if readErr == io.EOF {
 			break
 		}
+
 		if readErr != nil {
 			return fmt.Errorf("create archive: read entry %q: %w", name, readErr)
 		}
 	}
+
 	return nil
 }
 
@@ -469,9 +548,11 @@ func writeEntry(writer *zip.Writer, name string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("create archive: create entry %q: %w", name, err)
 	}
+
 	if _, err := out.Write(data); err != nil {
 		return fmt.Errorf("create archive: write entry %q: %w", name, err)
 	}
+
 	return nil
 }
 
@@ -487,7 +568,19 @@ type comicInfo struct {
 }
 
 func comicInfoXML(metadata Metadata) ([]byte, error) {
-	return xml.MarshalIndent(comicInfo{Title: metadata.ChapterTitle, Series: metadata.Title, Number: metadata.ChapterNumber, Volume: metadata.Volume, LanguageISO: metadata.Language, PageCount: metadata.ExpectedPages, Publisher: metadata.Provider}, "", "  ")
+	return xml.MarshalIndent(
+		comicInfo{
+			Title:       metadata.ChapterTitle,
+			Series:      metadata.Title,
+			Number:      metadata.ChapterNumber,
+			Volume:      metadata.Volume,
+			LanguageISO: metadata.Language,
+			PageCount:   metadata.ExpectedPages,
+			Publisher:   metadata.Provider,
+		},
+		"",
+		"  ",
+	)
 }
 
 func Inspect(path string) (Inspection, error) {
@@ -496,11 +589,13 @@ func Inspect(path string) (Inspection, error) {
 		inspection.Message = "archive extension must be .cbz or .zip"
 		return inspection, errors.New(inspection.Message)
 	}
+
 	reader, err := zip.OpenReader(path)
 	if err != nil {
 		inspection.Message = err.Error()
 		return inspection, fmt.Errorf("inspect archive %q: %w", path, err)
 	}
+
 	defer reader.Close()
 	seen := make(map[string]struct{}, len(reader.File))
 	previousPage := ""
@@ -512,32 +607,39 @@ func Inspect(path string) (Inspection, error) {
 			inspection.Message = "archive has an unsafe entry path"
 			return inspection, errors.New(inspection.Message)
 		}
+
 		if _, exists := seen[file.Name]; exists {
 			inspection.Message = "archive has duplicate entry names"
 			return inspection, errors.New(inspection.Message)
 		}
+
 		seen[file.Name] = struct{}{}
 		if isPageName(file.Name) {
 			if err := validateArchivePage(file); err != nil {
 				inspection.Message = err.Error()
 				return inspection, err
 			}
+
 			if previousPage != "" && file.Name <= previousPage {
 				inspection.Message = "archive page entries are not ordered"
 				return inspection, errors.New(inspection.Message)
 			}
+
 			previousPage = file.Name
 			inspection.PageCount++
 		}
+
 		if !isPageName(file.Name) && !isKnownMetadataEntry(file.Name) {
 			inspection.UnexpectedEntries = append(inspection.UnexpectedEntries, file.Name)
 		}
+
 		if file.Name == ".mangate.json" {
 			inspection.MetadataFound = true
 			in, err := file.Open()
 			if err != nil {
 				return inspection, fmt.Errorf("inspect archive metadata: %w", err)
 			}
+
 			data, readErr := io.ReadAll(in)
 			closeErr := in.Close()
 			if readErr != nil || closeErr != nil || json.Unmarshal(data, &metadata) != nil {
@@ -546,16 +648,19 @@ func Inspect(path string) (Inspection, error) {
 			}
 		}
 	}
+
 	if inspection.PageCount == 0 {
 		inspection.Message = "archive has no page entries"
 		return inspection, errors.New(inspection.Message)
 	}
+
 	inspection.TitleID = metadata.TitleID
 	inspection.ChapterID = metadata.ChapterID
 	inspection.IdentityConfirmed = inspection.TitleID != "" && inspection.ChapterID != ""
 	if inspection.MetadataFound {
 		inspection.Metadata = &metadata
 	}
+
 	inspection.Valid = true
 	inspection.Complete = metadata.Completion == "complete" && (metadata.ExpectedPages == 0 || metadata.ExpectedPages == inspection.PageCount)
 	switch {
@@ -568,9 +673,11 @@ func Inspect(path string) (Inspection, error) {
 	default:
 		inspection.State = "incomplete"
 	}
+
 	if !inspection.Complete {
 		inspection.Message = "archive metadata does not confirm completion"
 	}
+
 	return inspection, nil
 }
 
@@ -583,15 +690,18 @@ func validateArchivePage(file *zip.File) error {
 	if err != nil {
 		return fmt.Errorf("archive page %q cannot be opened: %w", file.Name, err)
 	}
+
 	defer in.Close()
 	header := make([]byte, 32)
 	count, readErr := io.ReadFull(in, header)
 	if readErr != nil && readErr != io.ErrUnexpectedEOF {
 		return fmt.Errorf("archive page %q cannot be read: %w", file.Name, readErr)
 	}
+
 	if !matchesImageSignature(header[:count], strings.ToLower(filepath.Ext(file.Name))) {
 		return fmt.Errorf("archive page %q does not contain a valid image matching its extension", file.Name)
 	}
+
 	return nil
 }
 
@@ -614,6 +724,7 @@ func isSafeEntry(name string) bool {
 	if name == "" || filepath.IsAbs(name) || strings.Contains(name, "\\") || strings.Contains(name, ":") {
 		return false
 	}
+
 	clean := filepath.Clean(name)
 	return clean == name && clean != "." && !strings.HasPrefix(clean, "../") && !strings.Contains(clean, "/../")
 }

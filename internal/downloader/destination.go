@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
@@ -38,24 +37,30 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 	if chapter == nil || chapter.From == nil {
 		return nil, fmt.Errorf("download chapter to: chapter and parent manga are required")
 	}
+
 	if strings.TrimSpace(directory) == "" {
 		return nil, fmt.Errorf("download chapter to: directory cannot be empty")
 	}
+
 	if err := util.EnsureDir(directory, "chapter directory"); err != nil {
 		return nil, err
 	}
+
 	for attempt := 0; ; attempt++ {
 		results, err := d.downloadChapterToAttempt(ctx, chapter, directory, pageLoader)
 		if err == nil {
 			if err := writeChapterState(directory, chapter, d.cfg.Provider, true); err != nil {
 				return nil, err
 			}
+
 			return results, nil
 		}
+
 		err = errors.Join(err, writeChapterState(directory, chapter, d.cfg.Provider, false))
 		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
 			return nil, err
 		}
+
 		chapter.Pages = nil
 		chapter.PageCount = 0
 	}
@@ -67,13 +72,15 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 		if err != nil {
 			return nil, fmt.Errorf("load pages for chapter %q: %w", chapter.ID, err)
 		}
+
 		chapter.Pages, chapter.PageCount = pages, len(pages)
 	}
+
 	if len(chapter.Pages) == 0 {
 		return nil, fmt.Errorf("download chapter %q: provider returned no pages", chapter.ID)
 	}
+
 	results := make([]PageDownloadResult, len(chapter.Pages))
-	var mu sync.Mutex
 	var g errgroup.Group
 	g.SetLimit(d.pageDownloadLimit())
 	for index, page := range chapter.Pages {
@@ -87,12 +94,14 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+
 			base := filepath.Join(directory, fmt.Sprintf("%04d", index+1))
 			result := PageDownloadResult{TitleID: chapter.From.ID, ChapterID: chapter.ID, PageIndex: index + 1}
 			if existingPage(base) {
 				if existingPath := existingPagePath(base); !existingOutputMatchesFormat(existingPath, d.cfg.Download.Format) && d.cfg.Download.ExistingFileMode == "skip" {
 					return fmt.Errorf("download page: existing output %q does not match requested %s format; use --existing-files replace", filepath.Ext(existingPath), d.cfg.Download.Format)
 				}
+
 				switch d.cfg.Download.ExistingFileMode {
 				case "fail":
 					return fmt.Errorf("download page: destination already exists for page %d", index+1)
@@ -106,38 +115,40 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 					result.Path, result.Bytes, result.Reused = path, info.Size(), true
 					result.Extension = filepath.Ext(path)
 					result.OutputContentType = mime.TypeByExtension(filepath.Ext(path))
-					mu.Lock()
 					results[index] = result
-					mu.Unlock()
 					return nil
 				}
 			}
+
 			path, sourceContentType, err := d.downloadPage(ctx, page, base)
 			if err != nil {
 				return err
 			}
+
 			if d.cfg.Download.ExistingFileMode == "replace" {
 				if err := removeExistingPage(base, path); err != nil {
 					return err
 				}
 			}
+
 			info, err := os.Stat(path)
 			if err != nil {
 				return fmt.Errorf("inspect downloaded page: %w", err)
 			}
+
 			result.Path, result.Bytes, result.SourceContentType = path, info.Size(), sourceContentType
 			result.Extension = filepath.Ext(path)
 			result.OutputContentType = mime.TypeByExtension(filepath.Ext(path))
 			result.Converted = d.cfg.Download.Format == "png" || d.cfg.Download.Format == "jpeg"
-			mu.Lock()
 			results[index] = result
-			mu.Unlock()
 			return nil
 		})
 	}
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
 	return results, nil
 }
 
@@ -146,6 +157,7 @@ func existingPagePath(base string) string {
 	if err != nil {
 		return ""
 	}
+
 	for _, path := range paths {
 		if !strings.HasSuffix(path, ".part") {
 			if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() && info.Size() > 0 {
@@ -153,6 +165,7 @@ func existingPagePath(base string) string {
 			}
 		}
 	}
+
 	return ""
 }
 
@@ -162,11 +175,13 @@ func pagePaths(base string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read page directory %q: %w", dir, err)
 	}
+
 	var paths []string
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
 			paths = append(paths, filepath.Join(dir, entry.Name()))
 		}
 	}
+
 	return paths, nil
 }

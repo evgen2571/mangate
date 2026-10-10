@@ -30,13 +30,16 @@ func BuildPlan(ctx context.Context, store *Store, provider providers.Provider, c
 	} else if exists {
 		return plan, nil
 	}
+
 	browser, ok := provider.(providers.BrowseProvider)
 	if !ok {
 		return Plan{}, fmt.Errorf("provider %q does not support dataset browsing", provider.Name())
 	}
+
 	if err := store.SetRun(ctx, "planning", "", ""); err != nil {
 		return Plan{}, err
 	}
+
 	candidates := []source.BrowseTitle{}
 	seenCandidates := map[string]struct{}{}
 	offset := 0
@@ -45,37 +48,56 @@ func BuildPlan(ctx context.Context, store *Store, provider providers.Provider, c
 		if remaining := cfg.Discovery.CandidatePoolSize - len(candidates); remaining < limit {
 			limit = remaining
 		}
-		page, err := browser.BrowseManga(ctx, source.BrowseRequest{Limit: limit, Offset: offset, OriginalLanguages: cfg.Discovery.OriginalLanguages, ChapterLanguages: cfg.Discovery.ChapterLanguages, Statuses: cfg.Discovery.Statuses, ContentRatings: cfg.Discovery.ContentRatings, IncludedTags: cfg.Discovery.IncludedTags, ExcludedTags: cfg.Discovery.ExcludedTags, OrderBy: cfg.Discovery.OrderBy, OrderDirection: cfg.Discovery.OrderDirection})
+
+		page, err := browser.BrowseManga(ctx, source.BrowseRequest{
+			Limit:             limit,
+			Offset:            offset,
+			OriginalLanguages: cfg.Discovery.OriginalLanguages,
+			ChapterLanguages:  cfg.Discovery.ChapterLanguages,
+			Statuses:          cfg.Discovery.Statuses,
+			ContentRatings:    cfg.Discovery.ContentRatings,
+			IncludedTags:      cfg.Discovery.IncludedTags,
+			ExcludedTags:      cfg.Discovery.ExcludedTags,
+			OrderBy:           cfg.Discovery.OrderBy,
+			OrderDirection:    cfg.Discovery.OrderDirection,
+		})
 		if err != nil {
 			return Plan{}, err
 		}
+
 		for _, candidate := range page.Titles {
-			if candidate.Manga != nil && strings.TrimSpace(candidate.Manga.ID) != "" {
-				if _, exists := seenCandidates[candidate.Manga.ID]; exists {
-					continue
-				}
-				seenCandidates[candidate.Manga.ID] = struct{}{}
-				candidates = append(candidates, candidate)
-				if len(candidates) == cfg.Discovery.CandidatePoolSize {
-					break
-				}
+			if candidate.Manga == nil || strings.TrimSpace(candidate.Manga.ID) == "" {
+				continue
+			}
+			if _, exists := seenCandidates[candidate.Manga.ID]; exists {
+				continue
+			}
+
+			seenCandidates[candidate.Manga.ID] = struct{}{}
+			candidates = append(candidates, candidate)
+			if len(candidates) == cfg.Discovery.CandidatePoolSize {
+				break
 			}
 		}
+
 		if !page.HasMore || page.NextOffset <= offset {
 			break
 		}
+
 		offset = page.NextOffset
 	}
+
 	selected := sampleTitles(candidates, cfg)
 	warnings := []string{}
 	if len(candidates) == 0 {
 		warnings = append(warnings, "no titles matched the discovery filters")
 	}
+
 	discovered := make([]Title, 0, len(candidates))
 	for order, candidate := range candidates {
-		manga := candidate.Manga
-		discovered = append(discovered, Title{ID: manga.ID, Name: manga.Title, URL: manga.URL, AlternativeTitle: manga.Metadata.AlternativeTitle, OriginalLanguage: manga.Metadata.Language, Status: manga.Metadata.Status, ContentRating: manga.Metadata.ContentType, Year: manga.Metadata.Year, DiscoveryOrder: order, Tags: append([]string(nil), candidate.Tags...), AvailableLanguages: append([]string(nil), candidate.AvailableLanguages...), ProviderCreatedAt: candidate.CreatedAt, ProviderUpdatedAt: candidate.UpdatedAt})
+		discovered = append(discovered, plannedTitle(candidate, order))
 	}
+
 	type selectedPlan struct {
 		title    Title
 		chapters []Chapter
@@ -88,32 +110,53 @@ func BuildPlan(ctx context.Context, store *Store, provider providers.Provider, c
 		rank, candidate := rank, candidate
 		group.Go(func() error {
 			manga := candidate.Manga
-			plan := selectedPlan{title: Title{ID: manga.ID, Name: manga.Title, URL: manga.URL, AlternativeTitle: manga.Metadata.AlternativeTitle, OriginalLanguage: manga.Metadata.Language, Status: manga.Metadata.Status, ContentRating: manga.Metadata.ContentType, Year: manga.Metadata.Year, DiscoveryOrder: indexOfCandidate(candidates, manga.ID), Stratum: titleStratum(manga), SampleRank: rank, Split: splitFor(cfg, manga.ID), Tags: append([]string(nil), candidate.Tags...), AvailableLanguages: append([]string(nil), candidate.AvailableLanguages...), ProviderCreatedAt: candidate.CreatedAt, ProviderUpdatedAt: candidate.UpdatedAt}}
+			title := plannedTitle(candidate, indexOfCandidate(candidates, manga.ID))
+			title.Stratum = titleStratum(manga)
+			title.SampleRank = rank
+			title.Split = splitFor(cfg, manga.ID)
+			plan := selectedPlan{title: title}
 			available, err := provider.Chapters(groupCtx, manga)
 			if err != nil {
 				return fmt.Errorf("list chapters for title %q: %w", manga.ID, err)
 			}
+
 			for _, chapter := range available {
 				if chapter != nil {
 					chapter.From = manga
 				}
 			}
+
 			chosen := sampleChapters(available, cfg)
 			if len(chosen) == 0 {
 				plan.warning = fmt.Sprintf("title %q has no chapters matching the collection filters", manga.ID)
 			} else {
 				plan.chapters = make([]Chapter, 0, len(chosen))
 				for order, chapter := range chosen {
-					plan.chapters = append(plan.chapters, Chapter{ID: chapter.ID, TitleID: manga.ID, Number: chapter.Index, Name: chapter.Title, Volume: chapter.Volume, Language: chapter.Language, ReleaseGroup: chapter.ReleaseGroup, PublishedAt: chapter.PublishedAt, URL: chapter.URL, ProviderOrder: order, ExpectedPages: chapter.PageCount})
+					plan.chapters = append(plan.chapters, Chapter{
+						ID:            chapter.ID,
+						TitleID:       manga.ID,
+						Number:        chapter.Index,
+						Name:          chapter.Title,
+						Volume:        chapter.Volume,
+						Language:      chapter.Language,
+						ReleaseGroup:  chapter.ReleaseGroup,
+						PublishedAt:   chapter.PublishedAt,
+						URL:           chapter.URL,
+						ProviderOrder: order,
+						ExpectedPages: chapter.PageCount,
+					})
 				}
 			}
+
 			plans[rank] = plan
 			return nil
 		})
 	}
+
 	if err := group.Wait(); err != nil {
 		return Plan{}, err
 	}
+
 	titles := make([]Title, 0, len(selected))
 	chapters := []Chapter{}
 	splitCounts := map[string]int{}
@@ -124,15 +167,44 @@ func BuildPlan(ctx context.Context, store *Store, provider providers.Provider, c
 		if plan.warning != "" {
 			warnings = append(warnings, plan.warning)
 		}
+
 		chapters = append(chapters, plan.chapters...)
 		for _, chapter := range plan.chapters {
 			estimated += int64(chapter.ExpectedPages)
 		}
 	}
+
 	if err := store.ReplacePlan(ctx, discovered, titles, chapters); err != nil {
 		return Plan{}, err
 	}
-	return Plan{Candidates: len(candidates), Titles: len(titles), Chapters: len(chapters), EstimatedPages: estimated, SplitCounts: splitCounts, Warnings: warnings}, nil
+
+	return Plan{
+		Candidates:     len(candidates),
+		Titles:         len(titles),
+		Chapters:       len(chapters),
+		EstimatedPages: estimated,
+		SplitCounts:    splitCounts,
+		Warnings:       warnings,
+	}, nil
+}
+
+func plannedTitle(candidate source.BrowseTitle, order int) Title {
+	manga := candidate.Manga
+	return Title{
+		ID:                 manga.ID,
+		Name:               manga.Title,
+		URL:                manga.URL,
+		AlternativeTitle:   manga.Metadata.AlternativeTitle,
+		OriginalLanguage:   manga.Metadata.Language,
+		Status:             manga.Metadata.Status,
+		ContentRating:      manga.Metadata.ContentType,
+		Year:               manga.Metadata.Year,
+		DiscoveryOrder:     order,
+		Tags:               append([]string(nil), candidate.Tags...),
+		AvailableLanguages: append([]string(nil), candidate.AvailableLanguages...),
+		ProviderCreatedAt:  candidate.CreatedAt,
+		ProviderUpdatedAt:  candidate.UpdatedAt,
+	}
 }
 
 func sampleTitles(candidates []source.BrowseTitle, cfg Config) []source.BrowseTitle {
@@ -140,6 +212,7 @@ func sampleTitles(candidates []source.BrowseTitle, cfg Config) []source.BrowseTi
 	if limit <= 0 || limit > len(candidates) {
 		limit = len(candidates)
 	}
+
 	copyCandidates := append([]source.BrowseTitle(nil), candidates...)
 	switch cfg.Sampling.TitleStrategy {
 	case "random":
@@ -154,6 +227,7 @@ func sampleTitles(candidates []source.BrowseTitle, cfg Config) []source.BrowseTi
 			if _, ok := groups[key]; !ok {
 				keys = append(keys, key)
 			}
+
 			groups[key] = append(groups[key], candidate)
 		}
 		sort.Strings(keys)
@@ -170,6 +244,7 @@ func sampleTitles(candidates []source.BrowseTitle, cfg Config) []source.BrowseTi
 					}
 				}
 			}
+
 			if !progressed {
 				break
 			}
@@ -179,47 +254,59 @@ func sampleTitles(candidates []source.BrowseTitle, cfg Config) []source.BrowseTi
 		return copyCandidates[:limit]
 	}
 }
+
 func titleStratum(m *source.Manga) string {
 	if m == nil {
 		return "unknown|unknown"
 	}
+
 	year := "unknown"
 	if m.Metadata.Year > 0 {
 		year = strconv.Itoa((m.Metadata.Year/10)*10) + "s"
 	}
+
 	status := strings.TrimSpace(m.Metadata.Status)
 	if status == "" {
 		status = "unknown"
 	}
+
 	return year + "|" + status
 }
+
 func splitFor(cfg Config, id string) string {
 	if !cfg.Splits.Enabled {
 		return ""
 	}
+
 	r := rand.New(rand.NewSource(cfg.Sampling.Seed + int64(hashID(id)))).Float64()
 	if r < cfg.Splits.Train {
 		return "train"
 	}
+
 	if r < cfg.Splits.Train+cfg.Splits.Validation {
 		return "validation"
 	}
+
 	return "test"
 }
+
 func hashID(id string) uint32 {
 	var h uint32 = 2166136261
 	for _, b := range []byte(id) {
 		h ^= uint32(b)
 		h *= 16777619
 	}
+
 	return h
 }
+
 func indexOfCandidate(candidates []source.BrowseTitle, id string) int {
 	for i, c := range candidates {
 		if c.Manga != nil && c.Manga.ID == id {
 			return i
 		}
 	}
+
 	return -1
 }
 
@@ -229,28 +316,35 @@ func sampleChapters(chapters []*source.Chapter, cfg Config) []*source.Chapter {
 		if chapter == nil || chapter.ID == "" {
 			continue
 		}
+
 		if len(cfg.Discovery.ChapterLanguages) > 0 && !contains(cfg.Discovery.ChapterLanguages, chapter.Language) {
 			continue
 		}
+
 		filtered = append(filtered, chapter)
 	}
+
 	if !cfg.Sampling.KeepDuplicateChapterReleases {
 		filtered = uniqueReleases(filtered)
 	}
+
 	sort.SliceStable(filtered, func(i, j int) bool {
 		left, right := chapterPosition(filtered[i]), chapterPosition(filtered[j])
 		if left != right {
 			return left < right
 		}
+
 		return filtered[i].ID < filtered[j].ID
 	})
 	limit := cfg.Sampling.MaxChaptersPerTitle
 	if limit <= 0 || limit > len(filtered) {
 		limit = len(filtered)
 	}
+
 	if limit == 0 {
 		return nil
 	}
+
 	switch cfg.Sampling.ChapterStrategy {
 	case "all":
 		return filtered
@@ -280,6 +374,7 @@ func sampleChapters(chapters []*source.Chapter, cfg Config) []*source.Chapter {
 		return filtered[:limit]
 	}
 }
+
 func uniqueReleases(chapters []*source.Chapter) []*source.Chapter {
 	groups := map[string][]*source.Chapter{}
 	keys := []string{}
@@ -288,11 +383,14 @@ func uniqueReleases(chapters []*source.Chapter) []*source.Chapter {
 		if key == "" {
 			key = "special:" + c.ID
 		}
+
 		if _, ok := groups[key]; !ok {
 			keys = append(keys, key)
 		}
+
 		groups[key] = append(groups[key], c)
 	}
+
 	sort.Strings(keys)
 	out := []*source.Chapter{}
 	for _, key := range keys {
@@ -302,28 +400,35 @@ func uniqueReleases(chapters []*source.Chapter) []*source.Chapter {
 			if a.PageCount > 0 != (b.PageCount > 0) {
 				return a.PageCount > 0
 			}
+
 			if a.PublishedAt != b.PublishedAt {
 				return a.PublishedAt < b.PublishedAt
 			}
+
 			return a.ID < b.ID
 		})
 		out = append(out, choices[0])
 	}
+
 	sort.SliceStable(out, func(i, j int) bool { return chapterPosition(out[i]) < chapterPosition(out[j]) })
 	return out
 }
+
 func chapterPosition(c *source.Chapter) float64 {
 	v, err := strconv.ParseFloat(c.Index, 64)
 	if err != nil {
 		return 1e18
 	}
+
 	return v
 }
+
 func contains(values []string, value string) bool {
 	for _, v := range values {
 		if v == value {
 			return true
 		}
 	}
+
 	return false
 }

@@ -25,40 +25,51 @@ func NewTitleCmd(a *app.App) *cobra.Command {
 			if id == "" {
 				return fmt.Errorf("title id cannot be empty")
 			}
+
 			provider, err := a.Provider()
 			if err != nil {
 				return err
 			}
+
 			title, err := provider.Title(cmd.Context(), id)
 			if err != nil {
 				return fmt.Errorf("get title %q from provider %q: %w", id, provider.Name(), err)
 			}
+
 			record := titleRecord{Provider: provider.Name(), Title: title}
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "title.get", record)
 			}
+
 			writeHuman(cmd.OutOrStdout(), "%s\nID: %s\nProvider: %s\n", title.Title, title.ID, provider.Name())
 			if title.URL != "" {
 				writeHuman(cmd.OutOrStdout(), "URL: %s\n", title.URL)
 			}
+
 			if title.Metadata.Status != "" {
 				writeHuman(cmd.OutOrStdout(), "Status: %s\n", title.Metadata.Status)
 			}
+
 			if title.Metadata.AlternativeTitle != "" {
 				writeHuman(cmd.OutOrStdout(), "Alternative title: %s\n", title.Metadata.AlternativeTitle)
 			}
+
 			if title.Metadata.ContentType != "" {
 				writeHuman(cmd.OutOrStdout(), "Content type: %s\n", title.Metadata.ContentType)
 			}
+
 			if title.Metadata.Language != "" {
 				writeHuman(cmd.OutOrStdout(), "Language: %s\n", title.Metadata.Language)
 			}
+
 			if title.Metadata.Year > 0 {
 				writeHuman(cmd.OutOrStdout(), "Year: %d\n", title.Metadata.Year)
 			}
+
 			if description := preferredDescription(title.Metadata.Description); description != "" {
 				writeHuman(cmd.OutOrStdout(), "\n%s\n", description)
 			}
+
 			return nil
 		},
 	}
@@ -70,10 +81,12 @@ func preferredDescription(descriptions map[string]string) string {
 			return value
 		}
 	}
+
 	for _, value := range descriptions {
 		if value = strings.TrimSpace(value); value != "" {
 			return value
 		}
 	}
+
 	return ""
 }

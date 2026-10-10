@@ -35,5 +35,6 @@ func NewWithPageRetryLimit(config config.Config, client *http.Client, retryLimit
 	if retryLimit >= 0 {
 		download.pageRetryLimit = retryLimit
 	}
+
 	return download
 }

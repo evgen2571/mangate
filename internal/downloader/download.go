@@ -52,15 +52,19 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 	if c == nil {
 		return fmt.Errorf("download chapter: nil chapter")
 	}
+
 	if c.From == nil {
 		return fmt.Errorf("download chapter %q: missing parent manga", c.ID)
 	}
+
 	if strings.TrimSpace(chapterName) == "" {
 		chapterName = chapterDirBaseName(c)
 	}
+
 	if reporter != nil {
 		reporter.chapterStarted(c)
 	}
+
 	if reused, err := d.reuseChapterArchive(c, chapterName, reporter); reused || err != nil {
 		return err
 	}
@@ -70,9 +74,11 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 		if err == nil {
 			return nil
 		}
+
 		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
 			return err
 		}
+
 		c.Pages = nil
 		c.PageCount = 0
 	}
@@ -83,26 +89,33 @@ func (d *Downloader) reuseChapterArchive(chapter *source.Chapter, name string, r
 	if !format.IsArchive() || d.cfg.Download.ExistingFileMode == "replace" {
 		return false, nil
 	}
+
 	path := filepath.Join(d.cfg.Download.Dir, titleDirName(chapter.From), util.SanitizeString(name)) + format.Extension()
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("inspect chapter %q archive %q: %w", chapter.ID, path, err)
 	}
+
 	if d.cfg.Download.ExistingFileMode == "fail" {
 		return false, fmt.Errorf("chapter %q archive already exists: %s", chapter.ID, path)
 	}
+
 	inspection, err := archive.Inspect(path)
 	if err != nil {
 		return false, fmt.Errorf("existing archive %q is invalid; use --existing-files replace: %w", path, err)
 	}
+
 	if !inspection.Complete || inspection.TitleID != chapter.From.ID || inspection.ChapterID != chapter.ID {
 		return false, fmt.Errorf("existing archive %q is incomplete or belongs to another chapter; use --existing-files replace", path)
 	}
+
 	if reporter != nil {
 		reporter.chapterReused(chapter, inspection.PageCount)
 	}
+
 	return true, nil
 }
 
@@ -112,6 +125,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 		if err != nil {
 			return fmt.Errorf("load pages for chapter %q: %w", c.ID, err)
 		}
+
 		c.Pages = pages
 		c.PageCount = len(pages)
 		if reporter != nil {
@@ -144,6 +158,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+
 			filePathBase := filepath.Join(
 				chapterDir,
 				fmt.Sprintf("%04d", idx+1),
@@ -153,6 +168,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 				if existingPath := existingPagePath(filePathBase); !existingOutputMatchesFormat(existingPath, d.cfg.Download.Format) && d.cfg.Download.ExistingFileMode == "skip" {
 					return fmt.Errorf("download page: existing output %q does not match requested %s format; use --existing-files replace", filepath.Ext(existingPath), d.cfg.Download.Format)
 				}
+
 				switch d.cfg.Download.ExistingFileMode {
 				case "skip":
 					if reporter != nil {
@@ -163,18 +179,22 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 					return fmt.Errorf("download page: destination already exists for page %d", idx+1)
 				}
 			}
+
 			path, _, err := d.downloadPage(ctx, page, filePathBase)
 			if err != nil {
 				return err
 			}
+
 			if d.cfg.Download.ExistingFileMode == "replace" {
 				if err := removeExistingPage(filePathBase, path); err != nil {
 					return err
 				}
 			}
+
 			if reporter != nil {
 				reporter.pageCompleted(c)
 			}
+
 			return nil
 		})
 	}
@@ -195,7 +215,7 @@ func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapt
 }
 
 func existingOutputMatchesFormat(path, format string) bool {
-	want := targetImageExtension(format, "")
+	want := targetImageExtension(format)
 	return want == "" || strings.EqualFold(filepath.Ext(path), want)
 }
 
@@ -204,14 +224,17 @@ func removeExistingPage(base, keep string) error {
 	if err != nil {
 		return err
 	}
+
 	for _, path := range paths {
 		if path == keep {
 			continue
 		}
+
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove existing page %q: %w", path, err)
 		}
 	}
+
 	return nil
 }
 
@@ -219,10 +242,12 @@ func titleDirName(manga *source.Manga) string {
 	if manga == nil {
 		return "unknown"
 	}
+
 	title := util.SanitizeString(manga.Title)
 	if id := util.SanitizeString(manga.ID); id != "unknown" {
 		return util.SanitizeString(title + "-" + id)
 	}
+
 	return title
 }
 
@@ -246,23 +271,34 @@ type chapterState struct {
 }
 
 func writeChapterState(chapterDir string, chapter *source.Chapter, provider string, complete bool) error {
-	state := chapterState{FormatVersion: "1", Provider: strings.TrimSpace(provider), ChapterID: chapter.ID, ExpectedPages: len(chapter.Pages), Complete: complete, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	state := chapterState{
+		FormatVersion: "1",
+		Provider:      strings.TrimSpace(provider),
+		ChapterID:     chapter.ID,
+		ExpectedPages: len(chapter.Pages),
+		Complete:      complete,
+		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
 	if chapter.From != nil {
 		state.TitleID = chapter.From.ID
 	}
+
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode chapter state: %w", err)
 	}
+
 	temp := filepath.Join(chapterDir, ".mangate.json.part")
 	defer os.Remove(temp)
 	final := filepath.Join(chapterDir, ".mangate.json")
 	if err := os.WriteFile(temp, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("write chapter state: %w", err)
 	}
+
 	if err := os.Rename(temp, final); err != nil {
 		return fmt.Errorf("finalize chapter state: %w", err)
 	}
+
 	return nil
 }
 
@@ -298,11 +334,7 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 		chapterName := chapterNames[idx]
 
 		g.Go(func() error {
-			if err := d.downloadChapter(ctx, chapter, chapterName, reporter, pageLoader); err != nil {
-				return err
-			}
-
-			return nil
+			return d.downloadChapter(ctx, chapter, chapterName, reporter, pageLoader)
 		})
 	}
 
@@ -323,10 +355,12 @@ func uniqueChapterDirNames(chapters []*source.Chapter) []string {
 		if seenBase[key] > 1 {
 			name = util.SanitizeString(disambiguatedChapterDirName(baseName, chapter, idx))
 		}
+
 		for suffix := 2; ; suffix++ {
 			if _, exists := used[strings.ToLower(name)]; !exists {
 				break
 			}
+
 			name = util.SanitizeString(fmt.Sprintf("%s-%d", baseName, suffix))
 		}
 
@@ -366,6 +400,7 @@ func disambiguatedChapterDirName(baseName string, chapter *source.Chapter, idx i
 	if chapter != nil && strings.TrimSpace(chapter.ID) != "" {
 		return baseName + "-" + chapter.ID
 	}
+
 	return fmt.Sprintf("%s-%d", baseName, idx+1)
 }
 
@@ -378,6 +413,7 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 	if p == nil {
 		return "", "", fmt.Errorf("download page: nil page")
 	}
+
 	if strings.TrimSpace(p.URL) == "" {
 		return "", "", fmt.Errorf("download page: empty page url")
 	}
@@ -385,17 +421,20 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 	if err := d.acquirePageDownload(ctx); err != nil {
 		return "", "", err
 	}
+
 	defer d.releasePageDownload()
 
 	resp, err := d.getPageResponseWithRetry(ctx, p.URL)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to GET %q: %w", p.URL, err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", pageStatusError{url: p.URL, statusCode: resp.StatusCode}
 	}
+
 	if contentType := resp.Header.Get("Content-Type"); contentType != "" && !strings.HasPrefix(strings.ToLower(contentType), "image/") {
 		return "", "", fmt.Errorf("download page: expected an image response, got %q", contentType)
 	}
@@ -405,23 +444,28 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 	if sourceContentType == "" {
 		sourceContentType = mime.TypeByExtension(sourceExtension)
 	}
+
 	filePath := filePathBase + sourceExtension
 	temporaryPath := filePath + ".part"
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to read page %q: %w", p.URL, err)
 	}
+
 	if len(data) == 0 {
 		return "", "", fmt.Errorf("download page: response for %q was empty", p.URL)
 	}
-	if targetExtension := targetImageExtension(d.cfg.Download.Format, sourceExtension); targetExtension != "" {
+
+	if targetExtension := targetImageExtension(d.cfg.Download.Format); targetExtension != "" {
 		data, err = convertImage(data, targetExtension)
 		if err != nil {
 			return "", "", fmt.Errorf("convert page %q to %s: %w", p.URL, targetExtension, err)
 		}
+
 		filePath = filePathBase + targetExtension
 		temporaryPath = filePath + ".part"
 	}
+
 	out, err := os.Create(temporaryPath)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create file %q: %w", filePath, err)
@@ -437,11 +481,13 @@ func (d *Downloader) downloadPage(ctx context.Context, p *source.Page, filePathB
 		_ = os.Remove(temporaryPath)
 		return "", "", fmt.Errorf("failed to close file %q: %w", filePath, err)
 	}
+
 	info, err := os.Stat(temporaryPath)
 	if err != nil || info.Size() == 0 {
 		_ = os.Remove(temporaryPath)
 		return "", "", fmt.Errorf("download page: response for %q was empty", p.URL)
 	}
+
 	if err := os.Rename(temporaryPath, filePath); err != nil {
 		_ = os.Remove(temporaryPath)
 		return "", "", fmt.Errorf("finalize file %q: %w", filePath, err)
@@ -455,17 +501,19 @@ func normalizedPageContentType(value string) string {
 	if err != nil {
 		return ""
 	}
+
 	return strings.ToLower(mediaType)
 }
 
-func targetImageExtension(format, sourceExtension string) string {
-	_ = sourceExtension
+func targetImageExtension(format string) string {
 	if format != "png" && format != "jpeg" {
 		return ""
 	}
+
 	if format == "png" {
 		return ".png"
 	}
+
 	return ".jpeg"
 }
 
@@ -474,6 +522,7 @@ func convertImage(data []byte, extension string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var output bytes.Buffer
 	switch extension {
 	case ".png":
@@ -488,9 +537,11 @@ func convertImage(data []byte, extension string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unsupported target image extension %q", extension)
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	return output.Bytes(), nil
 }
 
@@ -500,6 +551,7 @@ func (d *Downloader) getPageResponseWithRetry(ctx context.Context, rawURL string
 		if err != nil {
 			return nil, err
 		}
+
 		resp, err := d.client.Do(req)
 		if err != nil {
 			return nil, err
@@ -537,6 +589,7 @@ func pageRetryAfterDelay(value string, attempt int) time.Duration {
 	if delay > 250*time.Millisecond {
 		return 250 * time.Millisecond
 	}
+
 	return delay
 }
 
@@ -544,6 +597,7 @@ func sleepWithContext(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
 		return nil
 	}
+
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
@@ -558,6 +612,7 @@ func (d *Downloader) acquirePageDownload(ctx context.Context) error {
 	if d.pageDownloads == nil {
 		return ctx.Err()
 	}
+
 	select {
 	case d.pageDownloads <- struct{}{}:
 		return nil
@@ -570,6 +625,7 @@ func (d *Downloader) pageDownloadLimit() int {
 	if d.cfg.Concurrency.PageDownloads > 0 {
 		return d.cfg.Concurrency.PageDownloads
 	}
+
 	return 1
 }
 
@@ -577,6 +633,7 @@ func (d *Downloader) releasePageDownload() {
 	if d.pageDownloads == nil {
 		return
 	}
+
 	<-d.pageDownloads
 }
 

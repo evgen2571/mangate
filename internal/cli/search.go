@@ -23,6 +23,7 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 			if title == "" {
 				return fmt.Errorf("title cannot be empty")
 			}
+
 			if interactive && wantsJSON(cmd) {
 				return fmt.Errorf("--interactive cannot be combined with --json")
 			}
@@ -31,10 +32,12 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("search %q with provider %q: %w", title, a.Cfg.Provider, err)
 			}
+
 			languageFilter := ""
 			if cmd.Flags().Changed("language") {
 				languageFilter = a.Cfg.Language
 			}
+
 			results = filterSearchResults(results, languageFilter, contentTypes)
 
 			if len(results) == 0 {
@@ -46,14 +49,18 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 				} else {
 					writeHuman(cmd.OutOrStdout(), "no results found for %q\n", title)
 				}
+
 				return &ReportedError{Cause: fmt.Errorf("no results found for %q", title), Code: 1, Silent: true}
 			}
+
 			if limit > 0 && len(results) > limit {
 				results = results[:limit]
 			}
+
 			if interactive {
 				return runInteractiveSearchResults(cmd, a, title, results)
 			}
+
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "search", searchRecord{Provider: a.Cfg.Provider, Query: title, Results: results})
 			}
@@ -64,21 +71,27 @@ func NewSearchCmd(a *app.App) *cobra.Command {
 				if manga.Metadata.AlternativeTitle != "" {
 					writeHuman(cmd.OutOrStdout(), "   Alternative title: %s\n", manga.Metadata.AlternativeTitle)
 				}
+
 				if manga.Metadata.ContentType != "" {
 					writeHuman(cmd.OutOrStdout(), "   Content type: %s\n", manga.Metadata.ContentType)
 				}
+
 				if manga.Metadata.Status != "" {
 					writeHuman(cmd.OutOrStdout(), "   Status: %s\n", manga.Metadata.Status)
 				}
+
 				if manga.Metadata.Language != "" {
 					writeHuman(cmd.OutOrStdout(), "   Language: %s\n", manga.Metadata.Language)
 				}
+
 				if manga.Metadata.Year > 0 {
 					writeHuman(cmd.OutOrStdout(), "   Year: %d\n", manga.Metadata.Year)
 				}
+
 				if manga.ID != "" {
 					writeHuman(cmd.OutOrStdout(), "   Reference: %s\n", manga.ID)
 				}
+
 				if manga.URL != "" {
 					writeHuman(cmd.OutOrStdout(), "   URL: %s\n", manga.URL)
 				}
@@ -109,16 +122,20 @@ func filterSearchResults(results []*source.Manga, language string, contentTypes 
 		if manga == nil {
 			continue
 		}
+
 		if language != "" && !strings.EqualFold(strings.TrimSpace(manga.Metadata.Language), language) {
 			continue
 		}
+
 		if len(wantedContentTypes) > 0 {
 			if _, ok := wantedContentTypes[strings.ToLower(strings.TrimSpace(manga.Metadata.ContentType))]; !ok {
 				continue
 			}
 		}
+
 		filtered = append(filtered, manga)
 	}
+
 	return filtered
 }
 

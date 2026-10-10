@@ -27,9 +27,11 @@ func (r providerResolver) Provider() (usecase.Provider, error) {
 	if r.app == nil {
 		return nil, fmt.Errorf("provider: app is not configured")
 	}
+
 	if r.app.Registry == nil {
 		return nil, fmt.Errorf("provider: registry is not configured")
 	}
+
 	if r.app.Client == nil {
 		return nil, fmt.Errorf("provider: http client is not configured")
 	}
@@ -66,6 +68,7 @@ func (d mangaDownloader) DownloadManga(ctx context.Context, manga *source.Manga,
 			if notify == nil {
 				return
 			}
+
 			notify(toUsecaseDownloadProgress(progress))
 		},
 	)

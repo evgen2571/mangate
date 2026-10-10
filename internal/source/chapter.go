@@ -79,5 +79,6 @@ func (c *Chapter) trimmedIndexAndTitle() (string, string) {
 	if c == nil {
 		return "", ""
 	}
+
 	return strings.TrimSpace(c.Index), strings.TrimSpace(c.Title)
 }

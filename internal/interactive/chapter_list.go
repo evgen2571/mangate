@@ -27,6 +27,7 @@ func (m *model) calculateChapterColumns(visible []int) chapterColumns {
 		columns.languageWidth = max(columns.languageWidth, lipgloss.Width(util.SanitizeTerminalText(chapter.Language)))
 		columns.pageWidth = max(columns.pageWidth, lipgloss.Width(chapterPageCount(chapter)))
 	}
+
 	columns.languageWidth = min(columns.languageWidth, maxLanguageColumnWidth)
 	fixedWidth := chapterCursorColumnWidth + chapterSelectionColumnWidth + 2*chapterColumnGapWidth + columns.languageWidth + columns.pageWidth
 	columns.labelWidth = max(8, m.contentWidth()-fixedWidth)
@@ -39,12 +40,14 @@ func (m *model) chapterRow(index int, current bool, columns chapterColumns, s st
 	if current {
 		cursor = s.cursor.Render("› ")
 	}
+
 	dot := s.muted.Render("○")
 	if m.selected[index] {
 		dot = s.selected.Render("●")
 	} else if current {
 		dot = s.accent.Render("●")
 	}
+
 	label := padTo(truncate(chapter.DisplayName(), columns.labelWidth), columns.labelWidth)
 	language := padTo(clipToWidth(util.SanitizeTerminalText(chapter.Language), columns.languageWidth), columns.languageWidth)
 	pages := padTo(chapterPageCount(chapter), columns.pageWidth)
@@ -64,12 +67,15 @@ func clipToWidth(value string, width int) string {
 	if lipgloss.Width(value) <= width {
 		return value
 	}
+
 	var out strings.Builder
 	for _, r := range value {
 		if lipgloss.Width(out.String()+string(r)) > width {
 			break
 		}
+
 		out.WriteRune(r)
 	}
+
 	return out.String()
 }

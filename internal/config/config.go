@@ -187,9 +187,11 @@ func (c Config) Validate() error {
 	if err := validateHTTPURL("mangadex site url", c.Providers.MangaDex.SiteURL); err != nil {
 		return err
 	}
+
 	if err := validateHTTPURL("mangadex base url", c.Providers.MangaDex.BaseURL); err != nil {
 		return err
 	}
+
 	if err := validateHTTPURL("mangadex uploads url", c.Providers.MangaDex.UploadsURL); err != nil {
 		return err
 	}
@@ -227,6 +229,7 @@ func LoadFromPath(path string) (Config, error) {
 		if os.IsNotExist(err) {
 			return cfg, nil
 		}
+
 		return cfg, fmt.Errorf("read config file %q: %w", path, err)
 	}
 
@@ -236,9 +239,11 @@ func LoadFromPath(path string) (Config, error) {
 	if err := decoder.Decode(&raw); err != nil {
 		return cfg, fmt.Errorf("decode config file %q: %w", path, err)
 	}
+
 	if raw == nil {
 		return cfg, fmt.Errorf("config file %q must contain an object", path)
 	}
+
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return cfg, fmt.Errorf("config file %q must contain exactly one JSON object", path)
 	}
@@ -260,9 +265,11 @@ func Save(path string, cfg Config) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("config path cannot be empty")
 	}
+
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config directory %q: %w", filepath.Dir(path), err)
 	}
@@ -271,20 +278,24 @@ func Save(path string, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("encode config file %q: %w", path, err)
 	}
+
 	data = append(data, '\n')
 
 	file, err := os.CreateTemp(filepath.Dir(path), ".config-*")
 	if err != nil {
 		return fmt.Errorf("create temporary config file for %q: %w", path, err)
 	}
+
 	defer os.Remove(file.Name())
 	if _, err := file.Write(data); err != nil {
 		file.Close()
 		return fmt.Errorf("write config file %q: %w", path, err)
 	}
+
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close config file %q: %w", path, err)
 	}
+
 	if err := os.Rename(file.Name(), path); err != nil {
 		return fmt.Errorf("replace config file %q: %w", path, err)
 	}
@@ -296,53 +307,67 @@ func (f fileConfig) applyTo(cfg *Config) error {
 	if cfg == nil {
 		return fmt.Errorf("nil config")
 	}
+
 	if f.Provider != nil {
 		cfg.Provider = *f.Provider
 	}
+
 	if f.Language != nil {
 		cfg.Language = *f.Language
 	}
+
 	if f.Providers != nil && f.Providers.MangaDex != nil {
 		md := f.Providers.MangaDex
 		if md.SiteURL != nil {
 			cfg.Providers.MangaDex.SiteURL = *md.SiteURL
 		}
+
 		if md.BaseURL != nil {
 			cfg.Providers.MangaDex.BaseURL = *md.BaseURL
 		}
+
 		if md.UploadsURL != nil {
 			cfg.Providers.MangaDex.UploadsURL = *md.UploadsURL
 		}
 	}
+
 	if f.HTTP != nil && f.HTTP.Timeout != nil {
 		timeout, err := time.ParseDuration(*f.HTTP.Timeout)
 		if err != nil {
 			return fmt.Errorf("parse http timeout %q: %w", *f.HTTP.Timeout, err)
 		}
+
 		cfg.HTTP.Timeout = timeout
 	}
+
 	if f.Download != nil {
 		if f.Download.Dir != nil {
 			cfg.Download.Dir = *f.Download.Dir
 		}
+
 		if f.Download.Format != nil {
 			cfg.Download.Format = *f.Download.Format
 		}
+
 		if f.Download.ExistingFileMode != nil {
 			cfg.Download.ExistingFileMode = *f.Download.ExistingFileMode
 		}
 	}
+
 	if f.Concurrency != nil {
 		if f.Concurrency.PageDownloads != nil {
 			cfg.Concurrency.PageDownloads = *f.Concurrency.PageDownloads
 		}
+
 		if f.Concurrency.ChapterDownloads != nil {
 			cfg.Concurrency.ChapterDownloads = *f.Concurrency.ChapterDownloads
 		}
 	}
+
 	if f.Search != nil && f.Search.HistoryMax != nil {
 		cfg.Search.HistoryMax = *f.Search.HistoryMax
 	}
+
 	if f.Dirs != nil {
 		if f.Dirs.Cache != nil {
 			cfg.Dirs.Cache = *f.Dirs.Cache
@@ -402,9 +427,11 @@ func validateHTTPURL(fieldName, raw string) error {
 	if err != nil {
 		return fmt.Errorf("%s is invalid: %w", fieldName, err)
 	}
+
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return fmt.Errorf("%s must use http or https", fieldName)
 	}
+
 	if parsed.Host == "" {
 		return fmt.Errorf("%s must include a host", fieldName)
 	}
@@ -426,5 +453,6 @@ func defaultCacheDir() string {
 	if err != nil {
 		return "./.cache"
 	}
+
 	return filepath.Join(root, constant.ProjectName)
 }

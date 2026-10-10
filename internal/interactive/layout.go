@@ -20,10 +20,12 @@ func (m *model) contentWidth() int {
 	if m.width <= 0 {
 		return 72
 	}
+
 	w := m.width - 6
 	if w > maxContentWidth {
 		w = maxContentWidth
 	}
+
 	return max(24, w)
 }
 
@@ -31,6 +33,7 @@ func (m *model) mainHeight() int {
 	if m.height <= 0 {
 		return 12
 	}
+
 	return max(3, m.height-10)
 }
 
@@ -56,6 +59,7 @@ func (m *model) frame(header, body string) string {
 		message := "Terminal is too small\n\nResize to at least " + itoa(minWidth) + " × " + itoa(minHeight) + ".\nCurrent: " + itoa(m.width) + " × " + itoa(m.height) + "\n\nq quit"
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, message)
 	}
+
 	s := newStyles()
 	w := m.contentWidth()
 	footer := m.help.ShortHelpView(m.bindings())
@@ -63,31 +67,30 @@ func (m *model) frame(header, body string) string {
 		body = m.help.FullHelpView([][]key.Binding{m.bindings()})
 		footer = "esc close help"
 	}
+
 	status := ""
 	if m.status != "" {
 		status = s.status.Render(util.SanitizeTerminalText(m.status))
 	}
+
 	if m.height > 0 && m.height < 24 {
 		header = strings.Split(header, "\n")[0]
 		parts := []string{header, body}
 		if status != "" {
 			parts = append(parts, ansi.Truncate(status, w, "…"))
 		}
+
 		parts = append(parts, ansi.Truncate(footer, w, "…"))
 		content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, lipgloss.NewStyle().Width(w).Render(content))
 	}
+
 	content := lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", status, "", s.description.Render(footer))
 	if m.width <= 0 || m.height <= 0 {
 		return content + "\n"
 	}
+
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, lipgloss.NewStyle().Width(w).Render(content))
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 func itoa(value int) string { return fmt.Sprintf("%d", value) }

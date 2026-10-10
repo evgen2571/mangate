@@ -6,7 +6,7 @@ import (
 
 type styles struct {
 	brand, heading, accent, muted, selected, status, success, warning, danger lipgloss.Style
-	input, panel, key, description, cursor                                    lipgloss.Style
+	input, panel, description, cursor                                         lipgloss.Style
 }
 
 func newStyles() styles {
@@ -23,7 +23,6 @@ func newStyles() styles {
 		danger:      lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true),
 		input:       lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent).Padding(0, 1),
 		panel:       lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("8")).Padding(0, 1),
-		key:         lipgloss.NewStyle().Foreground(accent).Bold(true),
 		description: lipgloss.NewStyle().Faint(true),
 		cursor:      lipgloss.NewStyle().Foreground(accent).Bold(true),
 	}

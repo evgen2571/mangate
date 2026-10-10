@@ -27,6 +27,7 @@ func SanitizeString(name string) string {
 		if unicode.IsControl(r) {
 			return '_'
 		}
+
 		return r
 	}, name)
 	name = strings.ReplaceAll(name, "_-", "_")
@@ -34,10 +35,12 @@ func SanitizeString(name string) string {
 	for strings.Contains(name, "--") {
 		name = strings.ReplaceAll(name, "--", "-")
 	}
+
 	name = strings.Trim(name, "-_. ")
 	if name == "" {
 		return "unknown"
 	}
+
 	stem, _, _ := strings.Cut(strings.ToUpper(name), ".")
 	reserved := stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL"
 	for _, prefix := range []string{"COM", "LPT"} {
@@ -45,6 +48,7 @@ func SanitizeString(name string) string {
 			reserved = true
 		}
 	}
+
 	if reserved {
 		name = "_" + name
 	}
@@ -55,8 +59,10 @@ func SanitizeString(name string) string {
 		for !utf8.RuneStart(name[end]) {
 			end--
 		}
+
 		name = fmt.Sprintf("%s-%x", name[:end], sum[:8])
 	}
+
 	return name
 }
 
@@ -68,6 +74,7 @@ func SanitizeTerminalText(text string) string {
 		if unicode.IsControl(character) {
 			return '�'
 		}
+
 		return character
 	}, text)
 }

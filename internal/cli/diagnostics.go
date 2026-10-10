@@ -41,6 +41,7 @@ func NewDiagnosticsCmd(a *app.App) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("diagnostics: configured provider: %w", err)
 			}
+
 			record := diagnosticsRecord{
 				Platform:            runtime.GOOS + "/" + runtime.GOARCH,
 				InteractiveTerminal: interactiveTerminal(),
@@ -52,7 +53,18 @@ func NewDiagnosticsCmd(a *app.App) *cobra.Command {
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "diagnostics", record)
 			}
-			writeHuman(cmd.OutOrStdout(), "Platform: %s\nInteractive terminal: %t\nProvider: %s (%s)\nProvider availability: %s\nDownload directory: %s\nCache directory: %s\nOutput formats: directory, png, jpeg, cbz, zip\n", record.Platform, record.InteractiveTerminal, record.Provider.Name, record.Provider.ID, record.Provider.Availability, formatPathDiagnostic(record.DownloadDirectory), formatPathDiagnostic(record.CacheDirectory))
+
+			writeHuman(
+				cmd.OutOrStdout(),
+				"Platform: %s\nInteractive terminal: %t\nProvider: %s (%s)\nProvider availability: %s\nDownload directory: %s\nCache directory: %s\nOutput formats: directory, png, jpeg, cbz, zip\n",
+				record.Platform,
+				record.InteractiveTerminal,
+				record.Provider.Name,
+				record.Provider.ID,
+				record.Provider.Availability,
+				formatPathDiagnostic(record.DownloadDirectory),
+				formatPathDiagnostic(record.CacheDirectory),
+			)
 			return nil
 		},
 	}
@@ -66,9 +78,11 @@ func inspectPath(path string) pathDiagnostic {
 		record.IsDir = info.IsDir()
 		return record
 	}
+
 	if !os.IsNotExist(err) {
 		record.Error = err.Error()
 	}
+
 	return record
 }
 
@@ -77,11 +91,14 @@ func formatPathDiagnostic(record pathDiagnostic) string {
 	if record.Error != "" {
 		return path + " (unavailable: " + record.Error + ")"
 	}
+
 	if !record.Exists {
 		return path + " (will be created when needed)"
 	}
+
 	if !record.IsDir {
 		return path + " (exists but is not a directory)"
 	}
+
 	return path + " (available)"
 }

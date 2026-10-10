@@ -34,9 +34,11 @@ func (m *model) loadSelectedCover() tea.Cmd {
 		m.clearCover()
 		return nil
 	}
+
 	if m.cover.id == item.manga.ID {
 		return nil
 	}
+
 	m.clearCover()
 	m.cover.id = item.manga.ID
 	m.cover.loading = true
@@ -47,16 +49,19 @@ func (m *model) loadSelectedCover() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return coverDone{request: request, err: err} }
 	}
+
 	cache, manga := m.app.Cache, item.manga
 	return func() tea.Msg {
 		path, err := cache.Get(ctx, provider, manga)
 		if err != nil {
 			return coverDone{request: request, err: err}
 		}
+
 		file, err := os.Open(path)
 		if err != nil {
 			return coverDone{request: request, err: err}
 		}
+
 		defer file.Close()
 		decoded, _, err := image.Decode(file)
 		return coverDone{request: request, image: decoded, err: err}
@@ -67,6 +72,7 @@ func (m *model) clearCover() {
 	if m.cover.cancel != nil {
 		m.cover.cancel()
 	}
+
 	m.cover = coverState{request: m.cover.request + 1}
 }
 
@@ -74,6 +80,7 @@ func (m *model) resultListWidth() int {
 	if m.contentWidth() >= 70 {
 		return m.contentWidth() - 28
 	}
+
 	return m.contentWidth()
 }
 
@@ -82,6 +89,7 @@ func (m *model) resultDetails() string {
 	if !ok || item.manga == nil {
 		return ""
 	}
+
 	s := newStyles()
 	width := 26
 	parts := []string{s.heading.Render(util.SanitizeTerminalText(item.manga.Title))}
@@ -95,12 +103,14 @@ func (m *model) resultDetails() string {
 	default:
 		parts = append(parts, "Cover not loaded")
 	}
+
 	meta := item.manga.Metadata
 	parts = append(parts, util.SanitizeTerminalText(strings.Join(nonEmpty([]string{meta.Status, meta.ContentType, meta.Language}), " · ")))
 	languages := make([]string, 0, len(meta.Description))
 	for language := range meta.Description {
 		languages = append(languages, language)
 	}
+
 	sort.Strings(languages)
 	languages = append([]string{m.app.Cfg.Language, "en"}, languages...)
 	for _, language := range languages {
@@ -116,6 +126,7 @@ func (m *model) resultDetails() string {
 	if len(lines) > limit {
 		lines = append(lines[:limit-1], "…")
 	}
+
 	return strings.Join(lines, "\n")
 }
 
@@ -132,9 +143,11 @@ func renderCover(picture image.Image, width, maxRows int) string {
 		if row > 0 {
 			out.WriteByte('\n')
 		}
+
 		for column := 0; column < width; column++ {
 			out.WriteString(lipgloss.NewStyle().Foreground(colorAt(column, row*2)).Background(colorAt(column, row*2+1)).Render("▀"))
 		}
 	}
+
 	return out.String()
 }

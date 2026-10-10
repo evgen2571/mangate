@@ -25,6 +25,7 @@ func (c *Cache) SearchHistory() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return limitSearchHistory(queries, c.cfg.Search.HistoryMax), nil
 }
 
@@ -38,6 +39,7 @@ func (c *Cache) AddSearchQuery(query string) error {
 	if err != nil {
 		return err
 	}
+
 	queries = prependSearchQuery(queries, query, c.cfg.Search.HistoryMax)
 	return c.saveSearchHistory(queries)
 }
@@ -49,6 +51,7 @@ func (c *Cache) loadSearchHistory() ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("read search history %q: %w", path, err)
 	}
 
@@ -56,6 +59,7 @@ func (c *Cache) loadSearchHistory() ([]string, error) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("decode search history %q: %w", path, err)
 	}
+
 	return cleanSearchHistory(file.Queries), nil
 }
 
@@ -69,12 +73,14 @@ func (c *Cache) saveSearchHistory(queries []string) error {
 	if err != nil {
 		return fmt.Errorf("encode search history %q: %w", path, err)
 	}
+
 	data = append(data, '\n')
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), "search-history-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary search history file: %w", err)
 	}
+
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 
@@ -82,12 +88,15 @@ func (c *Cache) saveSearchHistory(queries []string) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write temporary search history file %q: %w", tmpPath, err)
 	}
+
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temporary search history file %q: %w", tmpPath, err)
 	}
+
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("replace search history %q: %w", path, err)
 	}
+
 	return nil
 }
 
@@ -108,16 +117,19 @@ func prependSearchQuery(queries []string, query string, max int) []string {
 		if existing == "" {
 			continue
 		}
+
 		key := strings.ToLower(existing)
 		if _, ok := seen[key]; ok {
 			continue
 		}
+
 		seen[key] = struct{}{}
 		result = append(result, existing)
 		if len(result) == max {
 			break
 		}
 	}
+
 	return result
 }
 
@@ -129,13 +141,16 @@ func cleanSearchHistory(queries []string) []string {
 		if query == "" {
 			continue
 		}
+
 		key := strings.ToLower(query)
 		if _, ok := seen[key]; ok {
 			continue
 		}
+
 		seen[key] = struct{}{}
 		result = append(result, query)
 	}
+
 	return result
 }
 
@@ -143,9 +158,11 @@ func limitSearchHistory(queries []string, max int) []string {
 	if max <= 0 || len(queries) == 0 {
 		return nil
 	}
+
 	queries = cleanSearchHistory(queries)
 	if len(queries) > max {
 		queries = queries[:max]
 	}
+
 	return queries
 }

@@ -25,6 +25,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(3)
 	}
+
 	a.ConfigPath = configPath
 
 	rootCmd := cli.NewRootCmd(a)
@@ -36,18 +37,22 @@ func main() {
 		if verbose {
 			fmt.Fprintf(os.Stderr, "mangate: %s\n", cli.ErrorDiagnostic(err))
 		}
+
 		var reported *cli.ReportedError
 		if errors.As(err, &reported) {
 			if !jsonOutput && !reported.Silent {
 				fmt.Fprintln(os.Stderr, err)
 			}
+
 			os.Exit(reported.Code)
 		}
+
 		if jsonOutput {
 			_ = cli.WriteError(os.Stdout, "command", err)
 		} else {
 			fmt.Fprintln(os.Stderr, err)
 		}
+
 		os.Exit(cli.ExitCode(err.Error()))
 	}
 }

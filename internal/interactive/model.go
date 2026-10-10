@@ -94,8 +94,18 @@ func NewWithContextAndLanguage(a *app.App, ctx context.Context, language string)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	ctx, stop := context.WithCancel(ctx)
-	m := &model{app: a, ctx: ctx, stop: stop, languageFilter: strings.TrimSpace(language), screen: searchScreen, selected: map[int]bool{}, rangeAnchor: -1, format: archive.FormatDirectory}
+	m := &model{
+		app:            a,
+		ctx:            ctx,
+		stop:           stop,
+		languageFilter: strings.TrimSpace(language),
+		screen:         searchScreen,
+		selected:       map[int]bool{},
+		rangeAnchor:    -1,
+		format:         archive.FormatDirectory,
+	}
 	m.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
 	m.progressBar = progress.New(progress.WithDefaultGradient())
 	m.progressBar.ShowPercentage = true
@@ -104,6 +114,7 @@ func NewWithContextAndLanguage(a *app.App, ctx context.Context, language string)
 	if a != nil {
 		m.format, _ = archive.ParseFormat(a.Cfg.Download.Format)
 	}
+
 	m.resetInput("Search: ", "")
 	m.newResultsList(nil)
 	return m
@@ -157,13 +168,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = resultsScreen
 			return m, nil
 		}
-		m.manga, m.chapters, m.chapterCursor, m.chapterOffset, m.selected, m.chapterFilter, m.filtering, m.rangeAnchor, m.loading = msg.manga, msg.chapters, 0, 0, map[int]bool{}, "", false, -1, false
+		m.manga, m.chapters = msg.manga, msg.chapters
+		m.chapterCursor, m.chapterOffset = 0, 0
+		m.selected = map[int]bool{}
+		m.chapterFilter, m.filtering = "", false
+		m.rangeAnchor, m.loading = -1, false
 		if msg.all {
 			for i, chapter := range m.chapters {
 				if chapter != nil {
 					m.selected[i] = true
 				}
 			}
+
 			m.openFormat()
 		} else {
 			m.screen, m.status = chaptersScreen, ""
@@ -209,6 +225,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "cancelling"
 				return m, nil
 			}
+
 			m.clearCover()
 			m.stop()
 			return m, tea.Quit
@@ -221,11 +238,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+
 	if m.loading || m.screen == workingScreen {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
+
 	switch m.screen {
 	case searchScreen:
 		return m.updateSearch(msg)
@@ -247,11 +266,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = chaptersScreen
 				return m, nil
 			}
+
 			var cmd tea.Cmd
 			m.doneViewport, cmd = m.doneViewport.Update(msg)
 			return m, cmd
 		}
 	}
+
 	return m, nil
 }
 
@@ -267,6 +288,7 @@ func (m *model) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if q == "" {
 			return m, nil
 		}
+
 		m.clearCover()
 		m.status, m.loading = "Searching...", true
 		return m, func() tea.Msg {
@@ -274,9 +296,11 @@ func (m *model) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err == nil {
 				_ = m.app.AddSearchQuery(q)
 			}
+
 			return searchDone{q, results, err}
 		}
 	}
+
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
@@ -289,6 +313,7 @@ func (m *model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resultsList, cmd = m.resultsList.Update(msg)
 		return m, tea.Batch(cmd, m.loadSelectedCover())
 	}
+
 	switch key.String() {
 	case "esc", "backspace":
 		m.screen = searchScreen
@@ -306,6 +331,7 @@ func (m *model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return chaptersDone{manga, chapters, err, all}
 		}
 	}
+
 	var cmd tea.Cmd
 	m.resultsList, cmd = m.resultsList.Update(msg)
 	return m, tea.Batch(cmd, m.loadSelectedCover())
@@ -316,19 +342,23 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+
 	if m.filtering {
 		if key.String() == "enter" {
 			m.chapterFilter, m.filtering = strings.TrimSpace(m.input.Value()), false
 			return m, nil
 		}
+
 		if key.String() == "esc" {
 			m.filtering = false
 			return m, nil
 		}
+
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
 	}
+
 	visible := m.visibleChapters()
 	switch key.String() {
 	case "j", "down":
@@ -342,6 +372,7 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selected[i] {
 				m.rangeAnchor = i
 			}
+
 			if !m.selected[i] {
 				delete(m.selected, i)
 			}
@@ -361,15 +392,18 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 					anchor = position
 				}
 			}
+
 			if anchor >= 0 {
 				start, end := anchor, m.chapterCursor
 				if start > end {
 					start, end = end, start
 				}
+
 				for _, selected := range visible[start : end+1] {
 					m.selected[selected] = true
 				}
 			}
+
 			m.rangeAnchor = current
 		}
 	case "/":
@@ -387,6 +421,7 @@ func (m *model) updateChapters(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.openFormat()
 	}
+
 	return m, nil
 }
 
@@ -395,6 +430,7 @@ func (m *model) updateFormat(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+
 	formats := []archive.Format{archive.FormatDirectory, archive.FormatPNG, archive.FormatJPEG, archive.FormatCBZ, archive.FormatZIP}
 	index := 0
 	for i, f := range formats {
@@ -402,6 +438,7 @@ func (m *model) updateFormat(msg tea.Msg) (tea.Model, tea.Cmd) {
 			index = i
 		}
 	}
+
 	switch key.String() {
 	case "j", "down":
 		m.format = formats[(index+1)%len(formats)]
@@ -413,6 +450,7 @@ func (m *model) updateFormat(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = chaptersScreen
 	}
+
 	return m, nil
 }
 
@@ -422,23 +460,28 @@ func (m *model) updateOutput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = formatScreen
 			return m, nil
 		}
+
 		if key.String() == "enter" {
 			path := strings.TrimSpace(m.input.Value())
 			if err := validOutput(path); err != nil {
 				m.status = err.Error()
 				return m, nil
 			}
+
 			cfg := m.app.Cfg.Clone()
 			cfg.Download.Dir = filepath.Clean(path)
 			if err := m.app.ApplyConfig(cfg); err != nil {
 				m.status = err.Error()
 				return m, nil
 			}
+
 			m.screen = reviewScreen
 			return m, nil
 		}
+
 		m.status = ""
 	}
+
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
@@ -449,13 +492,16 @@ func (m *model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+
 	if key.String() == "esc" {
 		m.screen = outputScreen
 		return m, nil
 	}
+
 	if key.String() != "enter" {
 		return m, nil
 	}
+
 	cfg := m.app.Cfg.Clone()
 	cfg.Download.Format = string(m.format)
 	if err := m.app.ApplyConfig(cfg); err != nil {
@@ -463,6 +509,7 @@ func (m *model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = chaptersScreen
 		return m, nil
 	}
+
 	chapters := m.selectedChapters()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel, m.screen = cancel, workingScreen
@@ -475,23 +522,28 @@ func (m *model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+
 	if m.configEditing {
 		if key.String() == "enter" {
 			if err := m.setConfigValue(m.input.Value()); err != nil {
 				m.status = err.Error()
 				return m, nil
 			}
+
 			m.configEditing = false
 			return m, nil
 		}
+
 		if key.String() == "esc" {
 			m.configEditing = false
 			return m, nil
 		}
+
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
 	}
+
 	switch key.String() {
 	case "j", "down":
 		m.configCursor = move(m.configCursor, 1, len(configLabels))
@@ -515,6 +567,7 @@ func (m *model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = m.previous
 	}
+
 	return m, nil
 }
 
@@ -522,6 +575,7 @@ func (m *model) openFormat() {
 	m.screen = formatScreen
 	m.format, _ = archive.ParseFormat(m.app.Cfg.Download.Format)
 }
+
 func (m *model) resetInput(prompt, value string) {
 	m.input = textinput.New()
 	m.input.Prompt = prompt
@@ -530,17 +584,13 @@ func (m *model) resetInput(prompt, value string) {
 	m.input.CursorEnd()
 	m.input.Focus()
 }
+
 func move(value, delta, length int) int {
 	if length <= 0 {
 		return 0
 	}
+
 	return min(max(0, value+delta), length-1)
-}
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func (m *model) visibleChapters() []int {
@@ -550,16 +600,20 @@ func (m *model) visibleChapters() []int {
 		if c == nil {
 			continue
 		}
+
 		text := strings.ToLower(c.DisplayName() + " " + c.Language + " " + c.ID)
 		if needle == "" || strings.Contains(text, needle) {
 			out = append(out, i)
 		}
 	}
+
 	if m.chapterCursor >= len(out) {
 		m.chapterCursor = max(0, len(out)-1)
 	}
+
 	return out
 }
+
 func (m *model) selectedChapters() []*source.Chapter {
 	out := []*source.Chapter{}
 	for i, c := range m.chapters {
@@ -567,6 +621,7 @@ func (m *model) selectedChapters() []*source.Chapter {
 			out = append(out, c)
 		}
 	}
+
 	return out
 }
 
@@ -575,15 +630,29 @@ func validOutput(path string) error {
 	if path == "" {
 		return errors.New("output cannot be empty")
 	}
+
 	if info, err := os.Stat(path); err == nil && !info.IsDir() {
 		return errors.New("output is an existing file")
 	}
+
 	return nil
 }
 
-var configLabels = []string{"provider", "language", "output", "format", "existing files", "http timeout", "page downloads", "chapter downloads", "history max", "cache"}
+var configLabels = []string{
+	"provider",
+	"language",
+	"output",
+	"format",
+	"existing files",
+	"http timeout",
+	"page downloads",
+	"chapter downloads",
+	"history max",
+	"cache",
+}
 
 func (m *model) configValue() string { return m.configValueAt(m.configCursor) }
+
 func (m *model) configValueAt(i int) string {
 	c := m.draft
 	switch i {
@@ -609,11 +678,13 @@ func (m *model) configValueAt(i int) string {
 		return c.Dirs.Cache
 	}
 }
+
 func (m *model) setConfigValue(raw string) error {
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return errors.New("value cannot be empty")
 	}
+
 	next := m.draft.Clone()
 	switch m.configCursor {
 	case 0:
@@ -653,10 +724,12 @@ func (m *model) setConfigValue(raw string) error {
 	case 9:
 		next.Dirs.Cache = value
 	}
+
 	next = next.Normalized()
 	if err := next.Validate(); err != nil {
 		return err
 	}
+
 	m.draft = next
 	return nil
 }

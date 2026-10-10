@@ -59,6 +59,7 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 	if err != nil {
 		return "", err
 	}
+
 	if strings.TrimSpace(remoteURL) == "" {
 		return "", fmt.Errorf("empty cover url")
 	}
@@ -73,14 +74,17 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
+
 		if download.err != nil {
 			return "", download.err
 		}
+
 		if _, err := os.Stat(path); err == nil {
 			return path, nil
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return "", fmt.Errorf("stat cover cache file %q after download: %w", path, err)
 		}
+
 		return "", fmt.Errorf("cover cache file missing after download: %s", path)
 	}
 
@@ -94,6 +98,7 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		if validateCover(cached) == nil {
 			return path, nil
 		}
+
 		if err := os.Remove(path); err != nil {
 			downloadErr = fmt.Errorf("remove invalid cover cache file %q: %w", path, err)
 			return "", downloadErr
@@ -119,22 +124,26 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		downloadErr = fmt.Errorf("download cover: %w", err)
 		return "", downloadErr
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		downloadErr = fmt.Errorf("download cover: unexpected status %s", resp.Status)
 		return "", downloadErr
 	}
+
 	const maxCoverBytes = 20 << 20
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxCoverBytes+1))
 	if err != nil {
 		downloadErr = fmt.Errorf("read cover: %w", err)
 		return "", downloadErr
 	}
+
 	if len(data) > maxCoverBytes {
 		downloadErr = fmt.Errorf("cover exceeds %d bytes", maxCoverBytes)
 		return "", downloadErr
 	}
+
 	if err := validateCover(data); err != nil {
 		downloadErr = fmt.Errorf("download cover: %w", err)
 		return "", downloadErr
@@ -145,6 +154,7 @@ func (c *Cache) Get(ctx context.Context, provider CoverProvider, manga *source.M
 		downloadErr = fmt.Errorf("create temp file: %w", err)
 		return "", downloadErr
 	}
+
 	defer func() {
 		_ = os.Remove(tmp.Name())
 	}()
@@ -173,12 +183,15 @@ func validateCover(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid cover image: %w", err)
 	}
+
 	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 40_000_000 {
 		return fmt.Errorf("invalid cover dimensions %dx%d", config.Width, config.Height)
 	}
+
 	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
 		return fmt.Errorf("invalid cover image: %w", err)
 	}
+
 	return nil
 }
 

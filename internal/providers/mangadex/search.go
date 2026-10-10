@@ -45,23 +45,29 @@ func (pr *Provider) Search(ctx context.Context, title string) ([]*source.Manga, 
 		if err := pr.getJSON(ctx, "search", "manga/?"+params.Encode(), &payload); err != nil {
 			return nil, err
 		}
+
 		if payload.Total > maxCollectionResults {
 			return nil, fmt.Errorf("MangaDex search has %d results; narrow the query to at most %d results", payload.Total, maxCollectionResults)
 		}
+
 		next, more, err := payload.nextOffset(offset, 100)
 		if err != nil {
 			return nil, fmt.Errorf("search: %w", err)
 		}
+
 		for _, item := range payload.Data {
 			if strings.TrimSpace(item.ID) == "" {
 				return nil, fmt.Errorf("search response contains a manga without an id")
 			}
+
 			item.URL = pr.site("title/" + url.PathEscape(item.ID))
 			mangas = append(mangas, item.toSource(pr.language))
 		}
+
 		if !more {
 			break
 		}
+
 		offset = next
 	}
 
@@ -75,38 +81,48 @@ func (pr *Provider) BrowseManga(ctx context.Context, browse source.BrowseRequest
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
+
 	if browse.Offset < 0 {
 		return source.BrowsePage{}, fmt.Errorf("browse offset must be >= 0")
 	}
+
 	params := url.Values{}
 	params.Set("limit", strconv.Itoa(limit))
 	params.Set("offset", strconv.Itoa(browse.Offset))
 	for _, value := range browse.OriginalLanguages {
 		params.Add("originalLanguage[]", value)
 	}
+
 	for _, value := range browse.ChapterLanguages {
 		params.Add("availableTranslatedLanguage[]", value)
 	}
+
 	for _, value := range browse.Statuses {
 		params.Add("status[]", value)
 	}
+
 	for _, value := range browse.ContentRatings {
 		params.Add("contentRating[]", value)
 	}
+
 	for _, value := range browse.IncludedTags {
 		params.Add("includedTags[]", value)
 	}
+
 	for _, value := range browse.ExcludedTags {
 		params.Add("excludedTags[]", value)
 	}
+
 	orderBy := strings.TrimSpace(browse.OrderBy)
 	if orderBy == "" {
 		orderBy = "updatedAt"
 	}
+
 	direction := strings.ToLower(strings.TrimSpace(browse.OrderDirection))
 	if direction != "asc" && direction != "desc" {
 		direction = "desc"
 	}
+
 	params.Set("order["+orderBy+"]", direction)
 	var payload mangaDexResponse[mangaDexManga]
 	if err := pr.getJSON(ctx, "browse", "manga/?"+params.Encode(), &payload); err != nil {
@@ -117,11 +133,13 @@ func (pr *Provider) BrowseManga(ctx context.Context, browse source.BrowseRequest
 	if err != nil {
 		return source.BrowsePage{}, fmt.Errorf("browse: %w", err)
 	}
+
 	result := source.BrowsePage{Offset: payload.Offset, Total: payload.Total, NextOffset: next, HasMore: more}
 	for _, item := range payload.Data {
 		if strings.TrimSpace(item.ID) == "" {
 			continue
 		}
+
 		item.URL = pr.site("title/" + url.PathEscape(item.ID))
 		tags := make([]string, 0, len(item.Attributes.Tags))
 		for _, tag := range item.Attributes.Tags {
@@ -129,8 +147,16 @@ func (pr *Provider) BrowseManga(ctx context.Context, browse source.BrowseRequest
 				tags = append(tags, name)
 			}
 		}
-		result.Titles = append(result.Titles, source.BrowseTitle{Manga: item.toSource(pr.language), AvailableLanguages: append([]string(nil), item.Attributes.AvailableTranslatedLanguages...), Tags: tags, CreatedAt: item.Attributes.CreatedAt, UpdatedAt: item.Attributes.UpdatedAt})
+
+		result.Titles = append(result.Titles, source.BrowseTitle{
+			Manga:              item.toSource(pr.language),
+			AvailableLanguages: append([]string(nil), item.Attributes.AvailableTranslatedLanguages...),
+			Tags:               tags,
+			CreatedAt:          item.Attributes.CreatedAt,
+			UpdatedAt:          item.Attributes.UpdatedAt,
+		})
 	}
+
 	return result, nil
 }
 
@@ -153,6 +179,7 @@ func (pr *Provider) Title(ctx context.Context, id string) (*source.Manga, error)
 	if payload.Data.ID == "" {
 		return nil, fmt.Errorf("title response in %q did not include an id", pr.Name())
 	}
+
 	payload.Data.URL = pr.site("title/" + url.PathEscape(payload.Data.ID))
 	return payload.Data.toSource(pr.language), nil
 }
@@ -169,11 +196,13 @@ func (mdm *mangaDexManga) alternativeTitle(preferredLanguage, primaryTitle strin
 			}
 		}
 	}
+
 	for _, titles := range mdm.Attributes.AltTitles {
 		if title := localizedValue(titles, preferredLanguage); title != "" && title != primaryTitle {
 			return title
 		}
 	}
+
 	return ""
 }
 
@@ -188,12 +217,14 @@ func localizedValue(values map[string]string, preferredLanguage string) string {
 	for language := range values {
 		languages = append(languages, language)
 	}
+
 	sort.Strings(languages)
 	for _, language := range languages {
 		if value := strings.TrimSpace(values[language]); value != "" {
 			return value
 		}
 	}
+
 	return ""
 }
 

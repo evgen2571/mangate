@@ -56,6 +56,7 @@ func (e *ReportedError) Error() string {
 	if e == nil || e.Cause == nil {
 		return "operation failed"
 	}
+
 	return e.Cause.Error()
 }
 
@@ -63,6 +64,7 @@ func (e *ReportedError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.Cause
 }
 
@@ -73,7 +75,13 @@ func WriteError(out io.Writer, operation string, err error) error {
 	if err != nil {
 		message = err.Error()
 	}
-	return json.NewEncoder(out).Encode(envelope{FormatVersion: outputFormatVersion, Operation: operation, Status: "error", Data: errorData{Category: ErrorCategory(message), Message: message}})
+
+	return json.NewEncoder(out).Encode(envelope{
+		FormatVersion: outputFormatVersion,
+		Operation:     operation,
+		Status:        "error",
+		Data:          errorData{Category: ErrorCategory(message), Message: message},
+	})
 }
 
 // ErrorCategory provides stable categories without leaking transport details.
@@ -120,6 +128,7 @@ func ExitCode(message string) int {
 	if strings.Contains(strings.ToLower(message), "download title") {
 		return 5
 	}
+
 	switch ErrorCategory(message) {
 	case "no_results":
 		return 1
@@ -145,6 +154,7 @@ func ErrorDiagnostic(err error) string {
 	if err != nil {
 		message = err.Error()
 	}
+
 	return fmt.Sprintf("error category: %s; exit code: %d", ErrorCategory(message), ExitCode(message))
 }
 
@@ -154,5 +164,6 @@ func writeHuman(out io.Writer, format string, args ...any) {
 			args[index] = util.SanitizeTerminalText(text)
 		}
 	}
+
 	_, _ = fmt.Fprintf(out, format, args...)
 }

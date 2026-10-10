@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"image"
-	"image/color"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -83,6 +82,12 @@ func TestCollectUsesReadableTitleAndChapterDirectories(t *testing.T) {
 	if result, err := Verify(context.Background(), store, false); err != nil || result["valid"] != true {
 		t.Fatalf("verify = %#v, %v", result, err)
 	}
+
+	server.Close()
+	resumed, err := service.Collect(context.Background(), cfg, true)
+	if err != nil || !resumed.Resumed || resumed.State != "completed" || resumed.Counters.ValidPages != 1 {
+		t.Fatalf("resume completed dataset without provider access = %#v, %v", resumed, err)
+	}
 }
 func newPNG(t *testing.T) []byte {
 	t.Helper()
@@ -92,5 +97,3 @@ func newPNG(t *testing.T) []byte {
 	}
 	return buffer.Bytes()
 }
-
-var _ color.Color

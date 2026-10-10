@@ -10,6 +10,7 @@ func EnsureDir(path, purpose string) error {
 		if purpose == "" {
 			purpose = "directory"
 		}
+
 		return fmt.Errorf("%s path cannot be empty", purpose)
 	}
 
@@ -17,6 +18,7 @@ func EnsureDir(path, purpose string) error {
 		if purpose == "" {
 			purpose = "directory"
 		}
+
 		return fmt.Errorf("create %s %q: %w", purpose, path, err)
 	}
 
