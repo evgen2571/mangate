@@ -101,3 +101,13 @@ mangate tui --exit-on-complete --result-file /tmp/mangate-result.json --max-chap
 `--max-chapters 0` (default) permits multiple chapters. A positive value limits the selection. Integration flags must be used together with `--exit-on-complete`; `--json` is incompatible with this mode.
 
 Exit status `0` means a complete validated download, `7` means cancellation, `5` means incomplete/partial download, and `10` means an interactive runtime error. Startup/argument/filesystem errors can occur before a result exists. A failed chapter never includes consumable image paths. See the [Python guide](python.md) for the result schema and exception handling.
+
+### Exact single-chapter directories
+
+```sh
+mangate --json download <title-id> --chapter-id <chapter-id> --chapter-output ./chapter
+```
+
+`--chapter-output` writes one selected chapter directly into that directory, without title/chapter subdirectories. It supports `directory`, `png`, and `jpeg`; multi-chapter or archive selections are rejected. `--output` and `--download-dir` retain their existing organized output-root behavior. Nonempty exact destinations require matching Mangate chapter/provider metadata, including for partial-download resume. Unrelated files and symlink destinations are rejected.
+
+JSON download records retain chapter selection order. Each chapter includes full `chapter` metadata and ordered absolute `imagePaths` for finalized pages. Top-level status distinguishes `complete`, `partial`, `failed`, and `cancelled`; partially acquired chapters do not count as complete. Archived chapters expose `archivePath` and omit consumable image paths after source removal.

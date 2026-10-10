@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import signal
 import subprocess
@@ -16,6 +17,7 @@ from threading import Event
 from typing import Any
 
 from .binary import resolve_executable
+from .models import DownloadResult
 
 
 @dataclass(slots=True)
@@ -25,7 +27,7 @@ class MangateError(RuntimeError):
     category: str
     message: str
     stderr: str = ""
-    result: dict[str, Any] | None = None
+    result: dict[str, Any] | DownloadResult | None = None
 
     def __str__(self) -> str:
         return self.message
@@ -55,6 +57,8 @@ class Client:
         existing_files: str = "skip",
         output_format: str = "directory",
     ) -> None:
+        if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError("timeout must be finite and positive")
         self.executable = (
             resolve_executable() if executable is None else os.fspath(executable)
         )
@@ -89,13 +93,18 @@ class Client:
         )["data"]
 
     def search(
-        self, query: str, *, provider: str | None = None, limit: int | None = None
+        self,
+        query: str,
+        *,
+        provider: str | None = None,
+        limit: int | None = None,
+        cancel_event: Event | None = None,
     ) -> list[dict[str, Any]]:
         args = ["--provider", provider or self.provider, "search"]
         if limit is not None:
             args.extend(["--limit", str(limit)])
         args.append(query)
-        return self._json(args)["data"]["results"]
+        return self._json(args, cancel_event=cancel_event)["data"]["results"]
 
     def title(self, title_id: str, *, provider: str | None = None) -> dict[str, Any]:
         return self._json(["--provider", provider or self.provider, "title", title_id])[
@@ -134,8 +143,11 @@ class Client:
         dry_run: bool = False,
         assume_yes: bool = False,
         cancel_event: Event | None = None,
+        output: str | os.PathLike[str] | None = None,
     ) -> dict[str, Any]:
         args = ["--provider", provider or self.provider, "download"]
+        if output is not None:
+            args.extend(["--chapter-output", os.fspath(output)])
         for chapter_id in chapter_ids:
             args.extend(["--chapter-id", chapter_id])
         for number in chapter_numbers:
@@ -417,61 +429,134 @@ class Client:
         self, args: list[str], *, cancel_event: Event | None = None
     ) -> dict[str, Any]:
         command = self._base_args() + ["--json", "--quiet"] + args
-        proc = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        deadline = None if self.timeout is None else time.monotonic() + self.timeout
-        while proc.poll() is None:
-            if cancel_event is not None and cancel_event.is_set():
-                proc.send_signal(signal.SIGINT)
-                stdout, stderr = proc.communicate()
-                raise MangateError("cancelled", "operation cancelled", stderr)
-            if deadline is not None and time.monotonic() >= deadline:
-                proc.kill()
-                _, stderr = proc.communicate()
-                raise MangateError("timeout", "operation timed out", stderr)
-            time.sleep(0.02)
-        stdout, stderr = proc.communicate()
+        stdout, stderr, code = self._run(command, cancel_event=cancel_event)
         try:
             payload = json.loads(stdout)
         except json.JSONDecodeError:
-            if proc.returncode != 0:
+            if code != 0:
                 raise MangateError(
                     _category(stderr), stderr.strip() or "Mangate failed", stderr
                 ) from None
             raise MangateError(
                 "internal", "Mangate returned invalid JSON", stderr
             ) from None
+        if not isinstance(payload, dict):
+            raise MangateError(
+                "invalid_result", "Mangate returned a non-object result", stderr
+            )
         # A partial download is a usable result with failed chapters recorded in
         # its data. Preserve it for callers instead of discarding completed
         # archive paths because the CLI correctly returned exit status 5.
         if payload.get("status") in {"partial", "no_results"}:
             return payload
-        if proc.returncode != 0 or payload.get("status") != "success":
+        if code != 0 or payload.get("status") != "success":
             error = payload.get("data", {})
             if isinstance(error, dict):
-                category = str(error.get("category") or _category(stderr))
-                message = str(error.get("message") or "Mangate failed")
+                category = str(
+                    error.get("category")
+                    or (
+                        "cancelled"
+                        if payload.get("status") == "cancelled"
+                        else _category(stderr)
+                    )
+                )
+                message = str(
+                    error.get("message") or error.get("error") or "Mangate failed"
+                )
             else:
                 category = _category(stderr)
                 message = "Mangate failed"
-            raise MangateError(category, message, stderr)
+            raise MangateError(category, message, stderr, payload.get("data"))
         return payload
 
-    def _text(self, args: list[str]) -> str:
+    def _run(
+        self, command: list[str], *, cancel_event: Event | None = None
+    ) -> tuple[str, str, int]:
+        if cancel_event is not None and cancel_event.is_set():
+            raise MangateError("cancelled", "operation cancelled")
         try:
-            return subprocess.check_output(
-                self._base_args() + args,
-                text=True,
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=self.timeout,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                start_new_session=os.name != "nt",
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                if os.name == "nt"
+                else 0,
             )
-        except subprocess.CalledProcessError as error:
+        except OSError as error:
             raise MangateError(
-                _category(error.stderr),
-                error.stderr.strip() or "Mangate failed",
-                error.stderr,
+                "executable", f"Cannot start Mangate: {error}"
+            ) from error
+        deadline = None if self.timeout is None else time.monotonic() + self.timeout
+        try:
+            while True:
+                category = None
+                if cancel_event is not None and cancel_event.is_set():
+                    category = "cancelled"
+                elif deadline is not None and time.monotonic() >= deadline:
+                    category = "timeout"
+                if category is not None:
+                    stdout, stderr = _stop_process(proc)
+                    try:
+                        result = json.loads(stdout).get("data")
+                    except (ValueError, AttributeError):
+                        result = None
+                    raise MangateError(
+                        category, f"operation {category}", stderr, result
+                    )
+                try:
+                    # communicate drains both pipes while waiting, and preserves
+                    # buffered output across TimeoutExpired retries.
+                    stdout, stderr = proc.communicate(timeout=0.1)
+                    return stdout, stderr, proc.returncode
+                except subprocess.TimeoutExpired:
+                    continue
+        except KeyboardInterrupt:
+            stdout, stderr = _stop_process(proc)
+            try:
+                result = json.loads(stdout).get("data")
+            except (ValueError, AttributeError):
+                result = None
+            raise MangateError(
+                "cancelled", "operation cancelled", stderr, result
             ) from None
+        finally:
+            if proc.poll() is None:
+                _stop_process(proc)
+
+    def _text(self, args: list[str]) -> str:
+        stdout, stderr, code = self._run(self._base_args() + args)
+        if code:
+            raise MangateError(
+                _category(stderr), stderr.strip() or "Mangate failed", stderr
+            )
+        return stdout
+
+
+def _stop_process(proc: subprocess.Popen[str]) -> tuple[str, str]:
+    if proc.poll() is None:
+        try:
+            if os.name == "nt":
+                proc.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                os.killpg(proc.pid, signal.SIGINT)
+        except (OSError, ValueError):
+            proc.terminate()
+    try:
+        return proc.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            proc.kill()
+        else:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        return proc.communicate()
 
 
 def _category(message: str) -> str:

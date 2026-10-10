@@ -613,3 +613,76 @@ func mustPNGBytes(t *testing.T, fill color.Color) []byte {
 	}
 	return data
 }
+
+func TestDownloadChapterToKeepsOrderedPartialResults(t *testing.T) {
+	data := mustPNGBytes(t, color.RGBA{A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/2" {
+			w.WriteHeader(404)
+			return
+		}
+		if r.URL.Path == "/1" {
+			time.Sleep(30 * time.Millisecond)
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(data)
+	}))
+	defer server.Close()
+	cfg := config.DefaultConfig()
+	chapter := &source.Chapter{ID: "chapter", From: &source.Manga{ID: "manga"}, Pages: []*source.Page{{URL: server.URL + "/1"}, {URL: server.URL + "/2"}, {URL: server.URL + "/3"}}}
+	results, err := New(cfg, server.Client()).DownloadChapterTo(context.Background(), chapter, t.TempDir(), nil)
+	if err == nil || len(results) != 2 || results[0].PageIndex != 1 || results[1].PageIndex != 3 {
+		t.Fatalf("results = %#v, error = %v", results, err)
+	}
+	for _, result := range results {
+		if _, err := os.Stat(result.Path); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDownloadChapterToRejectsAnotherChapter(t *testing.T) {
+	cfg := config.DefaultConfig()
+	dir := t.TempDir()
+	old := &source.Chapter{ID: "old", From: &source.Manga{ID: "manga"}}
+	if err := writeChapterState(dir, old, cfg.Provider, false); err != nil {
+		t.Fatal(err)
+	}
+	chapter := &source.Chapter{ID: "new", From: old.From, Pages: []*source.Page{{URL: "http://127.0.0.1:1/page"}}}
+	_, err := New(cfg, http.DefaultClient).DownloadChapterTo(context.Background(), chapter, dir, nil)
+	if err == nil || !strings.Contains(err.Error(), "different chapter") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestExactDestinationValidation(t *testing.T) {
+	cfg := config.DefaultConfig()
+	chapter := &source.Chapter{ID: "chapter", From: &source.Manga{ID: "manga"}}
+	for _, kind := range []string{"empty", "untracked", "matching", "other", "file", "malformed"} {
+		t.Run(kind, func(t *testing.T) {
+			directory := t.TempDir()
+			switch kind {
+			case "untracked":
+				os.WriteFile(filepath.Join(directory, "0001.png"), []byte("data"), 0644)
+			case "matching":
+				if err := writeChapterState(directory, chapter, cfg.Provider, false); err != nil {
+					t.Fatal(err)
+				}
+			case "other":
+				if err := writeChapterState(directory, chapter, "other", true); err != nil {
+					t.Fatal(err)
+				}
+			case "malformed":
+				os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte("broken"), 0644)
+			case "file":
+				directory = filepath.Join(directory, "file")
+				os.WriteFile(directory, []byte("data"), 0644)
+			}
+			err := ValidateExactDestination(directory, chapter, cfg.Provider)
+			wantError := kind != "empty" && kind != "matching"
+			if (err != nil) != wantError {
+				t.Fatalf("error = %v, wantError = %v", err, wantError)
+			}
+		})
+	}
+}

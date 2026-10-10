@@ -9,6 +9,16 @@ uv run mangate tui
 ```
 
 ```python
+import mangate
+
+result = mangate.download(title="Solo Leveling", chapter=1, output="./chapter")
+print(result.manga.title, result.chapter.number)
+print(result.image_paths)
+```
+
+`search`, `chapters`, and `download` return typed models. `DownloadError.result` preserves available partial output; only complete downloads return normally. `Session` optionally reuses defaults, and the existing dictionary-based `Client` API remains available.
+
+```python
 from mangate import Client
 
 client = Client()
