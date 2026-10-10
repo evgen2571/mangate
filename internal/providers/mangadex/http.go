@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/evgen2571/mangate/internal/source"
 )
 
 const maxRateLimitRetries = 3
@@ -28,7 +30,11 @@ func (pr *Provider) getJSON(ctx context.Context, operation, path string, target 
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s request in %q returned HTTP %d (%s)", operation, pr.Name(), resp.StatusCode, http.StatusText(resp.StatusCode))
+		err := fmt.Errorf("%s request in %q returned HTTP %d (%s)", operation, pr.Name(), resp.StatusCode, http.StatusText(resp.StatusCode))
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+			return fmt.Errorf("%w: %w", source.ErrCandidateUnavailable, err)
+		}
+		return err
 	}
 
 	const maxResponseBytes = 16 << 20

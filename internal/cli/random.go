@@ -31,44 +31,120 @@ func (f *automationFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.eventsFile, "events-file", "", "Write progress as JSON Lines to a new file")
 	cmd.Flags().StringVar(&f.manifest, "manifest", "", "Save a portable acquisition manifest (including partial results)")
 }
-func (f automationFlags) progress(cmd *cobra.Command) (acquisition.Notify, func(), error) {
+func (f automationFlags) progress(cmd *cobra.Command) (acquisition.Notify, func(string) error, error) {
 	if f.jsonl && wantsJSON(cmd) {
 		return nil, nil, fmt.Errorf("--jsonl and --json cannot be combined")
 	}
 	if f.jsonl && isQuiet(cmd) {
 		return nil, nil, fmt.Errorf("--jsonl and --quiet cannot be combined")
 	}
-	var writer io.Writer
-	close := func() {}
+	var file *os.File
 	if f.eventsFile != "" {
-		file, err := os.OpenFile(f.eventsFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		var err error
+		file, err = os.OpenFile(f.eventsFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("open progress file: %w", err)
 		}
-		writer = file
-		close = func() { file.Close() }
 	}
+	if file != nil && f.manifest != "" {
+		eventInfo, statErr := file.Stat()
+		manifestInfo, manifestErr := os.Stat(f.manifest)
+		if statErr != nil || manifestErr == nil && os.SameFile(eventInfo, manifestInfo) {
+			file.Close()
+			os.Remove(f.eventsFile)
+			if statErr != nil {
+				return nil, nil, statErr
+			}
+			return nil, nil, fmt.Errorf("--events-file and --manifest must use different destinations")
+		}
+	}
+	var output io.Writer
 	if f.jsonl {
-		if writer != nil {
-			writer = io.MultiWriter(writer, cmd.OutOrStdout())
-		} else {
-			writer = cmd.OutOrStdout()
+		output = cmd.OutOrStdout()
+	}
+	var fileErr, outputErr error
+	encode := func(writer io.Writer, event acquisition.ProgressEvent, target *error) {
+		if writer == nil || *target != nil {
+			return
+		}
+		data, err := json.Marshal(event)
+		if err == nil {
+			data = append(data, '\n')
+			var n int
+			n, err = writer.Write(data)
+			if err == nil && n != len(data) {
+				err = io.ErrShortWrite
+			}
+		}
+		if err != nil {
+			*target = fmt.Errorf("write progress: %w", err)
 		}
 	}
-	if writer == nil {
-		return nil, close, nil
-	}
-	encoder := json.NewEncoder(writer)
-	return func(e acquisition.ProgressEvent) {
-		if err := encoder.Encode(e); err != nil {
-			cmd.PrintErrln("write progress:", err)
+	notify := func(e acquisition.ProgressEvent) {
+		if file != nil {
+			encode(file, e, &fileErr)
 		}
-	}, close, nil
+		encode(output, e, &outputErr)
+	}
+	reportingError := func() error {
+		err := errors.Join(fileErr, outputErr)
+		if outputErr != nil {
+			return &ReportedError{Cause: err, Code: 6}
+		}
+		return err
+	}
+	finished := false
+	finish := func(status string) error {
+		if finished {
+			return reportingError()
+		}
+		finished = true
+		// Flush before publishing completion; a reporting failure cannot claim success.
+		if flusher, ok := output.(interface{ Flush() error }); ok {
+			if err := flusher.Flush(); err != nil {
+				outputErr = errors.Join(outputErr, fmt.Errorf("flush progress: %w", err))
+			}
+		}
+		if file != nil {
+			if err := file.Sync(); err != nil {
+				fileErr = errors.Join(fileErr, fmt.Errorf("flush progress file: %w", err))
+			}
+			if status != "" && outputErr == nil {
+				encode(file, acquisition.ProgressEvent{Stage: "completion", Status: status}, &fileErr)
+			}
+			if err := file.Sync(); err != nil {
+				fileErr = errors.Join(fileErr, fmt.Errorf("flush progress file: %w", err))
+			}
+			if err := file.Close(); err != nil {
+				fileErr = errors.Join(fileErr, fmt.Errorf("close progress file: %w", err))
+			}
+		}
+		if status != "" {
+			if reportingError() != nil {
+				if status == "complete" {
+					status = "partial"
+				} else if status == "planned" {
+					status = "failed"
+				}
+			}
+			// A failed stream may contain a partial JSON line. Never append to it.
+			encode(output, acquisition.ProgressEvent{Stage: "completion", Status: status}, &outputErr)
+			if flusher, ok := output.(interface{ Flush() error }); ok {
+				if err := flusher.Flush(); err != nil {
+					outputErr = errors.Join(outputErr, fmt.Errorf("flush progress: %w", err))
+				}
+			}
+		}
+		return reportingError()
+	}
+	if file == nil && output == nil {
+		return nil, finish, nil
+	}
+	return notify, finish, nil
 }
-func terminal(notify acquisition.Notify, status string) {
-	if notify != nil {
-		notify(acquisition.ProgressEvent{Stage: "completion", Status: status})
-	}
+
+func automationFailure(cmd *cobra.Command, f automationFlags, finish func(string) error, status string, err error) error {
+	return automationError(cmd, f, errors.Join(err, finish(status)))
 }
 
 func NewRandomCmd(a *app.App) *cobra.Command {
@@ -93,20 +169,18 @@ func NewRandomCmd(a *app.App) *cobra.Command {
 		if cmd.Flags().Changed("seed") {
 			p.Seed = &seed
 		}
-		notify, close, err := f.progress(cmd)
+		notify, finish, err := f.progress(cmd)
 		if err != nil {
-			return err
+			return automationError(cmd, f, err)
 		}
-		defer close()
+		defer finish("")
 		provider, err := a.Provider()
 		if err != nil {
-			terminal(notify, "failed")
-			return automationError(cmd, f, err)
+			return automationFailure(cmd, f, finish, "failed", err)
 		}
 		format, err := archive.ParseFormat(a.Cfg.Download.Format)
 		if err != nil {
-			terminal(notify, "failed")
-			return automationError(cmd, f, err)
+			return automationFailure(cmd, f, finish, "failed", err)
 		}
 		plan, err := acquisition.PlanRandom(cmd.Context(), provider, p, a.Cfg.Download.Dir, format, notify)
 		if err != nil {
@@ -114,12 +188,10 @@ func NewRandomCmd(a *app.App) *cobra.Command {
 			if cmd.Context().Err() != nil {
 				status = "cancelled"
 			}
-			terminal(notify, status)
-			return automationError(cmd, f, err)
+			return automationFailure(cmd, f, finish, status, err)
 		}
 		if err := acquisition.ValidateManifestDestination(plan.Output, f.manifest); err != nil {
-			terminal(notify, "failed")
-			return automationError(cmd, f, err)
+			return automationFailure(cmd, f, finish, "failed", err)
 		}
 		if planOnly {
 			if f.manifest != "" {
@@ -128,18 +200,19 @@ func NewRandomCmd(a *app.App) *cobra.Command {
 					err = m.Write(f.manifest)
 				}
 				if err != nil {
-					terminal(notify, "failed")
-					return automationError(cmd, f, err)
+					return automationFailure(cmd, f, finish, "failed", err)
 				}
 			}
-			terminal(notify, "planned")
+			if err := finish("planned"); err != nil {
+				return automationError(cmd, f, err)
+			}
 			if wantsJSON(cmd) || f.jsonl {
 				return writeJSON(cmd, "random.plan", plan)
 			}
 			writeHuman(cmd.OutOrStdout(), "Selected %s / %s (%d pages) -> %s\n", plan.Manga.ID, plan.Chapter.ID, plan.ExpectedPages, plan.Output)
 			return nil
 		}
-		return executePlan(cmd, a, provider, *plan, f, notify)
+		return executePlan(cmd, a, provider, *plan, f, notify, finish)
 	}
 	flags := cmd.Flags()
 	flags.StringVar(&p.OriginalLanguage, "original-language", "", "Required original language; missing metadata is rejected")
@@ -156,6 +229,10 @@ func NewRandomCmd(a *app.App) *cobra.Command {
 }
 
 func automationError(cmd *cobra.Command, f automationFlags, err error) error {
+	var reported *ReportedError
+	if errors.As(err, &reported) {
+		return err
+	}
 	if f.jsonl {
 		if writeErr := WriteError(cmd.OutOrStdout(), cmd.Name(), err); writeErr != nil {
 			return writeErr
@@ -166,23 +243,23 @@ func automationError(cmd *cobra.Command, f automationFlags, err error) error {
 }
 
 func replayManifest(cmd *cobra.Command, a *app.App, path string, f automationFlags, verify bool) error {
-	notify, close, err := f.progress(cmd)
+	notify, finish, err := f.progress(cmd)
 	if err != nil {
-		return err
+		return automationError(cmd, f, err)
 	}
-	defer close()
+	defer finish("")
 	m, err := acquisition.LoadManifest(path)
 	if err != nil {
-		terminal(notify, "failed")
-		return automationError(cmd, f, err)
+		return automationFailure(cmd, f, finish, "failed", err)
 	}
 	if verify {
 		err = m.Verify()
 		if err != nil {
-			terminal(notify, "failed")
+			return automationFailure(cmd, f, finish, "failed", err)
+		}
+		if err := finish("complete"); err != nil {
 			return automationError(cmd, f, err)
 		}
-		terminal(notify, "complete")
 		if wantsJSON(cmd) || f.jsonl {
 			return writeJSON(cmd, "manifest.verify", m)
 		}
@@ -193,37 +270,32 @@ func replayManifest(cmd *cobra.Command, a *app.App, path string, f automationFla
 		m.Plan.Output = a.Cfg.Download.Dir
 	}
 	if cmd.Flags().Changed("format") && archive.Format(a.Cfg.Download.Format) != m.Plan.Format {
-		terminal(notify, "failed")
-		return automationError(cmd, f, fmt.Errorf("plan validation: format override disagrees with manifest"))
+		return automationFailure(cmd, f, finish, "failed", fmt.Errorf("plan validation: format override disagrees with manifest"))
 	}
 	if cmd.Flags().Changed("provider") && a.Cfg.Provider != m.Plan.Provider {
-		terminal(notify, "failed")
-		return automationError(cmd, f, fmt.Errorf("plan validation: provider override disagrees with manifest"))
+		return automationFailure(cmd, f, finish, "failed", fmt.Errorf("plan validation: provider override disagrees with manifest"))
 	}
 	cfg := a.Cfg.Clone()
 	cfg.Provider = m.Plan.Provider
 	cfg.Download.Format = string(m.Plan.Format)
 	if err := a.ApplyConfig(cfg); err != nil {
-		terminal(notify, "failed")
-		return automationError(cmd, f, err)
+		return automationFailure(cmd, f, finish, "failed", err)
 	}
 	provider, err := a.Provider()
 	if err != nil {
-		terminal(notify, "failed")
-		return automationError(cmd, f, err)
+		return automationFailure(cmd, f, finish, "failed", err)
 	}
-	return executePlan(cmd, a, provider, m.Plan, f, notify)
+	return executePlan(cmd, a, provider, m.Plan, f, notify, finish)
 }
 
-func executePlan(cmd *cobra.Command, a *app.App, provider providers.Provider, plan acquisition.DownloadPlan, f automationFlags, notify acquisition.Notify) error {
+func executePlan(cmd *cobra.Command, a *app.App, provider providers.Provider, plan acquisition.DownloadPlan, f automationFlags, notify acquisition.Notify, finish func(string) error) error {
 	var pathErr error
 	plan.Output, pathErr = filepath.Abs(plan.Output)
 	if pathErr != nil {
 		return pathErr
 	}
 	if err := acquisition.ValidateManifestDestination(plan.Output, f.manifest); err != nil {
-		terminal(notify, "failed")
-		return automationError(cmd, f, err)
+		return automationFailure(cmd, f, finish, "failed", err)
 	}
 	chapter, err := plan.Resolve(cmd.Context(), provider, notify)
 	started := time.Now().UTC()
@@ -306,11 +378,24 @@ func executePlan(cmd *cobra.Command, a *app.App, provider providers.Provider, pl
 	if manifestErr != nil {
 		err = errors.Join(err, fmt.Errorf("write manifest: %w", manifestErr))
 		record.Error = err.Error()
-		record.Status = "partial"
-		status = "partial"
+		if status == "complete" {
+			status = "partial"
+		}
+		record.Status = status
 	}
 
-	terminal(notify, status)
+	if reportErr := finish(status); reportErr != nil {
+		err = errors.Join(err, reportErr)
+		if status == "complete" {
+			status = "partial"
+		}
+		record.Status = status
+		record.Error = err.Error()
+		var reported *ReportedError
+		if errors.As(reportErr, &reported) {
+			return &ReportedError{Cause: err, Code: 6}
+		}
+	}
 	responseStatus := status
 	if err == nil {
 		responseStatus = "success"

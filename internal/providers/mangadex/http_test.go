@@ -152,3 +152,20 @@ func TestAllOperationsBoundRetriesAndCancelWaits(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoveryFailureClassification(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 410, 500} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "0")
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+			p := newTestProvider(t, server.URL, "en")
+			_, err := p.Chapters(context.Background(), &source.Manga{ID: "title"})
+			if err == nil || errors.Is(err, source.ErrCandidateUnavailable) != (status == 404 || status == 410) {
+				t.Fatalf("status=%d err=%v", status, err)
+			}
+		})
+	}
+}

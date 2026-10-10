@@ -3,6 +3,8 @@ package acquisition
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,10 +21,14 @@ import (
 	"github.com/evgen2571/mangate/internal/downloader"
 )
 
+const ManifestVersion = 2
+
 type Image struct {
 	Index  int    `json:"index"`
 	Path   string `json:"path"`
 	Format string `json:"format"`
+	Bytes  int64  `json:"bytes,omitempty"`
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 // Manifest records selection separately from local files. Replay resolves the
@@ -38,7 +44,7 @@ type Manifest struct {
 }
 
 func (m Manifest) Validate() error {
-	if m.Version != Version {
+	if m.Version != 1 && m.Version != ManifestVersion {
 		return fmt.Errorf("manifest validation: unsupported version %d", m.Version)
 	}
 	if err := m.Plan.Validate(); err != nil {
@@ -56,6 +62,15 @@ func (m Manifest) Validate() error {
 		}
 		if img.Format != "png" && img.Format != "jpeg" && img.Format != "gif" && img.Format != "webp" && img.Format != "bmp" && img.Format != "avif" && !(img.Format == "unknown" && m.Validation == "incomplete") {
 			return fmt.Errorf("manifest validation: unsupported detected image format")
+		}
+		if m.Version == 1 && (img.Bytes != 0 || img.SHA256 != "") {
+			return fmt.Errorf("manifest validation: version 1 cannot contain integrity records")
+		}
+		if m.Version == ManifestVersion && !(img.Format == "unknown" && m.Validation == "incomplete" && img.Bytes == 0 && img.SHA256 == "") {
+			digest, err := hex.DecodeString(img.SHA256)
+			if img.Bytes <= 0 || err != nil || len(digest) != sha256.Size || strings.ToLower(img.SHA256) != img.SHA256 {
+				return fmt.Errorf("manifest validation: invalid image integrity record")
+			}
 		}
 		previous = img.Index
 	}
@@ -79,7 +94,7 @@ func (m Manifest) Validate() error {
 }
 
 func NewManifest(plan DownloadPlan, pages []downloader.PageDownloadResult, status string, cause error) (Manifest, error) {
-	m := Manifest{Version: Version, Plan: plan, Images: []Image{}, Status: status, Validation: "incomplete"}
+	m := Manifest{Version: ManifestVersion, Plan: plan, Images: []Image{}, Status: status, Validation: "incomplete"}
 	if status == "complete" {
 		m.Validation = "complete"
 	}
@@ -105,6 +120,8 @@ func NewManifest(plan DownloadPlan, pages []downloader.PageDownloadResult, statu
 	}
 	for _, page := range pages {
 		format, err := detectedFormat(page.Path)
+		size, digest, hashErr := imageIntegrity(page.Path)
+		err = errors.Join(err, hashErr)
 		if err != nil {
 			format = "unknown"
 			if m.Status == "complete" {
@@ -113,10 +130,24 @@ func NewManifest(plan DownloadPlan, pages []downloader.PageDownloadResult, statu
 			m.Validation = "incomplete"
 			m.Error = "acquisition " + m.Status + ": downloaded image validation failed"
 		}
-		m.Images = append(m.Images, Image{Index: page.PageIndex, Path: filepath.Base(page.Path), Format: format})
+		m.Images = append(m.Images, Image{Index: page.PageIndex, Path: filepath.Base(page.Path), Format: format, Bytes: size, SHA256: digest})
 	}
 	m.ActualPages = len(m.Images)
 	return m, m.Validate()
+}
+
+func imageIntegrity(path string) (int64, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer f.Close()
+	hash := sha256.New()
+	size, err := io.Copy(hash, f)
+	if err != nil {
+		return 0, "", err
+	}
+	return size, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func detectedFormat(path string) (string, error) {
@@ -150,11 +181,22 @@ func detectedFormat(path string) (string, error) {
 }
 
 func LoadManifest(path string) (*Manifest, error) {
+	path, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, fmt.Errorf("read manifest: %w", err)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect manifest: %w", err)
+	}
+	if info.Size() > 4<<20 {
+		return nil, fmt.Errorf("malformed manifest: exceeds 4 MiB")
+	}
 	dec := json.NewDecoder(io.LimitReader(f, (4<<20)+1))
 	dec.DisallowUnknownFields()
 	var m Manifest
@@ -175,16 +217,32 @@ func LoadManifest(path string) (*Manifest, error) {
 	return &m, err
 }
 
+func resolveDestination(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if !os.IsNotExist(err) {
+		return resolved, err
+	}
+	parent, err := resolveDestination(filepath.Dir(absolute))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(absolute)), nil
+}
+
 // ValidateManifestDestination prevents manifests from replacing chapter files/state.
 func ValidateManifestDestination(output, path string) error {
 	if path == "" {
 		return nil
 	}
-	absolute, err := filepath.Abs(path)
+	absolute, err := resolveDestination(path)
 	if err != nil {
 		return err
 	}
-	root, err := filepath.Abs(output)
+	root, err := resolveDestination(output)
 	if err != nil {
 		return err
 	}
@@ -209,7 +267,16 @@ func (m Manifest) Write(path string) error {
 	if err != nil {
 		return err
 	}
-	m.Plan.Output, err = filepath.Rel(filepath.Dir(absolute), m.Plan.Output)
+	parent, err := resolveDestination(filepath.Dir(absolute))
+	if err != nil {
+		return err
+	}
+	absolute = filepath.Join(parent, filepath.Base(absolute))
+	output, err := resolveDestination(m.Plan.Output)
+	if err != nil {
+		return err
+	}
+	m.Plan.Output, err = filepath.Rel(parent, output)
 	if err != nil {
 		return err
 	}
@@ -240,10 +307,28 @@ func (m Manifest) Verify() error {
 	if m.Status != "complete" {
 		return fmt.Errorf("manifest verification: acquisition is %s", m.Status)
 	}
+	if m.Version == 1 {
+		return fmt.Errorf("manifest verification: version 1 has no image checksums; replay to create a version 2 manifest")
+	}
 	chapter := *m.Plan.Chapter
 	chapter.From = m.Plan.Manga
 	if err := downloader.ValidateExactDestination(m.Plan.Output, &chapter, m.Plan.Provider); err != nil {
 		return err
+	}
+	data, err := os.ReadFile(filepath.Join(m.Plan.Output, ".mangate.json"))
+	if err != nil {
+		return fmt.Errorf("manifest verification: read chapter state: %w", err)
+	}
+	var state struct {
+		Version       string `json:"formatVersion"`
+		Complete      bool   `json:"complete"`
+		ExpectedPages int    `json:"expectedPages"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("manifest verification: malformed chapter state: %w", err)
+	}
+	if state.Version != "1" || !state.Complete || state.ExpectedPages != m.Plan.ExpectedPages {
+		return fmt.Errorf("manifest verification: incomplete or inconsistent chapter state")
 	}
 	for _, img := range m.Images {
 		path := filepath.Join(m.Plan.Output, img.Path)
@@ -253,6 +338,13 @@ func (m Manifest) Verify() error {
 		}
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("manifest verification: image is not a regular file")
+		}
+		size, digest, err := imageIntegrity(path)
+		if err != nil {
+			return fmt.Errorf("manifest verification: read image: %w", err)
+		}
+		if size != img.Bytes || digest != img.SHA256 {
+			return fmt.Errorf("manifest verification: image size or SHA-256 changed")
 		}
 		format, err := detectedFormat(path)
 		if err != nil {
