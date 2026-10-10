@@ -3,18 +3,17 @@ package interactive
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"image"
 	"image/png"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/evgen2571/mangate/internal/archive"
+	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
+	"github.com/evgen2571/mangate/internal/testprovider"
 )
 
 func TestArchiveUsesNamesFromSelectedChapterSlice(t *testing.T) {
@@ -47,22 +46,7 @@ func TestDownloadCommandReturnsCompletionWithoutProgressConsumer(t *testing.T) {
 func TestPartialDownloadReportsAndArchivesCompletedChapters(t *testing.T) {
 	for _, format := range []archive.Format{archive.FormatDirectory, archive.FormatCBZ} {
 		t.Run(string(format), func(t *testing.T) {
-			var page bytes.Buffer
-			if err := png.Encode(&page, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
-				t.Fatal(err)
-			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case "/at-home/server/good":
-					fmt.Fprintf(w, `{"baseUrl":"http://%s","chapter":{"hash":"hash","data":["1.png"]}}`, r.Host)
-				case "/data/hash/1.png":
-					w.Header().Set("Content-Type", "image/png")
-					w.Write(page.Bytes())
-				default:
-					http.NotFound(w, r)
-				}
-			}))
-			defer server.Close()
+			server := testprovider.New(t)
 			m := testModel(t)
 			cfg := m.app.Cfg
 			cfg.Download.Dir = t.TempDir()
@@ -74,17 +58,17 @@ func TestPartialDownloadReportsAndArchivesCompletedChapters(t *testing.T) {
 			m.format = format
 			m.integration = format == archive.FormatDirectory
 			m.manga = &source.Manga{ID: "title", Title: "Fixture"}
-			chapters := []*source.Chapter{{ID: "good", Index: "1", PageCount: 1}, {ID: "bad", Index: "2", PageCount: 1}}
+			chapters := []*source.Chapter{{ID: "chapter-id", Index: "1", PageCount: 2}, {ID: "bad", Index: "2", PageCount: 1}}
 			result := m.download(context.Background(), chapters, make(chan tea.Msg))().(downloadDone)
 			if result.err == nil || result.completed != 1 || result.failed != 1 || len(result.paths) != 1 {
 				t.Fatalf("result = %#v", result)
 			}
-			if format == archive.FormatDirectory && (len(result.results) != 2 || result.results[0].Status != "success" || len(result.results[0].ImagePaths) != 1 || result.results[1].Status != "failed" || len(result.results[1].ImagePaths) != 0) {
+			if format == archive.FormatDirectory && (len(result.results) != 2 || result.results[0].Status != "success" || len(result.results[0].ImagePaths) != 2 || result.results[1].Status != "failed" || len(result.results[1].ImagePaths) != 0) {
 				t.Fatalf("integration chapters = %#v", result.results)
 			}
 			if format.IsArchive() {
 				inspection, err := archive.Inspect(result.paths[0])
-				if err != nil || !inspection.Complete || inspection.PageCount != 1 {
+				if err != nil || !inspection.Complete || inspection.PageCount != 2 {
 					t.Fatalf("archive = %#v, %v", inspection, err)
 				}
 			} else if _, err := os.Stat(filepath.Join(result.paths[0], "0001.png")); err != nil {
@@ -136,4 +120,14 @@ func TestTUIReusesCompleteArchivesWithoutNetworkOrSourceDirectories(t *testing.T
 	if _, err := os.Stat(directory); !os.IsNotExist(err) {
 		t.Fatalf("mixed selection recreated reused source directory: %v", err)
 	}
+}
+
+func chapterDownloadPaths(root string, manga *source.Manga, chapters []*source.Chapter) []string {
+	names := downloader.ChapterDirectoryNames(chapters)
+	paths := make([]string, len(names))
+	for index, name := range names {
+		paths[index] = filepath.Join(root, downloader.TitleDirectoryName(manga), name)
+	}
+
+	return paths
 }

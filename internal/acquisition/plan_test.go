@@ -141,7 +141,7 @@ func TestCancellationAtSelection(t *testing.T) {
 }
 func TestManifestRoundTripAndInvalidInput(t *testing.T) {
 	f := fixture()
-	plan, err := PlanRandom(context.Background(), randomFixture{f}, policy(), t.TempDir(), archive.FormatPNG, nil)
+	plan, err := PlanRandom(context.Background(), randomFixture{f}, policy(), canonicalTempDir(t), archive.FormatPNG, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestManifestRoundTripAndInvalidInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := t.TempDir() + "/manifest.json"
+	path := canonicalTempDir(t) + "/manifest.json"
 	if err := m.Write(path); err != nil {
 		t.Fatal(err)
 	}

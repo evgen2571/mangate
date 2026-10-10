@@ -37,7 +37,7 @@ jobs:
         run: bash scripts/check.sh
       - name: Race detection
         if: runner.os == 'Linux'
-        run: go test -race ./internal/downloader ./internal/cache ./internal/providers/... ./internal/usecase ./internal/interactive
+        run: go test -race ./internal/acquisition ./internal/dataset ./internal/downloader ./internal/cache ./internal/providers/... ./internal/usecase ./internal/interactive
       - name: Installation smoke test
         run: uv run --project python --locked python scripts/install_smoke.py
 

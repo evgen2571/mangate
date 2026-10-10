@@ -1,23 +1,17 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/evgen2571/mangate/internal/acquisition"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
-	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/providers"
-	"github.com/evgen2571/mangate/internal/source"
 	"github.com/spf13/cobra"
 )
 
@@ -297,100 +291,20 @@ func executePlan(cmd *cobra.Command, a *app.App, provider providers.Provider, pl
 	if err := acquisition.ValidateManifestDestination(plan.Output, f.manifest); err != nil {
 		return automationFailure(cmd, f, finish, "failed", err)
 	}
-	chapter, err := plan.Resolve(cmd.Context(), provider, notify)
-	started := time.Now().UTC()
-	record := downloadRecord{Provider: plan.Provider, Title: plan.Manga, Format: plan.Format, OutputRoot: plan.Output, StartedAt: started, Status: "in_progress", Chapters: chapterRecords(plan.Output, plan.Manga, []*source.Chapter{plan.Chapter}, plan.Format, "pending")}
-	record.Chapters[0].OutputPath = plan.Output
-	var pages []downloader.PageDownloadResult
-	if err == nil {
-		err = downloader.ValidateExactDestination(plan.Output, chapter, plan.Provider)
-	}
-	if err == nil {
-		if notify != nil {
-			notify(acquisition.ProgressEvent{Stage: "downloading", Status: "started", MangaID: plan.Manga.ID, ChapterID: chapter.ID, ExpectedPages: plan.ExpectedPages})
+	record, err := a.Acquisition(provider).ExecutePlan(cmd.Context(), plan, notify)
+	status := record.Status
+	if record.Manifest != nil && f.manifest != "" {
+		if manifestErr := record.Manifest.Write(f.manifest); manifestErr != nil {
+			err = errors.Join(err, fmt.Errorf("write manifest: %w", manifestErr))
+			record.Normalize(cmd.Context(), err)
+			status = record.Status
 		}
-		// This loader is also used on URL refresh: no retry may bypass eligibility.
-		loader := func(ctx context.Context, c *source.Chapter) ([]*source.Page, error) {
-			loaded, err := provider.Pages(ctx, c)
-			if err != nil {
-				return nil, err
-			}
-			if len(loaded) != plan.ExpectedPages || !plan.Policy.MatchPages(len(loaded)) {
-				return nil, fmt.Errorf("plan validation: page count changed")
-			}
-			return loaded, nil
-		}
-		pages, err = a.Downloader.DownloadChapterToWithProgress(cmd.Context(), chapter, plan.Output, loader, func(completed, total int) {
-			if notify != nil {
-				notify(acquisition.ProgressEvent{Stage: "downloading", Status: "progress", ChapterID: chapter.ID, CompletedPages: completed, ExpectedPages: total})
-			}
-		})
-		if !errors.Is(err, &downloader.ChapterPreflightError{ChapterID: chapter.ID}) {
-			err = errors.Join(err, updateChapterRecordStates(&record))
-			if len(record.Chapters[0].ImagePaths) > 0 {
-				pages = nil
-				for _, path := range record.Chapters[0].ImagePaths {
-					index, parseErr := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-					if parseErr != nil {
-						err = errors.Join(err, parseErr)
-						continue
-					}
-					pages = append(pages, downloader.PageDownloadResult{PageIndex: index, Path: path})
-				}
-			}
-		}
-	}
-	record.Chapters[0].ImagePaths = []string{}
-	for _, page := range pages {
-		record.Chapters[0].ImagePaths = append(record.Chapters[0].ImagePaths, page.Path)
-	}
-	record.CompletedAt = time.Now().UTC()
-	status := "complete"
-	if err != nil {
-		status = "failed"
-		if len(pages) > 0 {
-			status = "partial"
-		}
-		if errors.Is(err, context.Canceled) || cmd.Context().Err() != nil {
-			status = "cancelled"
-		}
-		record.Error = err.Error()
-		record.Chapters[0].Status = status
-	}
-	if err == nil {
-		record.Chapters[0].Status = "complete"
-	}
-	record.Status = status
-	m, manifestErr := acquisition.NewManifest(plan, pages, status, err)
-	if manifestErr == nil {
-		record.Manifest = &m
-		if m.Status != status {
-			status = m.Status
-			record.Status = status
-			record.Chapters[0].Status = status
-			err = errors.Join(err, fmt.Errorf("acquisition validation: downloaded image validation failed"))
-			record.Error = err.Error()
-		}
-		if f.manifest != "" {
-			manifestErr = m.Write(f.manifest)
-		}
-	}
-	if manifestErr != nil {
-		err = errors.Join(err, fmt.Errorf("write manifest: %w", manifestErr))
-		record.Error = err.Error()
-		if status == "complete" {
-			status = "partial"
-		}
-		record.Status = status
 	}
 
 	if reportErr := finish(status); reportErr != nil {
 		err = errors.Join(err, reportErr)
-		if status == "complete" {
-			status = "partial"
-		}
-		record.Status = status
-		record.Error = err.Error()
+		record.Normalize(cmd.Context(), err)
+		status = record.Status
 		var reported *ReportedError
 		if errors.As(reportErr, &reported) {
 			return &ReportedError{Cause: err, Code: 6}

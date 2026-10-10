@@ -1,51 +1,19 @@
 package cli
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/evgen2571/mangate/internal/acquisition"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
-	"github.com/evgen2571/mangate/internal/usecase"
 	"github.com/spf13/cobra"
 )
-
-type downloadRecord struct {
-	Manifest    *acquisition.Manifest `json:"manifest,omitempty"`
-	Provider    string                `json:"provider"`
-	Title       *source.Manga         `json:"title"`
-	Format      archive.Format        `json:"format"`
-	OutputRoot  string                `json:"outputRoot"`
-	Status      string                `json:"status"`
-	StartedAt   time.Time             `json:"startedAt"`
-	CompletedAt time.Time             `json:"completedAt"`
-	Chapters    []chapterDownload     `json:"chapters"`
-	Error       string                `json:"error,omitempty"`
-}
-
-type chapterDownload struct {
-	ID            string              `json:"id"`
-	Number        string              `json:"number,omitempty"`
-	Title         string              `json:"title,omitempty"`
-	Status        string              `json:"status"`
-	OutputPath    string              `json:"outputPath"`
-	ArchivePath   string              `json:"archivePath,omitempty"`
-	Validation    *archive.Validation `json:"validation,omitempty"`
-	ExpectedPages int                 `json:"expectedPages,omitempty"`
-	Chapter       *source.Chapter     `json:"chapter"`
-	ImagePaths    []string            `json:"imagePaths"`
-}
 
 func NewDownloadCmd(a *app.App) *cobra.Command {
 	var fromManifest string
@@ -138,45 +106,13 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("resolve chapter output: %w", err)
 				}
-				chapter := *selection[0]
-				chapter.From = title
-				if err := downloader.ValidateExactDestination(chapterOutput, &chapter, provider.Name()); err != nil {
-					return err
-				}
 			}
-			outputRoot, err := filepath.Abs(a.Cfg.Download.Dir)
+			service := a.Acquisition(provider)
+			record, err := service.Plan(title, selection, chapterOutput)
 			if err != nil {
-				return fmt.Errorf("resolve output root: %w", err)
-			}
-			started := time.Now().UTC()
-			record := downloadRecord{
-				Provider:   provider.Name(),
-				Title:      title,
-				Format:     format,
-				OutputRoot: outputRoot,
-				Status:     "in_progress",
-				StartedAt:  started,
-				Chapters:   chapterRecords(outputRoot, title, selection, format, "pending"),
-			}
-			if chapterOutput != "" {
-				record.OutputRoot = chapterOutput
-				record.Chapters[0].OutputPath = chapterOutput
+				return err
 			}
 			if dryRun {
-				if format.IsArchive() && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
-					if _, err := reusableArchiveSelection(&record, selection, title); err != nil {
-						return err
-					}
-				}
-
-				record.Status = "planned"
-				record.CompletedAt = time.Now().UTC()
-				for index := range record.Chapters {
-					if record.Chapters[index].Status != "skipped" {
-						record.Chapters[index].Status = "planned"
-					}
-				}
-
 				if wantsJSON(cmd) {
 					return writeJSON(cmd, "download.plan", record)
 				}
@@ -210,77 +146,18 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, record.OutputRoot, a.Cfg.Download.ExistingFileMode)
 			}
 
-			pendingSelection := selection
-			if format.IsArchive() && a.Cfg.Download.ExistingFileMode == string(archive.ExistingSkip) {
-				pendingSelection, err = reusableArchiveSelection(&record, selection, title)
-				if err != nil {
-					return err
-				}
-			}
-
-			notify := func(progress usecase.DownloadProgress) {
+			notify := func(progress downloader.DownloadProgress) {
 				if wantsJSON(cmd) || isQuiet(cmd) {
 					return
 				}
 
 				writeHuman(cmd.ErrOrStderr(), "Downloaded %d/%d pages, %d/%d chapters\r", progress.CompletedPages, progress.TotalPages, progress.CompletedChapters, progress.TotalChapters)
 			}
-			if len(pendingSelection) == 0 {
-				record.CompletedAt = time.Now().UTC()
-				record.Status = "complete"
-				if wantsJSON(cmd) {
-					return writeJSON(cmd, "download", record)
-				}
-
-				if !isQuiet(cmd) {
-					writeDownloadSummary(cmd.OutOrStdout(), record)
-				}
-
-				return nil
-			}
-
-			if chapterOutput != "" {
-				chapter := *selection[0]
-				chapter.From = title
-				chapter.Pages = nil
-				var pages []downloader.PageDownloadResult
-				pages, err = a.Downloader.DownloadChapterTo(cmd.Context(), &chapter, chapterOutput, provider.Pages)
-				chapterCopy := chapter
-				chapterCopy.Pages = nil
-				record.Chapters[0].Chapter = &chapterCopy
-				record.Chapters[0].ExpectedPages = len(chapter.Pages)
-				for _, page := range pages {
-					record.Chapters[0].ImagePaths = append(record.Chapters[0].ImagePaths, page.Path)
-				}
-			} else {
-				err = a.UseCases().DownloadChapters(cmd.Context(), title, pendingSelection, notify)
-			}
-			record.CompletedAt = time.Now().UTC()
-			err = errors.Join(err, updateChapterRecordStates(&record))
-			for index := range record.Chapters {
-				if errors.Is(err, &downloader.ChapterPreflightError{ChapterID: record.Chapters[index].ID}) {
-					record.Chapters[index].Status = "failed"
-				}
-			}
+			record, err = service.Execute(cmd.Context(), title, selection, chapterOutput, notify)
 			if err != nil {
-				record.Error = err.Error()
-				if format.IsArchive() {
-					if archiveErr := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, true); archiveErr != nil {
-						record.Error = errors.Join(err, archiveErr).Error()
-					}
-				}
-
 				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
 			}
 
-			if format.IsArchive() {
-				if err := finalizeArchives(cmd.Context(), record, title, selection, format, a.Cfg.Download.ExistingFileMode, true); err != nil {
-					record.Error = err.Error()
-					return reportDownloadResult(cmd, &record, err)
-				}
-			}
-
-			record.Status = "complete"
 			if wantsJSON(cmd) {
 				return writeJSON(cmd, "download", record)
 			}
@@ -351,7 +228,7 @@ func writeDownloadPreflight(out io.Writer, title *source.Manga, provider string,
 	)
 }
 
-func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause error) error {
+func reportDownloadResult(cmd *cobra.Command, record *acquisition.Result, cause error) error {
 	completed := 0
 	for _, chapter := range record.Chapters {
 		if chapter.Status == "complete" || chapter.Status == "skipped" {
@@ -364,24 +241,9 @@ func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause erro
 		code = 8
 	}
 
-	hasPages := false
-	for _, chapter := range record.Chapters {
-		hasPages = hasPages || (chapter.Status != "failed" && len(chapter.ImagePaths) > 0)
-	}
-	if completed > 0 || hasPages {
-		record.Status = "partial"
-	} else {
-		record.Status = "failed"
-	}
-
-	if errors.Is(cause, context.Canceled) || (cmd.Context() != nil && errors.Is(cmd.Context().Err(), context.Canceled)) {
-		record.Status = "cancelled"
+	record.Normalize(cmd.Context(), cause)
+	if record.Status == "cancelled" {
 		code = 7
-		for index := range record.Chapters {
-			if record.Chapters[index].Status != "complete" && record.Chapters[index].Status != "skipped" {
-				record.Chapters[index].Status = "cancelled"
-			}
-		}
 	}
 	if wantsJSON(cmd) {
 		if err := writeJSONStatus(cmd, "download", record.Status, record); err != nil {
@@ -394,7 +256,7 @@ func reportDownloadResult(cmd *cobra.Command, record *downloadRecord, cause erro
 	return &ReportedError{Cause: cause, Code: code}
 }
 
-func writeDownloadSummary(out io.Writer, record downloadRecord) {
+func writeDownloadSummary(out io.Writer, record acquisition.Result) {
 	completed, skipped, failed, archiveFailed, expectedPages, reusedPages := 0, 0, 0, 0, 0, 0
 	for _, chapter := range record.Chapters {
 		expectedPages += chapter.ExpectedPages
@@ -435,95 +297,6 @@ func writeDownloadSummary(out io.Writer, record downloadRecord) {
 
 		writeHuman(out, "  [%s] %s\n", chapter.Status, path)
 	}
-}
-
-func updateChapterRecordStates(record *downloadRecord) error {
-	var failures []error
-	for index := range record.Chapters {
-		if record.Chapters[index].Status == "skipped" {
-			continue
-		}
-
-		stateData, err := os.ReadFile(filepath.Join(record.Chapters[index].OutputPath, ".mangate.json"))
-		if err != nil {
-			record.Chapters[index].Status = "incomplete"
-			failures = append(failures, fmt.Errorf("read chapter state: %w", err))
-			continue
-		}
-
-		var state struct {
-			Complete      bool   `json:"complete"`
-			ExpectedPages int    `json:"expectedPages"`
-			TitleID       string `json:"titleId"`
-			ChapterID     string `json:"chapterId"`
-			Provider      string `json:"provider"`
-		}
-		if err := json.Unmarshal(stateData, &state); err != nil {
-			record.Chapters[index].Status = "incomplete"
-			failures = append(failures, fmt.Errorf("decode chapter state: %w", err))
-			continue
-		}
-		if record.Title != nil && (state.TitleID != record.Title.ID || state.ChapterID != record.Chapters[index].ID || state.Provider != record.Provider) {
-			record.Chapters[index].Status = "incomplete"
-			record.Chapters[index].ImagePaths = []string{}
-			failures = append(failures, fmt.Errorf("chapter destination belongs to a different chapter or provider"))
-			continue
-		}
-		record.Chapters[index].ExpectedPages = state.ExpectedPages
-		if record.Chapters[index].Chapter != nil {
-			record.Chapters[index].Chapter.PageCount = state.ExpectedPages
-		}
-		if state.Complete {
-			paths, err := archive.ValidatedImagePaths(record.Chapters[index].OutputPath, state.ExpectedPages)
-			if err != nil {
-				record.Chapters[index].Status = "incomplete"
-				failures = append(failures, err)
-				continue
-			}
-			record.Chapters[index].ImagePaths = paths
-			record.Chapters[index].Status = "complete"
-		} else {
-			record.Chapters[index].Status = "incomplete"
-			failures = append(failures, fmt.Errorf("chapter %q output is incomplete", record.Chapters[index].ID))
-			paths, err := downloader.AvailablePagePaths(record.Chapters[index].OutputPath, state.ExpectedPages)
-			if err != nil {
-				failures = append(failures, err)
-			} else {
-				record.Chapters[index].ImagePaths = paths
-			}
-		}
-	}
-	return errors.Join(failures...)
-}
-
-func reusableArchiveSelection(record *downloadRecord, selection []*source.Chapter, title *source.Manga) ([]*source.Chapter, error) {
-	pending := make([]*source.Chapter, 0, len(selection))
-	for index, chapter := range selection {
-		chapterRecord := &record.Chapters[index]
-		if _, err := os.Stat(chapterRecord.ArchivePath); err != nil {
-			if os.IsNotExist(err) {
-				pending = append(pending, chapter)
-				continue
-			}
-
-			return nil, fmt.Errorf("inspect existing archive %q: %w", chapterRecord.ArchivePath, err)
-		}
-
-		inspection, err := archive.Inspect(chapterRecord.ArchivePath)
-		if err == nil && inspection.Complete && inspection.TitleID == title.ID && inspection.ChapterID == chapter.ID {
-			chapterRecord.Status = "skipped"
-			chapterRecord.Validation = &inspection.Validation
-			continue
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("existing archive %q is invalid; use --existing-files replace to replace it: %w", chapterRecord.ArchivePath, err)
-		}
-
-		return nil, fmt.Errorf("existing archive %q belongs to a different chapter; use --existing-files replace to replace it", chapterRecord.ArchivePath)
-	}
-
-	return pending, nil
 }
 
 type chapterSelection struct {
@@ -696,72 +469,6 @@ func chaptersWithNumber(chapters []*source.Chapter, number string) []*source.Cha
 	}
 
 	return matches
-}
-
-func chapterRecords(root string, title *source.Manga, chapters []*source.Chapter, format archive.Format, status string) []chapterDownload {
-	records := make([]chapterDownload, 0, len(chapters))
-	titleDir := downloader.TitleDirectoryName(title)
-
-	names := downloader.ChapterDirectoryNames(chapters)
-	for index, chapter := range chapters {
-		directory := filepath.Join(root, titleDir, names[index])
-		chapterCopy := *chapter
-		chapterCopy.Pages = nil
-		record := chapterDownload{Chapter: &chapterCopy, ImagePaths: []string{}, ID: chapter.ID, Number: chapter.Index, Title: chapter.Title, Status: status, OutputPath: directory, ExpectedPages: chapter.PageCount}
-		if format.IsArchive() {
-			record.ArchivePath = directory + format.Extension()
-		}
-
-		records = append(records, record)
-	}
-
-	return records
-}
-
-func finalizeArchives(ctx context.Context, record downloadRecord, title *source.Manga, chapters []*source.Chapter, format archive.Format, existingMode string, removeSource bool) error {
-	var failures []error
-	for index, chapter := range chapters {
-		chapterRecord := &record.Chapters[index]
-		if chapterRecord.Status != "complete" {
-			continue
-		}
-
-		result, err := archive.CreateFromDirectoryContext(ctx, archive.Options{
-			Format:           format,
-			SourceDir:        chapterRecord.OutputPath,
-			OutputPath:       chapterRecord.ArchivePath,
-			ExistingFileMode: archive.ExistingFileMode(existingMode),
-			RemoveSource:     removeSource,
-			Metadata: archive.Metadata{
-				Provider:      record.Provider,
-				TitleID:       title.ID,
-				Title:         title.Title,
-				ChapterID:     chapter.ID,
-				Volume:        chapter.Volume,
-				ChapterNumber: chapter.Index,
-				ChapterTitle:  chapter.Title,
-				Language:      chapter.Language,
-				ReleaseGroup:  chapter.ReleaseGroup,
-				PublishedAt:   chapter.PublishedAt,
-				ExpectedPages: chapter.PageCount,
-			},
-		})
-		if err != nil {
-			chapterRecord.Status = "archive_failed"
-			failures = append(failures, fmt.Errorf("create %s for chapter %q: %w", format, chapter.ID, err))
-			continue
-		}
-
-		chapterRecord.Validation = &result.Validation
-		if result.SourceRemoved {
-			chapterRecord.ImagePaths = []string{}
-		}
-		if result.Status == archive.StatusSkipped {
-			chapterRecord.Status = "skipped"
-		}
-	}
-
-	return errors.Join(failures...)
 }
 
 func hasCapability(info source.ProviderInfo, capability string) bool {
