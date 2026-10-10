@@ -11,7 +11,6 @@ import (
 
 type Deps struct {
 	ProviderResolver ProviderResolver
-	Downloader       MangaDownloader
 	Cache            CoverCache
 	Timeout          time.Duration
 }
@@ -81,36 +80,6 @@ func (s Service) CoverPath(ctx context.Context, manga *source.Manga) (string, er
 	return s.deps.Cache.Get(ctx, provider, manga)
 }
 
-func (s Service) DownloadChapters(ctx context.Context, manga *source.Manga, chapters []*source.Chapter, notify func(DownloadProgress)) error {
-	if s.deps.Downloader == nil {
-		return fmt.Errorf("download chapters: downloader is not configured")
-	}
-
-	provider, err := s.provider()
-	if err != nil {
-		return err
-	}
-
-	downloadManga, err := buildDownloadManga(manga, chapters)
-	if err != nil {
-		return err
-	}
-
-	pageLoader := PageLoader(func(loaderCtx context.Context, chapter *source.Chapter) ([]*source.Page, error) {
-		requestCtx, cancel := s.withTimeout(loaderCtx)
-		defer cancel()
-
-		pages, err := provider.Pages(requestCtx, chapter)
-		if err != nil {
-			return nil, fmt.Errorf("load pages for %s: %w", chapter.LogName(), err)
-		}
-
-		return pages, nil
-	})
-
-	return s.deps.Downloader.DownloadManga(ctxOrBackground(ctx), downloadManga, pageLoader, notify)
-}
-
 func (s Service) provider() (Provider, error) {
 	if s.deps.ProviderResolver == nil {
 		return nil, fmt.Errorf("provider: resolver is not configured")
@@ -143,36 +112,4 @@ func ctxOrBackground(ctx context.Context) context.Context {
 	}
 
 	return ctx
-}
-
-func buildDownloadManga(manga *source.Manga, chapters []*source.Chapter) (*source.Manga, error) {
-	if manga == nil {
-		return nil, fmt.Errorf("download chapters: nil manga")
-	}
-
-	if len(chapters) == 0 {
-		return nil, fmt.Errorf("download chapters: no chapters selected")
-	}
-
-	downloadManga := &source.Manga{
-		ID:       manga.ID,
-		URL:      manga.URL,
-		Title:    manga.Title,
-		Cover:    manga.Cover,
-		Metadata: manga.Metadata,
-		Chapters: make([]*source.Chapter, 0, len(chapters)),
-	}
-
-	for _, chapter := range chapters {
-		if chapter == nil {
-			return nil, fmt.Errorf("download chapters: selected chapter is nil")
-		}
-
-		chapterCopy := *chapter
-		chapterCopy.From = downloadManga
-		chapterCopy.Pages = nil
-		downloadManga.Chapters = append(downloadManga.Chapters, &chapterCopy)
-	}
-
-	return downloadManga, nil
 }

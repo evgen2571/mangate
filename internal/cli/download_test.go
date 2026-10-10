@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/evgen2571/mangate/internal/acquisition"
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/spf13/cobra"
@@ -39,7 +40,7 @@ func TestSelectChaptersUsesNumericRangeAndStableIDs(t *testing.T) {
 func TestReportDownloadResultWritesPartialJSONAndPreservesExitCode(t *testing.T) {
 	var output bytes.Buffer
 	root := newJSONTestCommand(&output)
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "complete", Status: "complete"}, {ID: "failed", Status: "incomplete"}}}
+	record := acquisition.Result{Chapters: []acquisition.ChapterResult{{ID: "complete", Status: "complete"}, {ID: "failed", Status: "incomplete"}}}
 	err := reportDownloadResult(root, &record, errors.New("download page failed"))
 	var reported *ReportedError
 	if !errors.As(err, &reported) || reported.Code != 5 {
@@ -63,7 +64,7 @@ func newJSONTestCommand(output *bytes.Buffer) *cobra.Command {
 
 func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.T) {
 	root := newJSONTestCommand(&bytes.Buffer{})
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "failed", Status: "archive_failed"}}}
+	record := acquisition.Result{Chapters: []acquisition.ChapterResult{{ID: "failed", Status: "archive_failed"}}}
 	err := reportDownloadResult(root, &record, errors.New("create archive: validation failed"))
 	var reported *ReportedError
 	if !errors.As(err, &reported) || reported.Code != 8 {
@@ -73,7 +74,7 @@ func TestReportDownloadResultUsesArchiveExitCodeWhenNothingCompletes(t *testing.
 
 func TestWriteDownloadSummaryDistinguishesOutcomesAndPaths(t *testing.T) {
 	var output bytes.Buffer
-	writeDownloadSummary(&output, downloadRecord{Chapters: []chapterDownload{
+	writeDownloadSummary(&output, acquisition.Result{Chapters: []acquisition.ChapterResult{
 		{ID: "completed", Status: "complete", OutputPath: "pages", ExpectedPages: 2},
 		{ID: "reused", Status: "skipped", OutputPath: "source", ArchivePath: "archive.cbz", ExpectedPages: 3},
 		{ID: "failed", Status: "archive_failed", OutputPath: "failed-pages", ArchivePath: "failed.cbz", ExpectedPages: 4},
@@ -125,56 +126,6 @@ func TestWriteDownloadPreflightShowsEffectiveOperation(t *testing.T) {
 	}
 }
 
-func TestChapterRecordsUseDownloaderChapterDirectoryNames(t *testing.T) {
-	title := &source.Manga{ID: "title-id", Title: "Example"}
-	chapters := []*source.Chapter{
-		{ID: "chapter-a", Title: "Special"},
-		{ID: "chapter-b", Index: "1"},
-		{ID: "chapter-c", Index: "1"},
-	}
-
-	records := chapterRecords(t.TempDir(), title, chapters, archive.FormatCBZ, "pending")
-	for index, name := range []string{"Title-Special", "Chapter-1", "Chapter-1-chapter-c"} {
-		if filepath.Base(records[index].OutputPath) != name {
-			t.Fatalf("chapter %d output path = %q, want directory %q", index, records[index].OutputPath, name)
-		}
-		if records[index].ArchivePath != records[index].OutputPath+".cbz" {
-			t.Fatalf("chapter %d archive path = %q, want source path with .cbz", index, records[index].ArchivePath)
-		}
-	}
-}
-
-func TestReusableArchiveSelectionSkipsValidatedMatchingArchives(t *testing.T) {
-	directory := t.TempDir()
-	archivePath := filepath.Join(directory, "chapter.cbz")
-	result, err := archive.CreateFromDirectory(archive.Options{Format: archive.FormatCBZ, SourceDir: writeArchiveSource(t), OutputPath: archivePath, Metadata: archive.Metadata{TitleID: "title", ChapterID: "chapter"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Validation.Complete {
-		t.Fatal("test archive is incomplete")
-	}
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", ArchivePath: archivePath, Status: "pending"}}}
-	selection := []*source.Chapter{{ID: "chapter"}}
-	pending, err := reusableArchiveSelection(&record, selection, &source.Manga{ID: "title"})
-	if err != nil || len(pending) != 0 || record.Chapters[0].Status != "skipped" || record.Chapters[0].Validation == nil {
-		t.Fatalf("pending = %#v, record = %#v", pending, record)
-	}
-}
-
-func TestReusableArchiveSelectionRejectsMismatchedExistingArchive(t *testing.T) {
-	directory := t.TempDir()
-	archivePath := filepath.Join(directory, "chapter.cbz")
-	if _, err := archive.CreateFromDirectory(archive.Options{Format: archive.FormatCBZ, SourceDir: writeArchiveSource(t), OutputPath: archivePath, Metadata: archive.Metadata{TitleID: "other-title", ChapterID: "other-chapter"}}); err != nil {
-		t.Fatal(err)
-	}
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", ArchivePath: archivePath, Status: "pending"}}}
-	_, err := reusableArchiveSelection(&record, []*source.Chapter{{ID: "chapter"}}, &source.Manga{ID: "title"})
-	if err == nil || !strings.Contains(err.Error(), "different chapter") {
-		t.Fatalf("reusableArchiveSelection() error = %v, want collision", err)
-	}
-}
-
 func writeArchiveSource(t *testing.T) string {
 	t.Helper()
 	directory := t.TempDir()
@@ -213,68 +164,11 @@ func TestSelectChaptersRejectsConflictingSelectorsBeforeMatching(t *testing.T) {
 	}
 }
 
-func TestChapterRecordDoesNotTrustCompletionWithoutImages(t *testing.T) {
-	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte(`{"complete":true,"expectedPages":2}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory}}}
-	if err := updateChapterRecordStates(&record); err == nil || record.Chapters[0].Status == "complete" {
-		t.Fatalf("record = %#v, error = %v", record, err)
-	}
-}
-
 func TestReportDownloadCancellationHasDedicatedStatus(t *testing.T) {
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", Status: "incomplete"}}}
+	record := acquisition.Result{Chapters: []acquisition.ChapterResult{{ID: "chapter", Status: "incomplete"}}}
 	err := reportDownloadResult(newJSONTestCommand(&bytes.Buffer{}), &record, context.Canceled)
 	var reported *ReportedError
 	if !errors.As(err, &reported) || reported.Code != 7 || record.Status != "cancelled" || record.Chapters[0].Status != "cancelled" {
 		t.Fatalf("record = %#v, error = %v", record, err)
-	}
-}
-
-func TestChapterRecordKeepsOrderedPathsAfterPartialFailure(t *testing.T) {
-	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte(`{"complete":false,"expectedPages":3}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"0001.png", "0003.png"} {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte("image"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory}}}
-	if err := updateChapterRecordStates(&record); err == nil {
-		t.Fatal("expected partial acquisition error")
-	}
-	paths := record.Chapters[0].ImagePaths
-	if len(paths) != 2 || filepath.Base(paths[0]) != "0001.png" || filepath.Base(paths[1]) != "0003.png" || record.Chapters[0].Status == "complete" || record.Chapters[0].ExpectedPages != 3 {
-		t.Fatalf("record = %#v", record)
-	}
-}
-
-func TestIncompleteStateIsNeverSuccessful(t *testing.T) {
-	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), []byte(`{"complete":false,"expectedPages":2}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	record := downloadRecord{Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory}}}
-	if err := updateChapterRecordStates(&record); err == nil {
-		t.Fatal("incomplete chapter must produce an acquisition error")
-	}
-}
-
-func TestChapterRecordRejectsForeignCompletionState(t *testing.T) {
-	directory := t.TempDir()
-	state := []byte(`{"complete":true,"expectedPages":1,"titleId":"title","chapterId":"other","provider":"mangadex"}`)
-	if err := os.WriteFile(filepath.Join(directory, ".mangate.json"), state, 0644); err != nil {
-		t.Fatal(err)
-	}
-	record := downloadRecord{Provider: "mangadex", Title: &source.Manga{ID: "title"}, Chapters: []chapterDownload{{ID: "chapter", OutputPath: directory, ImagePaths: []string{"old"}}}}
-	if err := updateChapterRecordStates(&record); err == nil {
-		t.Fatal("expected identity rejection")
-	}
-	if record.Chapters[0].Status == "complete" || len(record.Chapters[0].ImagePaths) != 0 {
-		t.Fatalf("foreign files exposed: %#v", record)
 	}
 }

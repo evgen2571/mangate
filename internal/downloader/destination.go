@@ -64,6 +64,16 @@ func (d *Downloader) DownloadChapterToWithProgress(ctx context.Context, chapter 
 		return nil, fmt.Errorf("download chapter to: directory cannot be empty")
 	}
 
+	completedPages := 0
+	var progress func(int, int)
+	if notify != nil {
+		progress = func(completed, total int) {
+			if completed > completedPages {
+				completedPages = completed
+				notify(completed, total)
+			}
+		}
+	}
 	var priorResults []PageDownloadResult
 	for attempt := 0; ; attempt++ {
 		if err := d.prepareChapterPages(ctx, chapter, directory, pageLoader); err != nil {
@@ -75,7 +85,7 @@ func (d *Downloader) DownloadChapterToWithProgress(ctx context.Context, chapter 
 		if err := util.EnsureDir(directory, "chapter directory"); err != nil {
 			return nil, err
 		}
-		results, err := d.downloadChapterToAttempt(ctx, chapter, directory, notify)
+		results, err := d.downloadChapterToAttempt(ctx, chapter, directory, progress)
 		if err == nil {
 			if err := writeChapterState(directory, chapter, d.cfg.Provider, true); err != nil {
 				return results, err

@@ -19,7 +19,7 @@ import (
 
 func completeManifest(t *testing.T) Manifest {
 	t.Helper()
-	plan, err := PlanRandom(context.Background(), randomFixture{fixture()}, policy(), t.TempDir(), archive.FormatDirectory, nil)
+	plan, err := PlanRandom(context.Background(), randomFixture{fixture()}, policy(), canonicalTempDir(t), archive.FormatDirectory, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,4 +208,13 @@ func TestManifestRejectsOversizedFile(t *testing.T) {
 	if _, err := LoadManifest(path); err == nil {
 		t.Fatal("accepted oversized manifest")
 	}
+}
+
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }

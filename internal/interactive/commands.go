@@ -2,15 +2,10 @@ package interactive
 
 import (
 	"context"
-	"errors"
-	"path/filepath"
-	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/downloader"
 	"github.com/evgen2571/mangate/internal/source"
-	"github.com/evgen2571/mangate/internal/usecase"
 )
 
 func (m *model) waitForProgress() tea.Cmd {
@@ -26,29 +21,15 @@ func (m *model) waitForProgress() tea.Cmd {
 }
 
 func (m *model) download(ctx context.Context, chapters []*source.Chapter, progressCh chan tea.Msg) tea.Cmd {
-	service, manga, cfg, format := m.app.UseCases(), m.manga, m.app.Cfg, m.format
+	manga := m.manga
+	provider, providerErr := m.app.Provider()
+	service := m.app.Acquisition(provider)
 	return func() tea.Msg {
 		defer close(progressCh)
-		notify := func(message tea.Msg) {
-			select {
-			case progressCh <- message:
-			default:
-			}
+		if providerErr != nil {
+			return downloadDone{err: providerErr, failed: len(chapters)}
 		}
-		var completed, skipped, failed int
-		var progressMu sync.Mutex
-		finished := make(map[string]usecase.ChapterDownloadProgress)
-		paths := []string{}
-		results := []ChapterResult{}
-		err := service.DownloadChapters(ctx, manga, chapters, func(p usecase.DownloadProgress) {
-			progressMu.Lock()
-			for _, chapter := range p.Chapters {
-				if chapter.Completed {
-					finished[chapter.ChapterID] = chapter
-				}
-			}
-
-			progressMu.Unlock()
+		record, err := service.Execute(ctx, manga, chapters, "", func(p downloader.DownloadProgress) {
 			active := ""
 			for _, c := range p.Chapters {
 				if c.Active {
@@ -56,93 +37,38 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 					break
 				}
 			}
-
-			notify(downloadProgress{p.CompletedPages, p.TotalPages, p.CompletedChapters, p.TotalChapters, active})
+			select {
+			case progressCh <- downloadProgress{p.CompletedPages, p.TotalPages, p.CompletedChapters, p.TotalChapters, active}:
+			default:
+			}
 		})
-		chapterPaths := chapterDownloadPaths(cfg.Download.Dir, manga, chapters)
-		for index, chapter := range chapters {
-			path := chapterPaths[index]
-			progress, done := finished[chapter.ID]
+		done := downloadDone{err: err, paths: []string{}, results: []ChapterResult{}}
+		for _, chapter := range record.Chapters {
+			path := chapter.OutputPath
+			if chapter.ArchivePath != "" {
+				path = chapter.ArchivePath
+			}
+			status := "failed"
+			switch chapter.Status {
+			case "complete":
+				done.completed++
+				status = "success"
+				done.paths = append(done.paths, path)
+			case "skipped":
+				done.skipped++
+				status = "success"
+				done.paths = append(done.paths, path)
+			default:
+				done.failed++
+			}
 			if m.integration {
-				directory, absErr := filepath.Abs(path)
-				result := ChapterResult{ExpectedPages: progress.TotalPages, Chapter: chapter, Status: "failed", OutputDir: directory, ImagePaths: []string{}}
-				if done && absErr == nil {
-					images, imageErr := imagePaths(path, progress.TotalPages)
-					if imageErr != nil {
-						err = errors.Join(err, imageErr)
-						done = false
-					} else {
-						result.Status, result.ImagePaths = "success", images
-					}
-				} else if absErr != nil {
-					err = errors.Join(err, absErr)
-					done = false
+				images := []string{}
+				if status == "success" {
+					images = chapter.ImagePaths
 				}
-				results = append(results, result)
+				done.results = append(done.results, ChapterResult{ExpectedPages: chapter.ExpectedPages, Chapter: chapter.Chapter, Status: status, OutputDir: chapter.OutputPath, ImagePaths: images})
 			}
-			if !done {
-				failed++
-				continue
-			}
-
-			if progress.Reused {
-				skipped++
-				paths = append(paths, path+format.Extension())
-				continue
-			}
-
-			if format.IsArchive() {
-				notify(downloadProgress{
-					completed:         completed,
-					total:             len(chapters),
-					completedChapters: completed,
-					totalChapters:     len(chapters),
-					active:            "Creating and validating archive...",
-				})
-				result, archiveErr := archive.CreateFromDirectoryContext(ctx, archive.Options{
-					Format:           format,
-					SourceDir:        path,
-					OutputPath:       path + format.Extension(),
-					ExistingFileMode: archive.ExistingFileMode(cfg.Download.ExistingFileMode),
-					RemoveSource:     true,
-					Metadata: archive.Metadata{
-						Provider:      cfg.Provider,
-						TitleID:       manga.ID,
-						Title:         manga.Title,
-						ChapterID:     chapter.ID,
-						ChapterNumber: chapter.Index,
-						ChapterTitle:  chapter.Title,
-						ExpectedPages: progress.TotalPages,
-					},
-				})
-				if archiveErr != nil {
-					failed++
-					err = errors.Join(err, archiveErr)
-					continue
-				}
-
-				path += format.Extension()
-				if result.Status == archive.StatusSkipped {
-					skipped++
-					paths = append(paths, path)
-					continue
-				}
-			}
-
-			completed++
-			paths = append(paths, path)
 		}
-
-		return downloadDone{err: err, completed: completed, skipped: skipped, failed: failed, paths: paths, results: results}
+		return done
 	}
-}
-
-func chapterDownloadPaths(root string, manga *source.Manga, chapters []*source.Chapter) []string {
-	names := downloader.ChapterDirectoryNames(chapters)
-	paths := make([]string, len(names))
-	for index, name := range names {
-		paths[index] = filepath.Join(root, downloader.TitleDirectoryName(manga), name)
-	}
-
-	return paths
 }

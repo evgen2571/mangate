@@ -3,14 +3,8 @@ import subprocess
 from threading import Event, Thread
 
 import pytest
-from test_api import provider as local_provider
 
 import mangate
-
-
-@pytest.fixture
-def provider(tmp_path, monkeypatch):
-    yield from local_provider.__wrapped__(tmp_path, monkeypatch)
 
 
 def test_random_plan_replay_and_portable_manifest(binary, provider, tmp_path):

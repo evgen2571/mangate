@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from provider_fixture import provider as provider
 
 
 @pytest.fixture(scope="module")

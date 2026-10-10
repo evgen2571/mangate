@@ -378,3 +378,44 @@ func TestMangaRetainsEveryChapterPreflightError(t *testing.T) {
 		}
 	}
 }
+
+func TestURLRefreshDoesNotCountRecoveredPagesTwice(t *testing.T) {
+	data := mustPNGBytes(t, color.RGBA{A: 255})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/expired" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(data)
+	}))
+	defer server.Close()
+	cfg := config.DefaultConfig()
+	cfg.Download.Dir = t.TempDir()
+	cfg.Concurrency.PageDownloads = 1
+	manga := &source.Manga{ID: "m", Title: "M"}
+	chapter := &source.Chapter{ID: "c", Index: "1", From: manga}
+	manga.Chapters = []*source.Chapter{chapter}
+	calls := 0
+	loader := func(context.Context, *source.Chapter) ([]*source.Page, error) {
+		calls++
+		second := server.URL + "/expired"
+		if calls > 1 {
+			second = server.URL + "/fresh"
+		}
+		return []*source.Page{{URL: server.URL + "/first"}, {URL: second}}, nil
+	}
+	var last DownloadProgress
+	err := New(cfg, server.Client()).DownloadMangaWithProgressAndPageLoader(context.Background(), manga, loader, func(p DownloadProgress) {
+		if p.CompletedPages > p.TotalPages {
+			t.Errorf("progress overcounts pages: %#v", p)
+		}
+		last = p
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || last.CompletedPages != 2 || last.CompletedChapters != 1 {
+		t.Fatalf("calls=%d progress=%#v", calls, last)
+	}
+}

@@ -22,6 +22,7 @@ func (r *progressReporter) chapterReused(chapter *source.Chapter, pages int) {
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if current := r.chapterProgress(chapter); current != nil {
 		r.progress.TotalPages += pages - current.TotalPages
 		current.TotalPages, current.CompletedPages = pages, pages
@@ -31,7 +32,6 @@ func (r *progressReporter) chapterReused(chapter *source.Chapter, pages int) {
 	}
 
 	progress := r.snapshotLocked()
-	r.mu.Unlock()
 	r.notify(progress)
 }
 
@@ -90,12 +90,12 @@ func (r *progressReporter) chapterStarted(chapter *source.Chapter) {
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if current := r.chapterProgress(chapter); current != nil {
 		current.Active = true
 	}
 
 	progress := r.snapshotLocked()
-	r.mu.Unlock()
 
 	r.notify(progress)
 }
@@ -106,6 +106,7 @@ func (r *progressReporter) pagesDiscovered(chapter *source.Chapter) {
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if current := r.chapterProgress(chapter); current != nil {
 		pageCount := knownPageCount(chapter)
 		delta := pageCount - current.TotalPages
@@ -114,27 +115,23 @@ func (r *progressReporter) pagesDiscovered(chapter *source.Chapter) {
 	}
 
 	progress := r.snapshotLocked()
-	r.mu.Unlock()
 
 	r.notify(progress)
 }
 
-func (r *progressReporter) pageCompleted(chapter *source.Chapter) {
+func (r *progressReporter) pagesCompleted(chapter *source.Chapter, completed, total int) {
 	if r == nil || r.notify == nil {
 		return
 	}
-
 	r.mu.Lock()
-	r.progress.CompletedPages++
+	defer r.mu.Unlock()
 	if current := r.chapterProgress(chapter); current != nil {
-		current.Active = true
-		current.CompletedPages++
+		completed = max(current.CompletedPages, completed)
+		r.progress.CompletedPages += completed - current.CompletedPages
+		r.progress.TotalPages += total - current.TotalPages
+		current.CompletedPages, current.TotalPages, current.Active = completed, total, true
 	}
-
-	progress := r.snapshotLocked()
-	r.mu.Unlock()
-
-	r.notify(progress)
+	r.notify(r.snapshotLocked())
 }
 
 func (r *progressReporter) chapterCompleted(chapter *source.Chapter) {
@@ -143,6 +140,7 @@ func (r *progressReporter) chapterCompleted(chapter *source.Chapter) {
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.progress.CompletedChapters++
 	if current := r.chapterProgress(chapter); current != nil {
 		current.Active = false
@@ -150,7 +148,6 @@ func (r *progressReporter) chapterCompleted(chapter *source.Chapter) {
 	}
 
 	progress := r.snapshotLocked()
-	r.mu.Unlock()
 
 	r.notify(progress)
 }

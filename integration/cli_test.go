@@ -7,12 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/color"
 	_ "image/jpeg"
-	"image/png"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/evgen2571/mangate/internal/testprovider"
 )
 
 func TestExecutableWorkflow(t *testing.T) {
@@ -32,36 +30,7 @@ func TestExecutableWorkflow(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, output)
 	}
-	var page bytes.Buffer
-	img := image.NewRGBA(image.Rect(0, 0, 3, 4))
-	img.Set(0, 0, color.RGBA{R: 255, A: 255})
-	if err := png.Encode(&page, img); err != nil {
-		t.Fatal(err)
-	}
-	title := map[string]any{"id": "title-id", "attributes": map[string]any{"title": map[string]string{"en": "Fixture Manga"}, "description": map[string]string{"en": "Offline integration fixture"}, "originalLanguage": "en"}}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/manga/":
-			data := []any{title}
-			if r.URL.Query().Get("title") == "empty" {
-				data = []any{}
-			}
-			json.NewEncoder(w).Encode(map[string]any{"result": "ok", "data": data, "limit": 100, "offset": 0, "total": len(data)})
-		case "/manga/title-id":
-			json.NewEncoder(w).Encode(map[string]any{"result": "ok", "data": title})
-		case "/manga/title-id/feed":
-			fmt.Fprint(w, `{"result":"ok","data":[{"id":"chapter-id","attributes":{"chapter":"1","title":"Opening / scene","pages":2,"translatedLanguage":"en"}}],"limit":500,"offset":0,"total":1}`)
-		case "/at-home/server/chapter-id":
-			fmt.Fprintf(w, `{"result":"ok","baseUrl":"http://%s","chapter":{"hash":"hash","data":["1.png","2.png"]}}`, r.Host)
-		case "/data/hash/1.png", "/data/hash/2.png":
-			w.Header().Set("Content-Type", "image/png")
-			w.Write(page.Bytes())
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
+	server := testprovider.New(t)
 	configuration := filepath.Join(t.TempDir(), "config.json")
 	body := fmt.Sprintf(`{"providers":{"mangadex":{"baseUrl":%q,"siteUrl":%q,"uploadsUrl":%q}},"dirs":{"cache":%q}}`, server.URL, server.URL, server.URL, t.TempDir())
 	if err := os.WriteFile(configuration, []byte(body), 0644); err != nil {
@@ -195,7 +164,7 @@ func TestExecutableWorkflow(t *testing.T) {
 						}
 						data, err := io.ReadAll(r)
 						r.Close()
-						if err != nil || !bytes.Equal(data, page.Bytes()) {
+						if err != nil || !bytes.Equal(data, server.Image) {
 							t.Fatal("archive changed page bytes")
 						}
 					}

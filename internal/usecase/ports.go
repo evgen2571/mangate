@@ -14,7 +14,6 @@ type Provider interface {
 	Name() string
 	Search(context.Context, string) ([]*source.Manga, error)
 	Chapters(context.Context, *source.Manga) ([]*source.Chapter, error)
-	Pages(context.Context, *source.Chapter) ([]*source.Page, error)
 	Cover(context.Context, *source.Manga) (string, error)
 }
 
@@ -25,28 +24,4 @@ type CoverProvider interface {
 
 type CoverCache interface {
 	Get(context.Context, CoverProvider, *source.Manga) (string, error)
-}
-
-type PageLoader func(context.Context, *source.Chapter) ([]*source.Page, error)
-
-type MangaDownloader interface {
-	DownloadManga(context.Context, *source.Manga, PageLoader, func(DownloadProgress)) error
-}
-
-type ChapterDownloadProgress struct {
-	ChapterID      string
-	Name           string
-	CompletedPages int
-	TotalPages     int
-	Active         bool
-	Completed      bool
-	Reused         bool
-}
-
-type DownloadProgress struct {
-	CompletedPages    int
-	TotalPages        int
-	CompletedChapters int
-	TotalChapters     int
-	Chapters          []ChapterDownloadProgress
 }

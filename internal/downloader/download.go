@@ -71,25 +71,27 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 		return nil
 	}
 
-	for attempt := 0; ; attempt++ {
-		err := d.downloadChapterAttempt(ctx, c, chapterName, reporter, pageLoader)
-		if err == nil {
-			return nil
+	directory := filepath.Join(d.cfg.Download.Dir, titleDirName(c.From), util.SanitizeString(chapterName))
+	loader := pageLoader
+	if loader != nil {
+		loader = func(ctx context.Context, chapter *source.Chapter) ([]*source.Page, error) {
+			pages, err := pageLoader(ctx, chapter)
+			if err == nil && reporter != nil {
+				chapter.Pages, chapter.PageCount = pages, len(pages)
+				reporter.pagesDiscovered(chapter)
+			}
+			return pages, err
 		}
-
-		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
-			return err
-		}
-
-		if d.cfg.Download.ExistingFileMode == "fail" {
-			retry := *d
-			retry.cfg.Download.ExistingFileMode = "skip"
-			d = &retry
-		}
-
-		c.Pages = nil
-		c.PageCount = 0
 	}
+	_, err := d.DownloadChapterToWithProgress(ctx, c, directory, loader, func(completed, total int) {
+		if reporter != nil {
+			reporter.pagesCompleted(c, completed, total)
+		}
+	})
+	if err == nil && reporter != nil {
+		reporter.chapterCompleted(c)
+	}
+	return err
 }
 
 func (d *Downloader) reuseChapterArchive(chapter *source.Chapter, name string, reporter *progressReporter) (bool, error) {
@@ -125,91 +127,6 @@ func (d *Downloader) reuseChapterArchive(chapter *source.Chapter, name string, r
 	}
 
 	return true, nil
-}
-
-func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
-	chapterDir := filepath.Join(d.cfg.Download.Dir, titleDirName(c.From), util.SanitizeString(chapterName))
-	hadPages := len(c.Pages) > 0
-	if err := d.prepareChapterPages(ctx, c, chapterDir, pageLoader); err != nil {
-		return &ChapterPreflightError{ChapterID: c.ID, Cause: err}
-	}
-	if !hadPages && reporter != nil {
-		reporter.pagesDiscovered(c)
-	}
-	if err := util.EnsureDir(chapterDir, "chapter directory"); err != nil {
-		return err
-	}
-
-	var g errgroup.Group
-	g.SetLimit(d.pageDownloadLimit())
-
-	for idx, page := range c.Pages {
-		idx := idx
-		page := page
-
-		g.Go(func() (err error) {
-			defer func() {
-				if err != nil {
-					err = fmt.Errorf("manga %q chapter %q page %d to %q: %w", c.From.ID, c.ID, idx+1, chapterDir, err)
-				}
-			}()
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-
-			filePathBase := filepath.Join(
-				chapterDir,
-				fmt.Sprintf("%04d", idx+1),
-			)
-
-			if existingPage(filePathBase) {
-				if existingPath := existingPagePath(filePathBase); !existingOutputMatchesFormat(existingPath, d.cfg.Download.Format) && d.cfg.Download.ExistingFileMode == "skip" {
-					return fmt.Errorf("download page: existing output %q does not match requested %s format; use --existing-files replace", filepath.Ext(existingPath), d.cfg.Download.Format)
-				}
-
-				switch d.cfg.Download.ExistingFileMode {
-				case "skip":
-					if reporter != nil {
-						reporter.pageCompleted(c)
-					}
-					return nil
-				case "fail":
-					return fmt.Errorf("download page: destination already exists for page %d", idx+1)
-				}
-			}
-
-			path, _, err := d.downloadPage(ctx, page, filePathBase)
-			if err != nil {
-				return err
-			}
-
-			if d.cfg.Download.ExistingFileMode == "replace" {
-				if err := removeExistingPage(filePathBase, path); err != nil {
-					return err
-				}
-			}
-
-			if reporter != nil {
-				reporter.pageCompleted(c)
-			}
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return errors.Join(err, writeChapterState(chapterDir, c, d.cfg.Provider, false))
-	}
-
-	if err := writeChapterState(chapterDir, c, d.cfg.Provider, true); err != nil {
-		return err
-	}
-
-	if reporter != nil {
-		reporter.chapterCompleted(c)
-	}
-
-	return nil
 }
 
 func existingOutputMatchesFormat(path, format string) bool {
