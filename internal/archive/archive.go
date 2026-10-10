@@ -738,3 +738,45 @@ func isPageName(name string) bool {
 		return false
 	}
 }
+
+// ValidatedImagePaths returns the existing downloader's numbered page files
+// only when completion metadata and a contiguous image sequence agree.
+func ValidatedImagePaths(directory string, expected int) ([]string, error) {
+	pages, state, err := sourcePages(directory)
+	if err != nil {
+		return nil, err
+	}
+	if state == nil || !state.Complete || expected <= 0 || state.ExpectedPages != expected || len(pages) != expected {
+		return nil, fmt.Errorf("incomplete chapter output: expected %d pages", expected)
+	}
+	root, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		return nil, err
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, len(pages))
+	for index, page := range pages {
+		if page.index != index+1 {
+			return nil, fmt.Errorf("incomplete chapter output: missing page %d", index+1)
+		}
+		resolved, err := filepath.EvalSymlinks(page.path)
+		if err != nil {
+			return nil, err
+		}
+		resolved, err = filepath.Abs(resolved)
+		if err != nil {
+			return nil, err
+		}
+		if filepath.Dir(resolved) != root {
+			return nil, fmt.Errorf("image path escapes chapter directory")
+		}
+		paths[index], err = filepath.Abs(page.path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return paths, nil
+}

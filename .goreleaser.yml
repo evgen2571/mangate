@@ -1,0 +1,30 @@
+version: 2
+project_name: mangate
+builds:
+  - id: mangate
+    main: ./cmd/mangate
+    binary: mangate
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags: [-trimpath, -buildvcs=false]
+    ldflags:
+      - -s -w -X github.com/evgen2571/mangate/internal/constant.Version={{ .Env.MANGATE_VERSION }}
+archives:
+  - formats: [tar.gz]
+    name_template: 'mangate_{{ .Env.MANGATE_VERSION }}_{{ .Os }}_{{ .Arch }}'
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.md]
+checksum:
+  name_template: go-checksums.txt
+  algorithm: sha256
+release:
+  draft: true
+changelog:
+  disable: true

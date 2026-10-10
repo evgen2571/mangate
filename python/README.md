@@ -1,21 +1,21 @@
-# Mangate Python wrapper
+# Mangate Python package
 
-This package invokes the Mangate command-line executable and returns its structured results. It requires Python 3.10+ and a separately installed Go CLI.
-
-From the repository root:
+Python 3.10+ API for the Mangate CLI and TUI. Platform wheels include the Go executable, so you don't need Go installed.
 
 ```sh
-go install ./cmd/mangate
-uv venv
-uv pip install ./python
+uv add mangate
+# or: pip install mangate
+uv run mangate tui
 ```
 
 ```python
 from mangate import Client
 
-client = Client(executable="mangate")
-print(client.version())
-print(client.providers())
+client = Client()
+result = client.interactive_download(output_dir="./chapters", max_chapters=1)
+print(result["chapters"][0]["imagePaths"])
 ```
 
-Use an absolute path for `executable` if Mangate is not on `PATH`. See the [Python API guide](https://github.com/evgen2571/mangate/blob/main/docs/python.md) for searching, chapter downloads, archive conversion, cancellation, and error behavior.
+Linux x86_64/ARM64 (glibc or musl), macOS 12+ x86_64/ARM64, and Windows x86_64 are supported. `Client(executable="/path/to/mangate")` overrides the bundled executable. Source installs from the Git checkout require Go 1.26+; releases publish wheels only.
+
+See the [Python API guide](https://github.com/evgen2571/mangate/blob/main/docs/python.md) for metadata, errors, non-interactive downloads, and archive operations.

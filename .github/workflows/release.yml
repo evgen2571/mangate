@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  artifacts:
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag: ${{ github.event_name == 'push' && github.ref_name || '' }}
+      critical-tests: true
+
+  github-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+      - name: Create a validated draft, upload everything, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # Existing releases are an error, including drafts from an interrupted upload.
+          gh api "repos/$GH_REPO/releases?per_page=100" --paginate --slurp > releases.json
+          python -c 'import json,os; assert all(r["tag_name"] != os.environ["RELEASE_TAG"] for page in json.load(open("releases.json")) for r in page), "Release already exists; inspect it manually"'
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --notes 'Standalone executables and Python wheels. See SHA256SUMS for artifact hashes.'
+          gh release upload "$RELEASE_TAG" artifacts/go-release/* artifacts/python-wheels/*
+          gh release edit "$RELEASE_TAG" --draft=false
+
+  pypi:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [artifacts, github-release]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-wheels
+          path: dist
+      - name: Keep only Python distributions in the publishing directory
+        run: rm dist/SHA256SUMS
+      - name: Publish all validated wheels with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          skip-existing: false

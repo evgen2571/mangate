@@ -1,31 +1,12 @@
 """Exercise the installed Python API with a compiled CLI and local files."""
 
 import base64
-import os
-import subprocess
 import zipfile
 from pathlib import Path
 
 import pytest
 
 from mangate import Client, MangateError
-
-
-@pytest.fixture(scope="module")
-def binary(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    root = Path(__file__).resolve().parents[2]
-    path = tmp_path_factory.mktemp("binary") / (
-        "mangate.exe" if os.name == "nt" else "mangate"
-    )
-    subprocess.run(
-        ["go", "build", "-o", str(path), "./cmd/mangate"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    return path
 
 
 @pytest.fixture

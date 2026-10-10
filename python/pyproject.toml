@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling==1.28.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -18,17 +18,26 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
 ]
+
+[project.scripts]
+mangate = "mangate.binary:main"
 
 [project.urls]
 Homepage = "https://github.com/evgen2571/mangate"
 Documentation = "https://github.com/evgen2571/mangate#readme"
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mangate"]
 
 [dependency-groups]
 dev = [
+    "hatchling==1.28.0",
     "pytest>=9.1.1",
     "ruff>=0.16.7",
 ]

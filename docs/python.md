@@ -1,25 +1,56 @@
 # Python API
 
-The Python package runs the Go CLI as a subprocess. Install both components; the wrapper does not download an executable.
+The Python package runs its bundled Go executable as a subprocess. Python 3.10+ is required; released wheels don't require Go.
 
-## Install from the checkout
-
-With Go 1.26+, Python 3.10+, and uv available:
+## Install
 
 ```sh
-go install ./cmd/mangate
-uv venv
-uv pip install ./python
+uv add mangate
+# or, inside an activated environment:
+pip install mangate
+uv run mangate tui
 ```
 
-Run Python in that environment with `uv run python`, or activate the environment using the command printed by `uv venv`. Add Go's binary directory to `PATH`, or pass an absolute executable path to `Client`.
+Wheels cover Linux x86_64/ARM64 on glibc or musl, macOS 12+ x86_64/ARM64, and Windows x86_64. Other platforms get a clear unsupported-platform error; build Go yourself and pass `Client(executable="/path/to/mangate")` if supported by Go.
+
+To develop from the checkout, install Go 1.26+ and run `uv pip install ./python`. This builds a native wheel locally. Editable installs (`uv run --project python ...`) use a separately built executable on `PATH`, or an explicit executable override. No source distributions are published because the Python subdirectory alone cannot build the Go application.
+
+## Interactive chapter picker
+
+Run this in a real terminal with stdin and stdout attached:
+
+```python
+from mangate import Client, MangateError
+
+try:
+    result = Client().interactive_download(
+        output_dir="./chapters",
+        max_chapters=1,
+        timeout=600,
+    )
+    chapter = result["chapters"][0]
+    print(result["title"]["title"], chapter["chapter"]["number"])
+    images = chapter["imagePaths"]
+    # Pass images to your processing pipeline here.
+except MangateError as error:
+    if error.category == "cancelled":
+        print("Selection cancelled")
+    else:
+        print(error.category, error.message)
+```
+
+The existing search/title/chapter TUI lets the user select chapters and edit the proposed output directory. Integration mode saves image directories, displays progress, restores the terminal, and exits after the download attempt. `max_chapters=0` (the default) permits several chapters; each has its own sequence. `max_chapters=1` requires at most one. Optional `language` filters the TUI; `timeout` overrides the client's subprocess deadline.
+
+The file contract is version `"1"`: `status`, selected `title` metadata, absolute `outputDir`, and `chapters`. Every chapter contains `chapter` metadata, `status` (`success` or `failed`), absolute `outputDir`, `expectedPages`, and `imagePaths` in page order. Successful paths point to existing nonempty files inside that chapter's directory. Chapter ordering is deterministic by number, then label and ID. Chapters are never concatenated.
+
+Terminal stdin/stdout/stderr are inherited, and a private temporary result file is removed after reading. Only a complete validated download returns normally. `MangateError.category` distinguishes `terminal`, `executable`, `cancelled`, `timeout`, `partial`, `error`, and `invalid_result`. Cancellation or partial failure may provide a validated result through `error.result`; failed chapters expose no image paths. Missing or malformed results, unsafe paths, and contradictory exit statuses are rejected. Interrupted downloads retain files for retry, but aren't reported as complete. Python restores POSIX terminal settings even on a timeout; Bubble Tea performs its normal terminal cleanup on supported platforms.
 
 ## Search, inspect, and download
 
 ```python
 from mangate import Client, MangateError
 
-client = Client(executable="mangate", output_dir="./library", timeout=120)
+client = Client(output_dir="./library", timeout=120)
 
 try:
     results = client.search("title", limit=5)
@@ -46,7 +77,7 @@ except MangateError as error:
 
 | Argument | Default | Meaning |
 | --- | --- | --- |
-| `executable` | `"mangate"` | Command name or filesystem path |
+| `executable` | `None` | Bundled executable; explicit command/path overrides it |
 | `provider` | `"mangadex"` | Default provider |
 | `output_dir` | `None` | Optional chapter output root |
 | `timeout` | `None` | Per-command wrapper deadline in seconds |
@@ -93,7 +124,7 @@ The source must be an existing directory containing ordered page files. `convert
 
 ## Errors and partial results
 
-`MangateError` is a `RuntimeError` with `category`, `message`, and `stderr`. JSON command failures, malformed JSON output, and wrapper cancellation/timeouts are reported through this exception. `version()` uses the text subprocess path, whose timeout can raise `subprocess.TimeoutExpired`. Missing executables and process creation failures can raise OS-level exceptions such as `FileNotFoundError`.
+`MangateError` is a `RuntimeError` with `category`, `message`, `stderr`, and optional `result`. JSON command failures, malformed JSON output, and wrapper cancellation/timeouts are reported through this exception. `version()` uses the text subprocess path, whose timeout can raise `subprocess.TimeoutExpired`. Missing executables and process creation failures can raise OS-level exceptions such as `FileNotFoundError`.
 
 Partial download results are returned even though the CLI exits nonzero. Inspect `result["status"]` and each chapter's `status`, `outputPath`, and optional `archivePath`. A fully unsuccessful operation raises `MangateError`. Unsupported output formats and mismatched batch destinations raise `ValueError` before starting a subprocess.
 

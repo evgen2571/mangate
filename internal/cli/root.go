@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -46,8 +48,8 @@ func NewRootCmd(a *app.App) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.Version = "dev"
-	if build, ok := debug.ReadBuildInfo(); ok && build.Main.Version != "" && build.Main.Version != "(devel)" {
+	cmd.Version = constant.Version
+	if build, ok := debug.ReadBuildInfo(); cmd.Version == "dev" && ok && build.Main.Version != "" && build.Main.Version != "(devel)" {
 		cmd.Version = build.Main.Version
 	}
 
@@ -77,15 +79,74 @@ func NewRootCmd(a *app.App) *cobra.Command {
 }
 
 func NewInteractiveCmd(a *app.App) *cobra.Command {
-	return &cobra.Command{
-		Use:     "tui",
-		Aliases: []string{"interactive"},
-		Short:   "Open the interactive terminal interface",
-		Example: "  mangate tui",
+	var exitOnComplete bool
+	var resultFile string
+	var maxChapters int
+	cmd := &cobra.Command{
+		Use: "tui", Aliases: []string{"interactive"}, Short: "Open the interactive terminal interface",
+		Example: "  mangate tui\n  mangate tui --exit-on-complete --result-file result.json --max-chapters 1",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInteractive(cmd, a)
+			if exitOnComplete && resultFile == "" {
+				return fmt.Errorf("--exit-on-complete requires --result-file")
+			}
+			if !exitOnComplete && (resultFile != "" || maxChapters != 0) {
+				return fmt.Errorf("--result-file and --max-chapters require --exit-on-complete")
+			}
+			if maxChapters < 0 {
+				return fmt.Errorf("--max-chapters cannot be negative")
+			}
+			if !exitOnComplete {
+				return runInteractive(cmd, a)
+			}
+			if wantsJSON(cmd) {
+				return fmt.Errorf("tui results use --result-file; --json cannot be combined with integration mode")
+			}
+			destination, err := filepath.Abs(resultFile)
+			if err != nil {
+				return err
+			}
+			if _, err := os.Lstat(destination); err == nil {
+				return fmt.Errorf("result file already exists")
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+			probe, err := os.CreateTemp(filepath.Dir(destination), ".mangate-probe-*")
+			if err != nil {
+				return err
+			}
+			if err := probe.Close(); err != nil {
+				os.Remove(probe.Name())
+				return err
+			}
+			os.Remove(probe.Name())
+			ui := interactive.NewIntegration(a, cmd.Context(), tuiLanguage(cmd), maxChapters)
+			err = runTUI(cmd, ui)
+			result := ui.(interface{ Result() interactive.Result }).Result()
+			if err != nil {
+				result.Status, result.Error = "error", err.Error()
+			}
+			if errors.Is(err, tea.ErrInterrupted) || cmd.Context().Err() != nil {
+				result.Status = "cancelled"
+			}
+			if writeErr := interactive.WriteResult(destination, result); writeErr != nil {
+				return writeErr
+			}
+			switch result.Status {
+			case "success":
+				return nil
+			case "cancelled":
+				return &ReportedError{Cause: fmt.Errorf("interactive download cancelled"), Code: 7}
+			case "partial":
+				return &ReportedError{Cause: fmt.Errorf("interactive download incomplete"), Code: 5}
+			default:
+				return &ReportedError{Cause: fmt.Errorf("interactive download failed: %s", result.Error), Code: 10}
+			}
 		},
 	}
+	cmd.Flags().BoolVar(&exitOnComplete, "exit-on-complete", false, "Exit after downloading and write an integration result")
+	cmd.Flags().StringVar(&resultFile, "result-file", "", "Write the atomic interactive result to a new JSON file")
+	cmd.Flags().IntVar(&maxChapters, "max-chapters", 0, "Maximum selected chapters (0 means unlimited)")
+	return cmd
 }
 
 func runInteractive(cmd *cobra.Command, a *app.App) error {

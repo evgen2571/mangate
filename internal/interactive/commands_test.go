@@ -72,11 +72,15 @@ func TestPartialDownloadReportsAndArchivesCompletedChapters(t *testing.T) {
 				t.Fatal(err)
 			}
 			m.format = format
+			m.integration = format == archive.FormatDirectory
 			m.manga = &source.Manga{ID: "title", Title: "Fixture"}
 			chapters := []*source.Chapter{{ID: "good", Index: "1", PageCount: 1}, {ID: "bad", Index: "2", PageCount: 1}}
 			result := m.download(context.Background(), chapters, make(chan tea.Msg))().(downloadDone)
 			if result.err == nil || result.completed != 1 || result.failed != 1 || len(result.paths) != 1 {
 				t.Fatalf("result = %#v", result)
+			}
+			if format == archive.FormatDirectory && (len(result.results) != 2 || result.results[0].Status != "success" || len(result.results[0].ImagePaths) != 1 || result.results[1].Status != "failed" || len(result.results[1].ImagePaths) != 0) {
+				t.Fatalf("integration chapters = %#v", result.results)
 			}
 			if format.IsArchive() {
 				inspection, err := archive.Inspect(result.paths[0])

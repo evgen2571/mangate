@@ -40,12 +40,15 @@ const (
 )
 
 type model struct {
-	app           *app.App
-	ctx           context.Context
-	stop          context.CancelFunc
-	screen        screen
-	previous      screen
-	width, height int
+	integration     bool
+	maxChapters     int
+	downloadResults []ChapterResult
+	app             *app.App
+	ctx             context.Context
+	stop            context.CancelFunc
+	screen          screen
+	previous        screen
+	width, height   int
 
 	input          textinput.Model
 	resultsList    list.Model
@@ -168,11 +171,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = resultsScreen
 			return m, nil
 		}
+		if m.integration {
+			msg.chapters = append([]*source.Chapter(nil), msg.chapters...)
+			orderChapters(msg.chapters)
+		}
 		m.manga, m.chapters = msg.manga, msg.chapters
 		m.chapterCursor, m.chapterOffset = 0, 0
 		m.selected = map[int]bool{}
 		m.chapterFilter, m.filtering = "", false
 		m.rangeAnchor, m.loading = -1, false
+		m.screen = chaptersScreen
 		if msg.all {
 			for i, chapter := range m.chapters {
 				if chapter != nil {
@@ -199,7 +207,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = doneScreen
 		m.status = ""
 		m.loading = false
-		m.doneErr, m.doneCompleted, m.doneFailed = msg.err, msg.completed, msg.failed
+		m.doneErr, m.doneCompleted, m.doneFailed = msg.err, msg.completed+msg.skipped, msg.failed
+		m.downloadResults = msg.results
+		if m.integration {
+			m.clearCover()
+			m.stop()
+			return m, tea.Quit
+		}
 		m.completion = fmt.Sprintf("complete: %d  reused: %d  failed: %d", msg.completed, msg.skipped, msg.failed)
 		if msg.err != nil {
 			m.completion += "\n" + util.SanitizeTerminalText(msg.err.Error())
@@ -458,6 +472,9 @@ func (m *model) updateOutput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		if key.String() == "esc" {
 			m.screen = formatScreen
+			if m.integration {
+				m.screen = chaptersScreen
+			}
 			return m, nil
 		}
 
@@ -503,6 +520,9 @@ func (m *model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	cfg := m.app.Cfg.Clone()
+	if m.integration {
+		m.format = archive.FormatDirectory
+	}
 	cfg.Download.Format = string(m.format)
 	if err := m.app.ApplyConfig(cfg); err != nil {
 		m.status = err.Error()
@@ -572,6 +592,15 @@ func (m *model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) openFormat() {
+	if m.integration {
+		if m.maxChapters > 0 && len(m.selectedChapters()) > m.maxChapters {
+			m.status = fmt.Sprintf("Select at most %d chapter(s)", m.maxChapters)
+			return
+		}
+		m.format, m.screen = archive.FormatDirectory, outputScreen
+		m.resetInput("Output: ", m.app.Cfg.Download.Dir)
+		return
+	}
 	m.screen = formatScreen
 	m.format, _ = archive.ParseFormat(m.app.Cfg.Download.Format)
 }

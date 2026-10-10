@@ -1,0 +1,88 @@
+name: Validate release artifacts
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        default: ''
+      critical-tests:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: '3.13'
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          install-only: true
+          version: v2.18.3
+      - name: Release-critical checks
+        if: inputs.critical-tests
+        run: |
+          bash scripts/check.sh
+          go test -race ./internal/downloader ./internal/cache ./internal/providers/... ./internal/usecase ./internal/interactive ./internal/cli ./internal/archive
+      - name: Build and validate every archive and wheel
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            uv run --project python --locked python scripts/release.py build --tag "$RELEASE_TAG"
+          else
+            uv run --project python --locked python scripts/release.py build --snapshot
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: go-release
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/go-checksums.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: python-wheels
+          path: |
+            python/dist/*.whl
+            python/dist/SHA256SUMS
+          if-no-files-found: error
+
+  install:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-wheels
+          path: python/dist
+      - name: Install the matching wheel in a clean environment
+        run: uv run --project python --locked python scripts/release.py smoke --integration

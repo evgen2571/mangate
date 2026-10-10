@@ -50,3 +50,5 @@ __pycache__/
 *.egg-info/
 python/dist/
 python/build/
+python/.build/
+dist/

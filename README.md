@@ -8,15 +8,17 @@ I needed to download manhwa chapters from Python for another project, with some 
 
 ## Install
 
-You'll need Go 1.26 or newer:
+Download the archive for your system from [GitHub Releases](https://github.com/evgen2571/mangate/releases), extract it, and put `mangate` (`mangate.exe` on Windows) on your `PATH`. No Go installation needed.
+
+For Python projects:
 
 ```sh
-git clone https://github.com/evgen2571/mangate.git
-cd mangate
-go install ./cmd/mangate
+uv add mangate
+# or: pip install mangate
+uv run mangate tui
 ```
 
-Make sure Go's binary directory is in your `PATH`. Alternatively, run `bash scripts/install.sh` to install to `~/.local/bin`.
+The Python wheel includes the executable. Releases support Linux and macOS on x86_64/ARM64, and Windows on x86_64. Building from this checkout still needs Go 1.26+: `go install ./cmd/mangate` or `bash scripts/install.sh`.
 
 ## Usage
 
@@ -40,27 +42,17 @@ Search for a title, choose the chapters you want, and select an output format an
 
 ## Python
 
-Mangate also has a small Python wrapper around the CLI. Install it from the checkout:
-
-```sh
-uv pip install ./python
-```
-
-The `mangate` executable must also be installed and available on your `PATH`.
+Launch the chapter picker from your own application, then continue with its downloaded images:
 
 ```python
 from mangate import Client
 
-client = Client(output_dir="./chapters")
-result = client.download(
-    "TITLE_ID",
-    chapter_ids=["CHAPTER_ID"],
-    output_format="directory",
-    assume_yes=True,
-)
-
-print(result["chapters"][0]["outputPath"])
+result = Client().interactive_download(output_dir="./chapters", max_chapters=1)
+images = result["chapters"][0]["imagePaths"]
+print(images)
 ```
+
+The terminal closes automatically after downloading. Each chapter has its own ordered image list; cancellation and failed downloads raise `MangateError`. The existing `search()`, `chapters()`, and `download()` methods are still available.
 
 See the [Python guide](docs/python.md) for searching, errors, and other options.
 
@@ -71,5 +63,6 @@ See the [Python guide](docs/python.md) for searching, errors, and other options.
 - [Dataset collection](docs/dataset.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Architecture and development](docs/architecture.md)
+- [Releasing](docs/releasing.md)
 
 Only download chapters that you're authorized to save.

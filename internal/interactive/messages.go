@@ -24,4 +24,5 @@ type downloadDone struct {
 	err                        error
 	completed, skipped, failed int
 	paths                      []string
+	results                    []ChapterResult
 }

@@ -39,6 +39,7 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 		var progressMu sync.Mutex
 		finished := make(map[string]usecase.ChapterDownloadProgress)
 		paths := []string{}
+		results := []ChapterResult{}
 		err := service.DownloadChapters(ctx, manga, chapters, func(p usecase.DownloadProgress) {
 			progressMu.Lock()
 			for _, chapter := range p.Chapters {
@@ -62,6 +63,23 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 		for index, chapter := range chapters {
 			path := chapterPaths[index]
 			progress, done := finished[chapter.ID]
+			if m.integration {
+				directory, absErr := filepath.Abs(path)
+				result := ChapterResult{ExpectedPages: progress.TotalPages, Chapter: chapter, Status: "failed", OutputDir: directory, ImagePaths: []string{}}
+				if done && absErr == nil {
+					images, imageErr := imagePaths(path, progress.TotalPages)
+					if imageErr != nil {
+						err = errors.Join(err, imageErr)
+						done = false
+					} else {
+						result.Status, result.ImagePaths = "success", images
+					}
+				} else if absErr != nil {
+					err = errors.Join(err, absErr)
+					done = false
+				}
+				results = append(results, result)
+			}
 			if !done {
 				failed++
 				continue
@@ -115,7 +133,7 @@ func (m *model) download(ctx context.Context, chapters []*source.Chapter, progre
 			paths = append(paths, path)
 		}
 
-		return downloadDone{err, completed, skipped, failed, paths}
+		return downloadDone{err: err, completed: completed, skipped: skipped, failed: failed, paths: paths, results: results}
 	}
 }
 

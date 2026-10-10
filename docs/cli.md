@@ -89,3 +89,15 @@ Bare `mangate` opens the TUI when attached to an interactive terminal, otherwise
 Empty searches return `status: "no_results"` and exit 1. Partial downloads return chapter results with `status: "partial"` and exit 5. Fully unsuccessful downloads use `status: "incomplete"`. Do not discard stdout solely because the process exited nonzero.
 
 Other command failures use an error envelope containing `data.category` and `data.message`. Configuration-loading errors happen before command execution and are written to stderr with exit 3. General mappings include invalid input 2, provider lookup/timeouts 4, filesystem errors 6, cancellation 7, archive errors 8, and unclassified failures 10. Download reporting can use its own aggregate exit code. Treat the JSON category and chapter outcomes as the detailed result rather than inferring everything from a numeric code.
+
+## Interactive integration result
+
+```sh
+mangate tui --exit-on-complete --result-file /tmp/mangate-result.json --max-chapters 1 --output ./chapters
+```
+
+`--exit-on-complete` enables integration mode; ordinary `mangate tui` retains its normal format selection and completion screen. Supply a new result-file path in an existing writable parent directory. The result is written atomically after the terminal is restored. It contains title metadata and separate per-chapter metadata, output directories, and ordered image paths. Integration output uses image directories. It does not write JSON into the terminal or change direct commands' JSON envelopes.
+
+`--max-chapters 0` (default) permits multiple chapters. A positive value limits the selection. Integration flags must be used together with `--exit-on-complete`; `--json` is incompatible with this mode.
+
+Exit status `0` means a complete validated download, `7` means cancellation, `5` means incomplete/partial download, and `10` means an interactive runtime error. Startup/argument/filesystem errors can occur before a result exists. A failed chapter never includes consumable image paths. See the [Python guide](python.md) for the result schema and exception handling.
