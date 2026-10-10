@@ -7,24 +7,8 @@ from unittest.mock import patch
 from mangate.client import Client
 
 
-class _CompletedProcess:
-    def __init__(self, payload: dict[str, object], returncode: int) -> None:
-        self._payload = payload
-        self.returncode = returncode
-
-    def poll(self) -> int:
-        return self.returncode
-
-    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-        return json.dumps(self.payload), ""
-
-    @property
-    def payload(self) -> dict[str, object]:
-        return self._payload
-
-    @payload.setter
-    def payload(self, value: dict[str, object]) -> None:
-        self._payload = value
+def _CompletedProcess(payload, returncode):
+    return json.dumps(payload), "", returncode
 
 
 class ClientTests(unittest.TestCase):
@@ -44,7 +28,7 @@ class ClientTests(unittest.TestCase):
             "data": {},
         }
         with patch(
-            "mangate.client.subprocess.Popen",
+            "mangate.client.Client._run",
             return_value=_CompletedProcess(payload, 0),
         ) as popen:
             Client().download("title-id", latest=True, output_format="png")
@@ -61,7 +45,7 @@ class ClientTests(unittest.TestCase):
             "data": {"state": "completed"},
         }
         with patch(
-            "mangate.client.subprocess.Popen",
+            "mangate.client.Client._run",
             return_value=_CompletedProcess(payload, 0),
         ) as popen:
             result = Client().dataset_collect(
@@ -82,7 +66,7 @@ class ClientTests(unittest.TestCase):
             "data": {"chapters": [{"id": "completed", "status": "complete"}]},
         }
         process = _CompletedProcess(payload, 5)
-        with patch("mangate.client.subprocess.Popen", return_value=process):
+        with patch("mangate.client.Client._run", return_value=process):
             result = Client().download("title-id", latest=True)
         self.assertEqual(result["chapters"][0]["status"], "complete")
 
@@ -94,7 +78,7 @@ class ClientTests(unittest.TestCase):
             "data": {"provider": "mangadex", "query": "missing", "results": []},
         }
         process = _CompletedProcess(payload, 1)
-        with patch("mangate.client.subprocess.Popen", return_value=process):
+        with patch("mangate.client.Client._run", return_value=process):
             results = Client().search("missing")
         self.assertEqual(results, [])
 
@@ -106,7 +90,7 @@ class ClientTests(unittest.TestCase):
             "data": {"format": "cbz"},
         }
         process = _CompletedProcess(payload, 0)
-        with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
+        with patch("mangate.client.Client._run", return_value=process) as popen:
             result = Client().convert(
                 "chapter",
                 output_format="cbz",
@@ -131,7 +115,7 @@ class ClientTests(unittest.TestCase):
             "data": {"format": "zip", "status": "planned"},
         }
         process = _CompletedProcess(payload, 0)
-        with patch("mangate.client.subprocess.Popen", return_value=process) as popen:
+        with patch("mangate.client.Client._run", return_value=process) as popen:
             result = Client().download(
                 "title-id",
                 latest=True,
@@ -164,9 +148,7 @@ class ClientTests(unittest.TestCase):
             },
             0,
         )
-        with patch(
-            "mangate.client.subprocess.Popen", side_effect=[first, second]
-        ) as popen:
+        with patch("mangate.client.Client._run", side_effect=[first, second]) as popen:
             results = Client().convert_many(
                 ["first", "second"],
                 output_format="cbz",

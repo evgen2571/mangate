@@ -65,8 +65,10 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 		reporter.chapterStarted(c)
 	}
 
-	if reused, err := d.reuseChapterArchive(c, chapterName, reporter); reused || err != nil {
-		return err
+	if reused, err := d.reuseChapterArchive(c, chapterName, reporter); err != nil {
+		return &ChapterPreflightError{ChapterID: c.ID, Cause: err}
+	} else if reused {
+		return nil
 	}
 
 	for attempt := 0; ; attempt++ {
@@ -77,6 +79,12 @@ func (d *Downloader) downloadChapter(ctx context.Context, c *source.Chapter, cha
 
 		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
 			return err
+		}
+
+		if d.cfg.Download.ExistingFileMode == "fail" {
+			retry := *d
+			retry.cfg.Download.ExistingFileMode = "skip"
+			d = &retry
 		}
 
 		c.Pages = nil
@@ -120,24 +128,14 @@ func (d *Downloader) reuseChapterArchive(chapter *source.Chapter, name string, r
 }
 
 func (d *Downloader) downloadChapterAttempt(ctx context.Context, c *source.Chapter, chapterName string, reporter *progressReporter, pageLoader PageLoader) error {
-	if len(c.Pages) == 0 && pageLoader != nil {
-		pages, err := pageLoader(ctx, c)
-		if err != nil {
-			return fmt.Errorf("load pages for chapter %q: %w", c.ID, err)
-		}
-
-		c.Pages = pages
-		c.PageCount = len(pages)
-		if reporter != nil {
-			reporter.pagesDiscovered(c)
-		}
-	}
-
-	if len(c.Pages) == 0 {
-		return fmt.Errorf("download chapter %q: provider returned no pages", c.ID)
-	}
-
 	chapterDir := filepath.Join(d.cfg.Download.Dir, titleDirName(c.From), util.SanitizeString(chapterName))
+	hadPages := len(c.Pages) > 0
+	if err := d.prepareChapterPages(ctx, c, chapterDir, pageLoader); err != nil {
+		return &ChapterPreflightError{ChapterID: c.ID, Cause: err}
+	}
+	if !hadPages && reporter != nil {
+		reporter.pagesDiscovered(c)
+	}
 	if err := util.EnsureDir(chapterDir, "chapter directory"); err != nil {
 		return err
 	}
@@ -328,17 +326,20 @@ func (d *Downloader) downloadManga(ctx context.Context, m *source.Manga, reporte
 	var g errgroup.Group
 	g.SetLimit(max(1, d.cfg.Concurrency.ChapterDownloads))
 
+	chapterErrors := make([]error, len(m.Chapters))
 	chapterNames := uniqueChapterDirNames(m.Chapters)
 	for idx, chapter := range m.Chapters {
-		chapter := chapter
+		idx, chapter := idx, chapter
 		chapterName := chapterNames[idx]
 
 		g.Go(func() error {
-			return d.downloadChapter(ctx, chapter, chapterName, reporter, pageLoader)
+			chapterErrors[idx] = d.downloadChapter(ctx, chapter, chapterName, reporter, pageLoader)
+			return nil
 		})
 	}
 
-	return g.Wait()
+	_ = g.Wait()
+	return errors.Join(chapterErrors...)
 }
 
 func uniqueChapterDirNames(chapters []*source.Chapter) []string {

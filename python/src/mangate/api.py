@@ -268,7 +268,7 @@ def _download_result(record: dict[str, Any]) -> DownloadResult:
             path = Path(raw_path)
             if not path.is_absolute() or path.resolve().parent != output.resolve():
                 raise ValueError("image path escapes chapter directory")
-            if not path.is_file() or path.stat().st_size == 0:
+            if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
                 raise ValueError("missing or empty image")
             index = int(path.stem)
             if index < 1 or index > expected or (pages and index <= pages[-1].index):
@@ -289,10 +289,14 @@ def _download_result(record: dict[str, Any]) -> DownloadResult:
         status: AcquisitionStatus
         if raw_status == "cancelled":
             status = "cancelled"
-        elif raw_status == "complete" and item["status"] in {"complete", "skipped"}:
+        elif raw_status == "complete":
+            if item["status"] not in {"complete", "skipped"}:
+                raise ValueError("complete result has an unsuccessful chapter")
             if expected <= 0 or len(pages) != expected:
                 raise ValueError("complete download has missing pages")
             status = "complete"
+        elif raw_status == "failed":
+            status = "failed"
         elif pages:
             status = "partial"
         else:
