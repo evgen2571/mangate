@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -69,17 +70,22 @@ func TestChapterDestinationsRemainDistinctAfterSanitizing(t *testing.T) {
 func TestFailedPageIdentifiesDestinationAndChapter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }))
 	defer server.Close()
-	cfg := config.DefaultConfig()
-	cfg.Download.Dir = t.TempDir()
-	chapter := &source.Chapter{ID: "chapter-id", Index: "7", From: &source.Manga{ID: "manga-id", Title: "Title"}, Pages: []*source.Page{{URL: server.URL}}}
-	err := New(cfg, server.Client()).DownloadChapter(chapter)
-	if err == nil {
-		t.Fatal("expected failure")
-	}
-	for _, want := range []string{"manga-id", "chapter-id", "page 1", cfg.Download.Dir} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q lacks %q", err, want)
-		}
+	for _, directory := range []string{"library", `library\chapters`} {
+		t.Run(directory, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Download.Dir = filepath.Join(t.TempDir(), directory)
+			chapter := &source.Chapter{ID: "chapter-id", Index: "7", From: &source.Manga{ID: "manga-id", Title: "Title"}, Pages: []*source.Page{{URL: server.URL}}}
+			err := New(cfg, server.Client()).DownloadChapter(chapter)
+			if err == nil {
+				t.Fatal("expected failure")
+			}
+			destination := filepath.Join(cfg.Download.Dir, TitleDirectoryName(chapter.From), "Chapter-7")
+			for _, want := range []string{"manga-id", "chapter-id", "page 1", strconv.Quote(destination)} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			}
+		})
 	}
 }
 

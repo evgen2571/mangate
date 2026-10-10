@@ -3,10 +3,13 @@ package mangadex
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/evgen2571/mangate/internal/source"
@@ -51,54 +54,49 @@ func TestProviderPagesUsesAtHomeBaseURL(t *testing.T) {
 	}
 }
 
+type pageRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f pageRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func TestProviderPagesPacesAtHomeRequests(t *testing.T) {
-	var mu sync.Mutex
-	requestTimes := make([]time.Time, 0, 2)
+	// Measure request starts with a virtual clock, independent of network and OS scheduling.
+	synctest.Test(t, func(t *testing.T) {
+		var mu sync.Mutex
+		requestTimes := make([]time.Time, 0, 2)
+		provider := newTestProvider(t, "https://api.example", "en")
+		provider.atHomeMinInterval = 20 * time.Millisecond
+		provider.client = &http.Client{Transport: pageRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			mu.Lock()
+			requestTimes = append(requestTimes, time.Now())
+			mu.Unlock()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"baseUrl":"https://at-home.example","chapter":{"hash":"chapter-hash","data":["001.png"]}}`)),
+			}, nil
+		})}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		requestTimes = append(requestTimes, time.Now())
-		mu.Unlock()
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"baseUrl": "https://at-home.example",
-			"chapter": map[string]any{
-				"hash": "chapter-hash",
-				"data": []string{"001.png"},
-			},
-		}); err != nil {
-			t.Fatalf("encode response: %v", err)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		for _, chapterID := range []string{"chapter-1", "chapter-2"} {
+			go func() {
+				defer wg.Done()
+				if _, err := provider.Pages(context.Background(), &source.Chapter{ID: chapterID}); err != nil {
+					t.Errorf("Pages(%q) error = %v", chapterID, err)
+				}
+			}()
 		}
-	}))
-	defer server.Close()
+		wg.Wait()
 
-	provider := newTestProvider(t, server.URL, "en")
-	provider.atHomeMinInterval = 20 * time.Millisecond
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	for _, chapterID := range []string{"chapter-1", "chapter-2"} {
-		chapterID := chapterID
-		go func() {
-			defer wg.Done()
-			if _, err := provider.Pages(context.Background(), &source.Chapter{ID: chapterID}); err != nil {
-				t.Errorf("Pages(%q) error = %v", chapterID, err)
-			}
-		}()
-	}
-	wg.Wait()
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(requestTimes) != 2 {
-		t.Fatalf("request count = %d, want 2", len(requestTimes))
-	}
-	spacing := requestTimes[1].Sub(requestTimes[0])
-	minSpacing := provider.atHomeMinInterval - 2*time.Millisecond
-	if spacing < minSpacing {
-		t.Fatalf("request spacing = %s, want at least %s", spacing, minSpacing)
-	}
+		if len(requestTimes) != 2 {
+			t.Fatalf("request count = %d, want 2", len(requestTimes))
+		}
+		if spacing := requestTimes[1].Sub(requestTimes[0]); spacing != provider.atHomeMinInterval {
+			t.Fatalf("request spacing = %s, want %s", spacing, provider.atHomeMinInterval)
+		}
+	})
 }
 
 func TestPagesRejectsInvalidImageLocations(t *testing.T) {

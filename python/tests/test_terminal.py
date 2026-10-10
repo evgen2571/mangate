@@ -148,7 +148,12 @@ def test_terminal_handoff(binary, tmp_path, outcome):
             os.write(master, b"\x03")
         if outcome != "standalone":
             until(b"PYTHON RESUMED")
+        else:
+            # Drain shutdown output before waiting: macOS PTY buffers are small.
+            until(b"\x1b[?1049l")
         assert proc.wait(timeout=10) == 0
+        # Query pending input to clear macOS's kernel-maintained PENDIN flag.
+        fcntl.ioctl(slave, termios.FIONREAD, struct.pack("I", 0))
         assert termios.tcgetattr(slave) == original
         # Bubble Tea left the alternate screen before the Python continuation.
         if outcome != "standalone":
