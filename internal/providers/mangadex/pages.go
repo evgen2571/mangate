@@ -18,7 +18,7 @@ func (pr *Provider) Pages(ctx context.Context, chapter *source.Chapter) ([]*sour
 
 	pages, err := pageResp.toSourcePages()
 	if err != nil {
-		return nil, fmt.Errorf("pages response for chapter %q: %w", chapter.ID, err)
+		return nil, fmt.Errorf("%w: pages response for chapter %q: %w", source.ErrCandidateUnavailable, chapter.ID, err)
 	}
 
 	return pages, nil

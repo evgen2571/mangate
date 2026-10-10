@@ -3,6 +3,7 @@ package acquisition
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func (p *fixtureProvider) Chapters(ctx context.Context, m *source.Manga) ([]*sou
 func (p *fixtureProvider) Pages(ctx context.Context, c *source.Chapter) ([]*source.Page, error) {
 	p.pageCalls++
 	if p.unavailable {
-		return nil, errors.New("unavailable")
+		return nil, source.ErrCandidateUnavailable
 	}
 	return p.pages, ctx.Err()
 }
@@ -159,11 +160,11 @@ func TestManifestRoundTripAndInvalidInput(t *testing.T) {
 	if !reflect.DeepEqual(m, *loaded) {
 		t.Fatalf("roundtrip=%+v expected=%+v", loaded, m)
 	}
-	m.Version = 2
+	m.Version = 99
 	if m.Validate() == nil {
 		t.Fatal("accepted version")
 	}
-	m.Version = 1
+	m.Version = ManifestVersion
 	m.Images = []Image{{Index: 1, Path: "../0001.png", Format: "png"}}
 	m.ActualPages = 1
 	if m.Validate() == nil {
@@ -275,5 +276,87 @@ func TestCancellationWhenSelectionIsFinalized(t *testing.T) {
 	})
 	if plan != nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+}
+
+type failingCandidateFixture struct {
+	*sequenceFixture
+	chapterErr error
+	pageErr    error
+	cancel     context.CancelFunc
+	always     bool
+}
+
+func (p *failingCandidateFixture) Chapters(ctx context.Context, m *source.Manga) ([]*source.Chapter, error) {
+	p.chapterCalls++
+	if p.cancel != nil {
+		p.cancel()
+		return nil, ctx.Err()
+	}
+	if p.always || m.ID == "bad" {
+		return nil, p.chapterErr
+	}
+	return p.chapters, ctx.Err()
+}
+func (p *failingCandidateFixture) Pages(ctx context.Context, c *source.Chapter) ([]*source.Page, error) {
+	if p.pageErr != nil {
+		p.pageCalls++
+		return nil, p.pageErr
+	}
+	return p.fixtureProvider.Pages(ctx, c)
+}
+func TestCandidateChapterFailures(t *testing.T) {
+	for _, mode := range []string{"unavailable", "permanent", "cancelled", "deadline", "exhausted", "page_auth"} {
+		t.Run(mode, func(t *testing.T) {
+			f := fixture()
+			bad := *f.manga
+			bad.ID = "bad"
+			p := &failingCandidateFixture{sequenceFixture: &sequenceFixture{fixtureProvider: f, candidates: []*source.Manga{&bad, f.manga}}, chapterErr: fmt.Errorf("private URL secret: %w", source.ErrCandidateUnavailable)}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fatal := errors.New("provider authentication failed")
+			switch mode {
+			case "permanent":
+				p.chapterErr = fatal
+			case "cancelled":
+				p.cancel = cancel
+			case "deadline":
+				p.chapterErr = context.DeadlineExceeded
+			case "exhausted":
+				p.always = true
+			case "page_auth":
+				p.chapterErr = nil
+				p.pageErr = fatal
+				p.candidates = []*source.Manga{f.manga}
+			}
+			var events []ProgressEvent
+			plan, err := PlanRandom(ctx, p, policy(), t.TempDir(), archive.FormatDirectory, func(e ProgressEvent) { events = append(events, e) })
+			switch mode {
+			case "unavailable":
+				if err != nil || plan == nil || plan.Manga.ID != "m" || p.randomCalls != 2 {
+					t.Fatalf("plan=%+v err=%v calls=%d", plan, err, p.randomCalls)
+				}
+			case "exhausted":
+				if err == nil || !strings.Contains(err.Error(), "discovery attempts") || p.randomCalls != 3 || p.chapterCalls != 2 {
+					t.Fatalf("err=%v calls=%d chapters=%d", err, p.randomCalls, p.chapterCalls)
+				}
+			default:
+				expected := fatal
+				if mode == "cancelled" {
+					expected = context.Canceled
+				}
+				if mode == "deadline" {
+					expected = context.DeadlineExceeded
+				}
+				if !errors.Is(err, expected) || p.randomCalls != 1 {
+					t.Fatalf("err=%v calls=%d", err, p.randomCalls)
+				}
+			}
+			for _, e := range events {
+				if strings.Contains(e.Reason, "secret") {
+					t.Fatal("unsanitized rejection")
+				}
+			}
+		})
 	}
 }

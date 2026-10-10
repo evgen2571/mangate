@@ -171,6 +171,8 @@ class ManifestImage:
     index: int
     path: Path
     format: str
+    bytes: int = 0
+    sha256: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +182,7 @@ class AcquisitionManifest:
     status: str = "planned"
     validation: str = "eligible"
     error: str = ""
-    version: int = 1
+    version: int = 2
 
     @property
     def actual_pages(self) -> int:

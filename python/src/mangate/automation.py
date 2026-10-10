@@ -384,7 +384,7 @@ def _manifest(data: dict[str, Any], base: Path | None = None) -> AcquisitionMani
     try:
         if (
             type(data["version"]) is not int
-            or data["version"] != 1
+            or data["version"] not in {1, 2}
             or set(data)
             - {
                 "version",
@@ -409,6 +409,7 @@ def _manifest(data: dict[str, Any], base: Path | None = None) -> AcquisitionMani
                 or not previous < index <= plan.expected_pages
                 or path.name != item["path"]
                 or "\\" in item["path"]
+                or "\0" in item["path"]
                 or int(path.stem) != index
                 or item["format"] not in {"png", "jpeg", "gif", "webp", "bmp", "avif"}
                 and not (
@@ -416,7 +417,31 @@ def _manifest(data: dict[str, Any], base: Path | None = None) -> AcquisitionMani
                 )
             ):
                 raise ValueError("unsafe or unordered image")
-            images.append(ManifestImage(index, path, item["format"]))
+            size, digest = item.get("bytes", 0), item.get("sha256", "")
+            if set(item) - {"index", "path", "format", "bytes", "sha256"}:
+                raise ValueError("unknown image fields")
+            if (
+                type(size) is not int
+                or not 0 <= size < 2**63
+                or not isinstance(digest, str)
+            ):
+                raise ValueError("invalid image integrity types")
+            if data["version"] == 1:
+                if size != 0 or digest != "":
+                    raise ValueError("version 1 cannot contain integrity records")
+            elif not (
+                item["format"] == "unknown"
+                and data["validation"] == "incomplete"
+                and size == 0
+                and digest == ""
+            ):
+                if (
+                    size <= 0
+                    or len(digest) != 64
+                    or any(c not in "0123456789abcdef" for c in digest)
+                ):
+                    raise ValueError("invalid image integrity record")
+            images.append(ManifestImage(index, path, item["format"], size, digest))
             previous = index
         if type(data["actualPages"]) is not int or data["actualPages"] != len(images):
             raise ValueError("inconsistent actual pages")
@@ -443,7 +468,9 @@ def _manifest(data: dict[str, Any], base: Path | None = None) -> AcquisitionMani
                 raise ValueError("inconsistent failure")
         else:
             raise ValueError("unknown terminal status")
-        return AcquisitionManifest(plan, tuple(images), status, validation, error)
+        return AcquisitionManifest(
+            plan, tuple(images), status, validation, error, data["version"]
+        )
     except (KeyError, TypeError, ValueError, AttributeError) as error:
         raise MangateError("invalid_result", f"Invalid manifest: {error}") from error
 
@@ -517,7 +544,12 @@ def save_manifest(
         version=source.version,
         plan=_plan_data(source.plan),
         images=[
-            dict(asdict(item), path=item.path.as_posix()) for item in source.images
+            {
+                key: value
+                for key, value in dict(asdict(item), path=item.path.as_posix()).items()
+                if source.version != 1 or key not in {"bytes", "sha256"}
+            }
+            for item in source.images
         ],
         actualPages=source.actual_pages,
         status=source.status,

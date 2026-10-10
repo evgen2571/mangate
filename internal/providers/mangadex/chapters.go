@@ -65,7 +65,7 @@ func (pr *Provider) Chapters(ctx context.Context, manga *source.Manga) ([]*sourc
 	chapters := make([]*source.Chapter, 0, len(allChapters))
 	for _, mdc := range allChapters {
 		if strings.TrimSpace(mdc.ID) == "" {
-			return nil, fmt.Errorf("chapters response contains a chapter without an id")
+			return nil, fmt.Errorf("%w: chapters response contains a chapter without an id", source.ErrCandidateUnavailable)
 		}
 
 		mdc.URL = pr.site("chapter/" + url.PathEscape(mdc.ID))

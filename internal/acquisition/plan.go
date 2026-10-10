@@ -2,6 +2,7 @@ package acquisition
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -195,8 +196,15 @@ func PlanRandom(ctx context.Context, provider providers.Provider, policy Selecti
 			seen[manga.ID] = true
 			emit(notify, ProgressEvent{Stage: "selection", Status: "selecting", Attempt: attempt, MangaID: manga.ID})
 			chapters, err := provider.Chapters(ctx, manga)
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			if err != nil {
-				return nil, err
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, source.ErrCandidateUnavailable) {
+					return nil, err
+				}
+				emit(notify, ProgressEvent{Stage: "discovery", Status: "rejected", Attempt: attempt, MangaID: manga.ID, Reason: "candidate chapters unavailable or invalid"})
+				continue
 			}
 			// Stable chapter order is independent of provider response order.
 			sort.SliceStable(chapters, func(i, j int) bool {
@@ -223,7 +231,10 @@ func PlanRandom(ctx context.Context, provider providers.Provider, policy Selecti
 					return nil, ctx.Err()
 				}
 				if err != nil {
-					emit(notify, ProgressEvent{Stage: "validation", Status: "rejected", ChapterID: chapter.ID, Reason: "chapter pages unavailable"})
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, source.ErrCandidateUnavailable) {
+						return nil, err
+					}
+					emit(notify, ProgressEvent{Stage: "validation", Status: "rejected", Attempt: attempt, MangaID: manga.ID, ChapterID: chapter.ID, Reason: "chapter pages unavailable or invalid"})
 					continue
 				}
 				validPages := true
@@ -239,7 +250,7 @@ func PlanRandom(ctx context.Context, provider providers.Provider, policy Selecti
 					}
 				}
 				if !validPages || chapter.PageCount > 0 && chapter.PageCount != len(pages) || !policy.MatchPages(len(pages)) {
-					emit(notify, ProgressEvent{Stage: "validation", Status: "rejected", ChapterID: chapter.ID, Reason: "page count disagrees with metadata or policy"})
+					emit(notify, ProgressEvent{Stage: "validation", Status: "rejected", Attempt: attempt, MangaID: manga.ID, ChapterID: chapter.ID, Reason: "page count disagrees with metadata or policy"})
 					continue
 				}
 				m, c := *manga, *chapter

@@ -53,7 +53,9 @@ def test_random_plan_replay_and_portable_manifest(binary, provider, tmp_path):
     assert [e.completed_pages for e in events if e.status == "progress"] == [1, 2]
     raw = json.loads(destination.read_text())
     assert raw["plan"]["output"] == "exact"
-    assert raw["images"][0] == {"index": 1, "path": "0001.png", "format": "png"}
+    assert raw["images"][0]["path"] == "0001.png"
+    assert raw["images"][0]["format"] == "png"
+    assert raw["images"][0]["index"] == 1
     assert (
         "baseUrl" not in destination.read_text()
         and "hash" not in destination.read_text()
@@ -430,3 +432,158 @@ def test_refresh_cannot_bypass_policy_or_discard_partial_paths(
     )
     assert result.manifest == mangate.load_manifest(path)
     assert result.expected_pages == 2 and result.manifest.actual_pages == 1
+
+
+@pytest.mark.parametrize("mutation", ["image", "complete", "count", "missing"])
+def test_local_manifest_integrity(binary, provider, tmp_path, mutation):
+    path = tmp_path / "manifest.json"
+    output = tmp_path / "out"
+    result = mangate.download_random(output, executable=binary, manifest=path)
+    calls = (provider["random_calls"], provider["title_calls"], provider["image_calls"])
+    assert result.manifest.version == 2
+    raw = json.loads(path.read_text())
+    import hashlib
+
+    for item in raw["images"]:
+        content = (output / item["path"]).read_bytes()
+        assert item["bytes"] == len(content)
+        assert item["sha256"] == hashlib.sha256(content).hexdigest()
+    if mutation == "image":
+        # Keep the PNG valid: format-only verification used to accept this.
+        with (output / "0001.png").open("ab") as stream:
+            stream.write(b"modified")
+    elif mutation == "missing":
+        (output / "0002.png").unlink()
+    else:
+        state_path = output / ".mangate.json"
+        state = json.loads(state_path.read_text())
+        state["complete" if mutation == "complete" else "expectedPages"] = (
+            False if mutation == "complete" else 3
+        )
+        state_path.write_text(json.dumps(state))
+    with pytest.raises(mangate.MangateError):
+        mangate.verify_manifest(path, executable=binary)
+    assert calls == (
+        provider["random_calls"],
+        provider["title_calls"],
+        provider["image_calls"],
+    )
+
+
+def test_legacy_manifest_explicit_replay(binary, provider, tmp_path):
+    path = tmp_path / "legacy.json"
+    mangate.download_random(tmp_path / "out", executable=binary, manifest=path)
+    data = json.loads(path.read_text())
+    data["version"] = 1
+    for item in data["images"]:
+        del item["bytes"], item["sha256"]
+    path.write_text(json.dumps(data))
+    loaded = mangate.load_manifest(path)
+    assert loaded.version == 1
+    copy = tmp_path / "legacy-copy.json"
+    mangate.save_manifest(loaded, copy)
+    assert mangate.load_manifest(copy) == loaded
+    with pytest.raises(mangate.MangateError, match="version 1 has no image checksums"):
+        mangate.verify_manifest(copy, executable=binary)
+    assert mangate.execute(copy, executable=binary).manifest.version == 2
+
+
+@pytest.mark.skipif(
+    __import__("os").name != "posix", reason="requires POSIX file-size limits"
+)
+def test_event_file_write_failure_preserves_download(binary, provider, tmp_path):
+    import resource
+
+    output = tmp_path / "out"
+    events = tmp_path / "events.jsonl"
+
+    def limit_file_size():
+        resource.setrlimit(resource.RLIMIT_FSIZE, (700, 700))
+
+    result = subprocess.run(
+        [
+            str(binary),
+            "--json",
+            "random",
+            "--output",
+            str(output),
+            "--events-file",
+            str(events),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+        preexec_fn=limit_file_size,
+    )
+    assert result.returncode != 0
+    record = json.loads(result.stdout)
+    assert record["status"] == "partial"
+    assert "progress" in record["data"]["error"]
+    assert record["data"]["manifest"]["status"] == "complete"
+    assert (output / "0001.png").is_file() and (output / "0002.png").is_file()
+    assert events.read_bytes().startswith(b'{"stage":"discovery"')
+
+
+def test_failed_acquisition_and_manifest_write_keeps_failed_status(
+    binary, provider, tmp_path
+):
+    plan = mangate.plan_random(tmp_path / "out", executable=binary)
+    provider["missing_chapter"] = True
+    with pytest.raises(mangate.DownloadError) as caught:
+        mangate.execute(
+            plan, executable=binary, manifest=tmp_path / "missing" / "result.json"
+        )
+    assert caught.value.result.status == "failed"
+    assert caught.value.result.manifest.status == "failed"
+    source = tmp_path / "plan.json"
+    mangate.save_manifest(plan, source)
+    result = subprocess.run(
+        [
+            str(binary),
+            "--json",
+            "download",
+            "--from-manifest",
+            str(source),
+            "--manifest",
+            str(tmp_path / "missing" / "result.json"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert json.loads(result.stdout)["data"]["status"] == "failed"
+
+
+@pytest.mark.parametrize("value", [True, -1, 2**63, "70"])
+def test_manifest_byte_size_matches_go_contract(binary, provider, tmp_path, value):
+    path = tmp_path / "manifest.json"
+    mangate.download_random(tmp_path / "out", executable=binary, manifest=path)
+    data = json.loads(path.read_text())
+    data["images"][0]["bytes"] = value
+    path.write_text(json.dumps(data))
+    with pytest.raises(mangate.MangateError):
+        mangate.load_manifest(path)
+
+
+@pytest.mark.parametrize("mode", ["--json", "--jsonl"])
+def test_unavailable_events_destination_has_error_envelope(
+    binary, provider, tmp_path, mode
+):
+    result = subprocess.run(
+        [
+            str(binary),
+            "random",
+            mode,
+            "--plan",
+            "--output",
+            str(tmp_path / "out"),
+            "--events-file",
+            str(tmp_path / "missing" / "events.jsonl"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert json.loads(result.stdout)["status"] == "error"
+    assert provider["random_calls"] == 0
