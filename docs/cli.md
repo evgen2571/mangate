@@ -111,3 +111,26 @@ mangate --json download <title-id> --chapter-id <chapter-id> --chapter-output ./
 `--chapter-output` writes one selected chapter directly into that directory, without title/chapter subdirectories. It supports `directory`, `png`, and `jpeg`; multi-chapter or archive selections are rejected. `--output` and `--download-dir` retain their existing organized output-root behavior. Nonempty exact destinations require matching Mangate chapter/provider metadata, including for partial-download resume. Unrelated files and symlink destinations are rejected.
 
 JSON download records retain chapter selection order. Each chapter includes full `chapter` metadata and ordered absolute `imagePaths` for finalized pages. Top-level status distinguishes `complete`, `partial`, `failed`, and `cancelled`; partially acquired chapters do not count as complete. Archived chapters expose `archivePath` and omit consumable image paths after source removal.
+
+## Random acquisition, planning, and replay
+
+```sh
+mangate random --original-language ko --chapter-language en --min-pages 10 --max-attempts 20 --output ./output/chapter --manifest ./chapter.json
+mangate --json random --plan --seed 42 --min-pages 10 --output ./output/chapter --manifest ./selection.json
+mangate download --from-manifest ./selection.json
+mangate download --from-manifest ./chapter.json --output ./replayed-chapter --manifest ./replayed.json
+mangate download --from-manifest ./chapter.json --verify-manifest
+mangate random --min-pages 10 --max-attempts 20 --output ./output/chapter --jsonl
+```
+
+`random` selects exactly one eligible chapter. Its `--output` is the exact chapter directory; `directory`, `png`, and `jpeg` formats are supported. Existing-file behavior uses the ordinary `--existing-files skip|replace|fail` policy. It never invokes dataset collection. Providers must permit downloads and implement the requested optional random or catalog capability; unsupported operations fail explicitly.
+
+Filters include original language, translation language, `--min-pages` (default 1), `--max-pages`, inclusive numeric `--chapter-min`/`--chapter-max`, and `--max-attempts` (default 20). Missing required language or numeric metadata rejects a candidate. Unknown page counts are resolved from the provider page list; contradictory counts or unavailable pages reject the chapter. Duplicate titles consume attempts without repeating chapter inspection. Exhaustion never downloads a rejected candidate. Provider request errors stop the operation; unavailable individual chapter pages can be skipped. Requests retain cancellation, HTTP timeouts, rate pacing, and bounded retries.
+
+Without `--seed`, MangaDex's native random endpoint selects candidates; results are nondeterministic. With `--seed`, selection uses a bounded catalog snapshot (at most `max-attempts` distinct titles, ordered by creation time for catalog reads). The recorded seed and candidate IDs explain that selection; a future live catalog may differ. Within a title, suitable chapters are considered in stable ID order. This is structural eligibility, without image scoring or image analysis.
+
+`--plan` resolves a stable selection and expected page count without transferring images. Use `--manifest` to save it for later execution. Save manifests outside the chapter directory to keep image files and chapter state safe. Version-1 manifests record the plan, policy, selection strategy, seed/candidates where applicable, relative output and image paths, detected formats, page counts, terminal status, and safe failure reasons. Keep the manifest with its relative output tree when moving it between machines. Page URLs and credentials are not persisted.
+
+`download --from-manifest` replays the selected IDs without random discovery, revalidates current eligibility and page counts, and applies the current existing-file policy. `--output` can relocate replay; provider/format overrides must agree with the plan. Chapter selectors cannot be combined with replay. `--verify-manifest` instead checks existing files locally without contacting the provider; it requires a complete manifest. Replay and verification are different operations.
+
+`--json` still writes one result envelope. `--jsonl` streams discovery, selection, validation, downloading, and completion events followed by one terminal result/error envelope; it cannot be combined with `--json` or `--quiet`. Human diagnostics stay on stderr. `--events-file` writes progress JSON Lines to a new file while retaining the ordinary result output. These automation flags apply to `random` and manifest replay. Interrupted acquisitions retain finalized ordered pages and, when requested, an incomplete manifest; forced termination can prevent a terminal result from being written.

@@ -25,3 +25,8 @@ type Factory func(cfg config.Config, client *http.Client) (Provider, error)
 type BrowseProvider interface {
 	BrowseManga(context.Context, source.BrowseRequest) (source.BrowsePage, error)
 }
+
+// RandomProvider is optional: providers without it remain usable for explicit downloads.
+type RandomProvider interface {
+	RandomManga(context.Context) (*source.Manga, error)
+}

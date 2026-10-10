@@ -19,6 +19,18 @@ PNG = bytes.fromhex(
 def provider(tmp_path, monkeypatch):
     state = {
         "fail": False,
+        "random_calls": 0,
+        "image_calls": 0,
+        "title_calls": 0,
+        "original_language": "en",
+        "chapter_language": "en",
+        "page_count": 2,
+        "unavailable": False,
+        "missing_chapter": False,
+        "invalid_image": False,
+        "refresh_changes_count": False,
+        "actual_pages": 2,
+        "block_stage": "",
         "ambiguous": False,
         "block": False,
         "entered": Event(),
@@ -35,10 +47,16 @@ def provider(tmp_path, monkeypatch):
                 "id": "title-id",
                 "attributes": {
                     "title": {"en": "Solo Leveling"},
-                    "originalLanguage": "en",
+                    "originalLanguage": state["original_language"],
                 },
             }
-            if path == "/manga/":
+            if state["block_stage"] and path == state["block_stage"]:
+                state["entered"].set()
+                state["release"].wait(10)
+            if path == "/manga/random":
+                state["random_calls"] += 1
+                payload = {"result": "ok", "data": title}
+            elif path == "/manga/":
                 data = [title, title] if state["ambiguous"] else [title]
                 payload = {
                     "result": "ok",
@@ -48,6 +66,7 @@ def provider(tmp_path, monkeypatch):
                     "total": len(data),
                 }
             elif path == "/manga/title-id":
+                state["title_calls"] += 1
                 payload = {"result": "ok", "data": title}
             elif path == "/manga/title-id/feed":
                 payload = {
@@ -58,8 +77,8 @@ def provider(tmp_path, monkeypatch):
                             "attributes": {
                                 "chapter": "1",
                                 "volume": "2",
-                                "pages": 2,
-                                "translatedLanguage": "en",
+                                "pages": state["page_count"],
+                                "translatedLanguage": state["chapter_language"],
                             },
                         }
                     ],
@@ -67,16 +86,32 @@ def provider(tmp_path, monkeypatch):
                     "offset": 0,
                     "total": 1,
                 }
+                if state["missing_chapter"]:
+                    payload["data"] = []
+                    payload["total"] = 0
             elif path == "/at-home/server/chapter-id":
+                if state["unavailable"]:
+                    self.send_error(404)
+                    return
                 payload = {
                     "result": "ok",
                     "baseUrl": base,
-                    "chapter": {"hash": "hash", "data": ["1.png", "2.png"]},
+                    "chapter": {
+                        "hash": "hash",
+                        "data": [
+                            f"{i}.png" for i in range(1, state["actual_pages"] + 1)
+                        ],
+                    },
                 }
             elif path.startswith("/data/hash/"):
+                state["image_calls"] += 1
                 if state["block"] and path.endswith("2.png"):
                     state["entered"].set()
                     state["release"].wait(10)
+                if state["refresh_changes_count"] and path.endswith("2.png"):
+                    state["actual_pages"] = 3
+                    self.send_error(403)
+                    return
                 if state["fail"] and path.endswith("2.png"):
                     self.send_error(404)
                     return
@@ -84,7 +119,9 @@ def provider(tmp_path, monkeypatch):
                 self.send_header("Content-Type", "image/png")
                 self.end_headers()
                 try:
-                    self.wfile.write(PNG)
+                    self.wfile.write(
+                        b"invalid image" if state["invalid_image"] else PNG
+                    )
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return

@@ -54,7 +54,7 @@ print(images)
 
 The terminal closes automatically after downloading. Each chapter has its own ordered image list; cancellation and failed downloads raise `MangateError`. The existing `search()`, `chapters()`, and `download()` methods are still available.
 
-See the [Python guide](docs/python.md) for searching, errors, and other options.
+For automatic acquisition, `mangate.download_random(output="./chapter", original_language="ko", chapter_language="en", min_pages=10, max_attempts=20)` discovers and downloads one eligible chapter. See the [Python guide](docs/python.md) for policies, planning, manifests, progress, and errors.
 
 ## Docs
 

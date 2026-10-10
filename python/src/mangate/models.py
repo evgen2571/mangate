@@ -51,6 +51,7 @@ class DownloadResult:
     status: AcquisitionStatus
     expected_pages: int
     error: str = ""
+    manifest: AcquisitionManifest | None = None
 
     @property
     def image_paths(self) -> tuple[Path, ...]:
@@ -79,3 +80,108 @@ class DownloadOptions:
             or self.page_downloads <= 0
         ):
             raise ValueError("page_downloads must be a positive integer")
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionPolicy:
+    provider: str = "mangadex"
+    original_language: str = ""
+    chapter_language: str = ""
+    min_pages: int = 1
+    max_pages: int | None = None
+    chapter_min: float | None = None
+    chapter_max: float | None = None
+    max_attempts: int = 20
+    seed: int | None = None
+
+    def __post_init__(self) -> None:
+        import math
+        import re
+
+        if (
+            not isinstance(self.provider, str)
+            or not self.provider.strip()
+            or self.provider != self.provider.strip()
+        ):
+            raise ValueError("provider must be a nonempty unpadded string")
+        for name, value in (
+            ("min_pages", self.min_pages),
+            ("max_attempts", self.max_attempts),
+            ("max_pages", self.max_pages),
+        ):
+            if (value is not None or name != "max_pages") and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+            ):
+                raise ValueError(f"{name} must be a positive integer")
+        if self.max_pages is not None and self.max_pages < self.min_pages:
+            raise ValueError("max_pages must be >= min_pages")
+        for language in (self.original_language, self.chapter_language):
+            if not isinstance(language, str) or not re.fullmatch(r"[a-z-]*", language):
+                raise ValueError("language must be a lowercase language code")
+        for value in (self.chapter_min, self.chapter_max):
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError("chapter bounds must be finite and nonnegative")
+        if (
+            self.chapter_min is not None
+            and self.chapter_max is not None
+            and self.chapter_min > self.chapter_max
+        ):
+            raise ValueError("chapter_min must be <= chapter_max")
+        if self.seed is not None and (
+            isinstance(self.seed, bool)
+            or not isinstance(self.seed, int)
+            or not -(2**63) <= self.seed < 2**63
+        ):
+            raise ValueError("seed must be a signed 64-bit integer")
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressEvent:
+    stage: Literal["discovery", "selection", "validation", "downloading", "completion"]
+    status: str
+    attempt: int = 0
+    manga_id: str = ""
+    chapter_id: str = ""
+    completed_pages: int = 0
+    expected_pages: int = 0
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadPlan:
+    manga: Manga
+    chapter: Chapter
+    policy: SelectionPolicy
+    strategy: Literal["provider_random", "seeded_catalog"]
+    expected_pages: int
+    output: Path
+    output_format: Literal["directory", "png", "jpeg"] = "directory"
+    candidate_ids: tuple[str, ...] = ()
+    version: int = 1
+    validation: str = "eligible"
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestImage:
+    index: int
+    path: Path
+    format: str
+
+
+@dataclass(frozen=True, slots=True)
+class AcquisitionManifest:
+    plan: DownloadPlan
+    images: tuple[ManifestImage, ...] = ()
+    status: str = "planned"
+    validation: str = "eligible"
+    error: str = ""
+    version: int = 1
+
+    @property
+    def actual_pages(self) -> int:
+        return len(self.images)

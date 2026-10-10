@@ -16,6 +16,8 @@ print(result.manga.title, result.chapter.number)
 print(result.image_paths)
 ```
 
+`download_random(output="./chapter", original_language="ko", chapter_language="en", min_pages=10, max_attempts=20)` acquires one eligible chapter automatically. `plan_random()` and `execute()` separate selection from downloading; manifests preserve selections for replay.
+
 `search`, `chapters`, and `download` return typed models. `DownloadError.result` preserves available partial output; only complete downloads return normally. `Session` optionally reuses defaults, and the existing dictionary-based `Client` API remains available.
 
 ```python

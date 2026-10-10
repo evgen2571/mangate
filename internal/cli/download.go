@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evgen2571/mangate/internal/acquisition"
 	"github.com/evgen2571/mangate/internal/app"
 	"github.com/evgen2571/mangate/internal/archive"
 	"github.com/evgen2571/mangate/internal/downloader"
@@ -21,15 +22,16 @@ import (
 )
 
 type downloadRecord struct {
-	Provider    string            `json:"provider"`
-	Title       *source.Manga     `json:"title"`
-	Format      archive.Format    `json:"format"`
-	OutputRoot  string            `json:"outputRoot"`
-	Status      string            `json:"status"`
-	StartedAt   time.Time         `json:"startedAt"`
-	CompletedAt time.Time         `json:"completedAt"`
-	Chapters    []chapterDownload `json:"chapters"`
-	Error       string            `json:"error,omitempty"`
+	Manifest    *acquisition.Manifest `json:"manifest,omitempty"`
+	Provider    string                `json:"provider"`
+	Title       *source.Manga         `json:"title"`
+	Format      archive.Format        `json:"format"`
+	OutputRoot  string                `json:"outputRoot"`
+	Status      string                `json:"status"`
+	StartedAt   time.Time             `json:"startedAt"`
+	CompletedAt time.Time             `json:"completedAt"`
+	Chapters    []chapterDownload     `json:"chapters"`
+	Error       string                `json:"error,omitempty"`
 }
 
 type chapterDownload struct {
@@ -46,6 +48,9 @@ type chapterDownload struct {
 }
 
 func NewDownloadCmd(a *app.App) *cobra.Command {
+	var fromManifest string
+	var verifyManifest bool
+	var automation automationFlags
 	var chapterIDs []string
 	var chapterNumbers []string
 	var chapterRange string
@@ -59,8 +64,25 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 		Use:     "download <title-id>",
 		Short:   "Download selected chapters that you are authorized to save",
 		Example: "  mangate download <title-id> --chapter-id <chapter-id>\n  mangate download <title-id> --range 1-10\n  mangate --format cbz download <title-id> --latest\n  mangate --json download <title-id> --chapter 1",
-		Args:    requireOneArgument("a stable <title-id> from `mangate search`", "mangate download <title-id> --latest"),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if fromManifest != "" {
+				if len(args) != 0 {
+					return fmt.Errorf("select chapters: --from-manifest cannot be combined with a title")
+				}
+				return nil
+			}
+			return requireOneArgument("a stable <title-id> from `mangate search`", "mangate download <title-id> --latest")(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if fromManifest != "" {
+				if len(chapterIDs) > 0 || len(chapterNumbers) > 0 || chapterRange != "" || first || latest || all || before != "" || after != "" || language != "" || dryRun || chapterOutput != "" {
+					return fmt.Errorf("select chapters: manifest replay cannot be combined with chapter selectors; use --output to relocate")
+				}
+				return replayManifest(cmd, a, fromManifest, automation, verifyManifest)
+			}
+			if verifyManifest || automation.jsonl || automation.eventsFile != "" || automation.manifest != "" {
+				return fmt.Errorf("unsupported: automation flags on download require --from-manifest")
+			}
 			format, err := archive.ParseFormat(a.Cfg.Download.Format)
 			if err != nil {
 				return err
@@ -271,7 +293,10 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 			return nil
 		},
 	}
+	automation.bind(cmd)
 	flags := cmd.Flags()
+	flags.StringVar(&fromManifest, "from-manifest", "", "Replay the stable selection from a plan or acquisition manifest")
+	flags.BoolVar(&verifyManifest, "verify-manifest", false, "Verify existing manifest files locally instead of replaying the selection")
 	flags.StringVar(&chapterOutput, "chapter-output", "", "Exact directory for one chapter (directory, png, or jpeg)")
 	flags.StringSliceVar(&chapterIDs, "chapter-id", nil, "Stable chapter ID to download, repeatable")
 	flags.StringSliceVar(&chapterNumbers, "chapter", nil, "Chapter number to download, repeatable")

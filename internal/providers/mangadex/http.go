@@ -78,6 +78,11 @@ func (pr *Provider) doWithRateLimitRetry(req *http.Request, atHome bool) (*http.
 	currentReq := req
 
 	for attempt := 0; ; attempt++ {
+		if currentReq.URL.Path == "/manga/random" || strings.HasSuffix(currentReq.URL.Path, "/manga/random") {
+			if err := pr.paceRandomRequest(currentReq.Context()); err != nil {
+				return nil, err
+			}
+		}
 		if atHome {
 			if err := pr.paceAtHomeRequest(currentReq.Context()); err != nil {
 				return nil, fmt.Errorf("wait for at-home request slot: %w", err)
