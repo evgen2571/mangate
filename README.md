@@ -40,21 +40,28 @@ mangate tui
 
 Search for a title, choose the chapters you want, and select an output format and directory.
 
-## Python
+To automatically select and download one eligible chapter:
 
-Launch the chapter picker from your own application, then continue with its downloaded images:
-
-```python
-from mangate import Client
-
-result = Client().interactive_download(output_dir="./chapters", max_chapters=1)
-images = result["chapters"][0]["imagePaths"]
-print(images)
+```sh
+mangate random --original-language ko --chapter-language en --min-pages 10 --output ./chapter
 ```
 
-The terminal closes automatically after downloading. Each chapter has its own ordered image list; cancellation and failed downloads raise `MangateError`. The existing `search()`, `chapters()`, and `download()` methods are still available.
+## Python
 
-For automatic acquisition, `mangate.download_random(output="./chapter", original_language="ko", chapter_language="en", min_pages=10, max_attempts=20)` discovers and downloads one eligible chapter. See the [Python guide](docs/python.md) for policies, planning, manifests, progress, and errors.
+For scripts and automated workflows, download an eligible chapter directly:
+
+```python
+import mangate
+
+result = mangate.download_random(
+    output="./chapter", original_language="ko", chapter_language="en", min_pages=10
+)
+print(result.image_paths)
+```
+
+For manual chapter selection from Python, use `Client().interactive_download(output_dir="./chapters", max_chapters=1)`. The terminal picker closes automatically after downloading. The function-first `search()`, `chapters()`, and `download()` APIs also support explicit selections.
+
+See the [Python guide](docs/python.md) for selection policies, planning, manifests, progress, cancellation, and errors.
 
 ## Docs
 
