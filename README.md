@@ -1,10 +1,14 @@
 # Mangate
 
-Search MangaDex, inspect manga and chapters, and download chapters as image directories, PNG, JPEG, CBZ, or ZIP. Use the command line, the interactive terminal interface, or the Python wrapper.
+Mangate is a small command-line and terminal app for downloading manga and manhwa chapters from MangaDex. It can save chapters as image folders, PNG, JPEG, CBZ, or ZIP, and it has a Python wrapper for scripts.
+
+## Why
+
+I needed to download manhwa chapters from Python for another project, with some options specific to my use case. I looked at existing downloaders, but none really fit what I needed, so I decided to make my own.
 
 ## Install
 
-You need Go 1.26 or newer. To install the current checkout:
+You'll need Go 1.26 or newer:
 
 ```sh
 git clone https://github.com/evgen2571/mangate.git
@@ -12,54 +16,60 @@ cd mangate
 go install ./cmd/mangate
 ```
 
-Add Go's binary directory to your `PATH` if needed. On Linux and macOS:
+Make sure Go's binary directory is in your `PATH`. Alternatively, run `bash scripts/install.sh` to install to `~/.local/bin`.
 
-```sh
-export PATH="$(go env GOPATH)/bin:$PATH"
-mangate --version
-```
+## Usage
 
-Alternatively, `bash scripts/install.sh` installs into `~/.local/bin`. Set `MANGATE_BIN_DIR` to use another absolute directory. No configuration file is required.
-
-## Download a chapter
+Find a title, list its chapters, and download one:
 
 ```sh
 mangate search "title"
-mangate title TITLE_ID
 mangate chapters TITLE_ID
-mangate --format cbz --output ./library download TITLE_ID --chapter-id CHAPTER_ID --yes
+mangate --output ./chapters download TITLE_ID --chapter-id CHAPTER_ID
 ```
 
-Replace `TITLE_ID` and `CHAPTER_ID` with IDs from the preceding commands. Download only chapters you are authorized to save. Use `--dry-run` to inspect a download plan before writing files.
+Use the IDs shown by the search and chapter commands. The default output is an image directory. For a CBZ archive, use `--format cbz` and `--yes`.
 
-## Use the terminal interface
+For an interactive interface, run:
 
 ```sh
 mangate tui
 ```
 
-Type a search and press Enter. Choose a title with the arrow keys, press Enter to load chapters, toggle chapters with Space, then continue through format, output directory, and review. Press `?` for help outside text inputs, Escape to go back, and `q` to cancel a download. A wide results screen shows the selected title's cover and synopsis.
+Search for a title, choose the chapters you want, and select an output format and directory.
 
-A chapter selection screen using the test fixture:
+## Python
 
-```text
-MANGATE  /  Chapters
-Search › Title › Chapters › Format › Output › Review
+Mangate also has a small Python wrapper around the CLI. Install it from the checkout:
 
-Fixture One
-2 chapters · 1 selected
-› ●  Chapter 1 - Opening          en  2 pages
-  ○  Chapter 2 - Unavailable      en  2 pages
-
-space toggle · enter continue · / filter · ? help
+```sh
+uv pip install ./python
 ```
 
-## Python and reference
+The `mangate` executable must also be installed and available on your `PATH`.
 
-Install the wrapper from this checkout with `uv pip install ./python`, then use `Client` with the installed executable. See the [Python guide](docs/python.md) for complete examples and error handling.
+```python
+from mangate import Client
+
+client = Client(output_dir="./chapters")
+result = client.download(
+    "TITLE_ID",
+    chapter_ids=["CHAPTER_ID"],
+    output_format="directory",
+    assume_yes=True,
+)
+
+print(result["chapters"][0]["outputPath"])
+```
+
+See the [Python guide](docs/python.md) for searching, errors, and other options.
+
+## Docs
 
 - [CLI commands](docs/cli.md)
 - [Configuration](docs/configuration.md)
 - [Dataset collection](docs/dataset.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Architecture and development](docs/architecture.md)
+
+Only download chapters that you're authorized to save.
