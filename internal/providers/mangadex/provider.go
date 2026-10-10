@@ -17,6 +17,8 @@ type Provider struct {
 	uploadsURL string
 	language   string
 
+	randomGate        chan struct{}
+	lastRandomRequest time.Time
 	atHomeGate        chan struct{}
 	lastAtHomeRequest time.Time
 	atHomeMinInterval time.Duration
@@ -31,6 +33,7 @@ func New(cfg config.Config, client *http.Client) (*Provider, error) {
 		language:          cfg.Language,
 		atHomeMinInterval: defaultAtHomeMinInterval,
 		atHomeGate:        make(chan struct{}, 1),
+		randomGate:        make(chan struct{}, 1),
 	}, nil
 }
 

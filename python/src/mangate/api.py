@@ -12,6 +12,7 @@ from .models import (
     AcquisitionStatus,
     Chapter,
     DownloadOptions,
+    DownloadPlan,
     DownloadResult,
     Manga,
     Page,
@@ -66,6 +67,33 @@ class Session:
                 title_id, provider=provider, language=language, limit=limit
             )
         ]
+
+    def plan_random(self, output=None, **kwargs) -> DownloadPlan:
+        from .automation import plan_random
+
+        return plan_random(**self._automation_defaults(output, kwargs))
+
+    def download_random(self, output=None, **kwargs) -> DownloadResult:
+        from .automation import download_random
+
+        return download_random(**self._automation_defaults(output, kwargs))
+
+    def execute(self, plan, **kwargs) -> DownloadResult:
+        from .automation import execute
+
+        kwargs.setdefault("executable", self._client.executable)
+        kwargs.setdefault("timeout", self._client.timeout)
+        return execute(plan, **kwargs)
+
+    def _automation_defaults(self, output, kwargs):
+        kwargs.setdefault("executable", self._client.executable)
+        kwargs.setdefault("timeout", self._client.timeout)
+        if kwargs.get("policy") is None:
+            kwargs.setdefault("provider", self._client.provider)
+        kwargs["output"] = output if output is not None else self._client.output_dir
+        if kwargs["output"] is None:
+            raise ValueError("output is required")
+        return kwargs
 
     def download(
         self,
@@ -309,8 +337,17 @@ def _download_result(record: dict[str, Any]) -> DownloadResult:
             status,
             expected,
             record.get("error", ""),
+            _result_manifest(record),
         )
     except (KeyError, TypeError, ValueError, OSError) as error:
         raise MangateError(
             "invalid_result", f"Invalid download result: {error}"
         ) from error
+
+
+def _result_manifest(record):
+    if record.get("manifest") is None:
+        return None
+    from .automation import _manifest
+
+    return _manifest(record["manifest"])

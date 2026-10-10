@@ -10,14 +10,14 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 from typing import Any
 
 from .binary import resolve_executable
-from .models import DownloadResult
+from .models import DownloadResult, ProgressEvent
 
 
 @dataclass(slots=True)
@@ -426,10 +426,64 @@ class Client:
         return args
 
     def _json(
-        self, args: list[str], *, cancel_event: Event | None = None
+        self,
+        args: list[str],
+        *,
+        cancel_event: Event | None = None,
+        progress: Callable[[ProgressEvent], None] | None = None,
     ) -> dict[str, Any]:
         command = self._base_args() + ["--json", "--quiet"] + args
-        stdout, stderr, code = self._run(command, cancel_event=cancel_event)
+        if progress is None:
+            stdout, stderr, code = self._run(command, cancel_event=cancel_event)
+        else:
+            with tempfile.TemporaryDirectory(prefix="mangate-events-") as temporary:
+                events = Path(temporary) / "events.jsonl"
+                offset = 0
+                pending = b""
+
+                def poll_events() -> None:
+                    nonlocal offset, pending
+                    if not events.exists():
+                        return
+                    with events.open("rb") as stream:
+                        stream.seek(offset)
+                        chunk = stream.read()
+                        offset = stream.tell()
+                    pending += chunk
+                    lines = pending.split(b"\n")
+                    pending = lines.pop()
+                    for line in lines:
+                        try:
+                            data = json.loads(line)
+                            event = ProgressEvent(
+                                stage=data["stage"],
+                                status=data["status"],
+                                attempt=data.get("attempt", 0),
+                                manga_id=data.get("mangaId", ""),
+                                chapter_id=data.get("chapterId", ""),
+                                completed_pages=data.get("completedPages", 0),
+                                expected_pages=data.get("expectedPages", 0),
+                                reason=data.get("reason", ""),
+                            )
+                            if event.stage not in {
+                                "discovery",
+                                "selection",
+                                "validation",
+                                "downloading",
+                                "completion",
+                            }:
+                                raise ValueError("unknown progress stage")
+                        except (ValueError, KeyError, TypeError) as error:
+                            raise MangateError(
+                                "invalid_result", f"Invalid progress event: {error}"
+                            ) from error
+                        progress(event)
+
+                stdout, stderr, code = self._run(
+                    command + ["--events-file", str(events)],
+                    cancel_event=cancel_event,
+                    on_poll=poll_events,
+                )
         try:
             payload = json.loads(stdout)
         except json.JSONDecodeError:
@@ -470,7 +524,11 @@ class Client:
         return payload
 
     def _run(
-        self, command: list[str], *, cancel_event: Event | None = None
+        self,
+        command: list[str],
+        *,
+        cancel_event: Event | None = None,
+        on_poll: Callable[[], None] | None = None,
     ) -> tuple[str, str, int]:
         if cancel_event is not None and cancel_event.is_set():
             raise MangateError("cancelled", "operation cancelled")
@@ -511,6 +569,8 @@ class Client:
                 )
                 try:
                     while True:
+                        if on_poll is not None:
+                            on_poll()
                         if cancel_event is not None and cancel_event.is_set():
                             category = "cancelled"
                         elif deadline is not None and time.monotonic() >= deadline:
@@ -537,6 +597,8 @@ class Client:
                 finally:
                     if job is not None:
                         job.close()
+            if on_poll is not None:
+                on_poll()
             output.seek(0)
             diagnostic.seek(0)
             stdout = output.read().decode("utf-8", errors="replace")

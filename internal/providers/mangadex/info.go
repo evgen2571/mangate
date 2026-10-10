@@ -10,7 +10,7 @@ func (pr *Provider) Info() source.ProviderInfo {
 		Availability:      "available",
 		Description:       "MangaDex public API adapter.",
 		Authentication:    "optional",
-		Capabilities:      []string{"search", "browse", "title", "chapters", "pages", "download"},
+		Capabilities:      []string{"search", "random", "browse", "title", "chapters", "pages", "download"},
 		Restrictions:      []string{"Only download content you are authorized to access.", "Provider availability and terms may change."},
 		DownloadPermitted: true,
 	}

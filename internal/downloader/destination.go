@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/evgen2571/mangate/internal/source"
 	"github.com/evgen2571/mangate/internal/util"
@@ -50,6 +51,11 @@ func (e *ChapterPreflightError) Is(target error) bool {
 // finalization code while letting a caller choose a stable chapter directory.
 // Ordinary downloads keep using their historical display-name destinations.
 func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chapter, directory string, pageLoader PageLoader) ([]PageDownloadResult, error) {
+	return d.DownloadChapterToWithProgress(ctx, chapter, directory, pageLoader, nil)
+}
+
+// DownloadChapterToWithProgress reports finalized pages, serialized across workers.
+func (d *Downloader) DownloadChapterToWithProgress(ctx context.Context, chapter *source.Chapter, directory string, pageLoader PageLoader, notify func(int, int)) ([]PageDownloadResult, error) {
 	if chapter == nil || chapter.From == nil {
 		return nil, fmt.Errorf("download chapter to: chapter and parent manga are required")
 	}
@@ -58,14 +64,18 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 		return nil, fmt.Errorf("download chapter to: directory cannot be empty")
 	}
 
+	var priorResults []PageDownloadResult
 	for attempt := 0; ; attempt++ {
 		if err := d.prepareChapterPages(ctx, chapter, directory, pageLoader); err != nil {
+			if attempt > 0 {
+				return priorResults, err
+			}
 			return nil, &ChapterPreflightError{ChapterID: chapter.ID, Cause: err}
 		}
 		if err := util.EnsureDir(directory, "chapter directory"); err != nil {
 			return nil, err
 		}
-		results, err := d.downloadChapterToAttempt(ctx, chapter, directory)
+		results, err := d.downloadChapterToAttempt(ctx, chapter, directory, notify)
 		if err == nil {
 			if err := writeChapterState(directory, chapter, d.cfg.Provider, true); err != nil {
 				return results, err
@@ -74,6 +84,7 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 			return results, nil
 		}
 
+		priorResults = results
 		err = errors.Join(err, writeChapterState(directory, chapter, d.cfg.Provider, false))
 		if pageLoader == nil || attempt >= maxPageRefreshRetries || !isForbiddenPageError(err) {
 			return results, err
@@ -90,7 +101,9 @@ func (d *Downloader) DownloadChapterTo(ctx context.Context, chapter *source.Chap
 	}
 }
 
-func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *source.Chapter, directory string) ([]PageDownloadResult, error) {
+func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *source.Chapter, directory string, notify func(int, int)) ([]PageDownloadResult, error) {
+	var progressMu sync.Mutex
+	completed := 0
 	results := make([]PageDownloadResult, len(chapter.Pages))
 	var g errgroup.Group
 	g.SetLimit(d.pageDownloadLimit())
@@ -98,6 +111,12 @@ func (d *Downloader) downloadChapterToAttempt(ctx context.Context, chapter *sour
 		index, page := index, page
 		g.Go(func() (err error) {
 			defer func() {
+				if err == nil && notify != nil {
+					progressMu.Lock()
+					completed++
+					notify(completed, len(chapter.Pages))
+					progressMu.Unlock()
+				}
 				if err != nil {
 					err = fmt.Errorf("manga %q chapter %q page %d to %q: %w", chapter.From.ID, chapter.ID, index+1, directory, err)
 				}

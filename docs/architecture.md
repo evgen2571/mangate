@@ -14,6 +14,8 @@ Mangate has one Go executable and a Python subprocess wrapper. Go implementation
 
 `internal/archive` creates, inspects, and verifies CBZ/ZIP files. CLI and TUI download commands finalize completed chapter directories into archives. Source pages are removed after archive validation. Existing valid archives can be reused without downloading their pages again.
 
+`internal/acquisition` owns typed selection policies, bounded random/catalog discovery, stable plans, and versioned replay manifests. CLI automation executes those plans with the existing exact-destination downloader; Python progress uses a JSON Lines event file drained by the ordinary subprocess runner. It is separate from dataset collection and starts no daemon.
+
 `internal/cache` caches validated covers and search history. Concurrent requests for the same cover destination share one transfer; waiting callers can cancel independently. Corrupt cached covers are downloaded again.
 
 ## User interfaces

@@ -68,6 +68,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 		NewDiagnosticsCmd(a),
 		NewDatasetCmd(a),
 		NewDownloadCmd(a),
+		NewRandomCmd(a),
 		NewInteractiveCmd(a),
 		NewProviderCmd(a),
 		NewProvidersCmd(a),

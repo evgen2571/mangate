@@ -75,6 +75,54 @@ An optional `Session(executable=None, provider="mangadex", timeout=None, output_
 
 The existing dictionary-based `Client` remains compatible. New CLI chapter result fields (`chapter`, `imagePaths`) expose the same metadata and ordered filesystem paths as the typed API. Result status is `complete`, `partial`, `failed`, or `cancelled`; existing per-chapter `status` values such as `incomplete` and `skipped` are retained. Archives return `archivePath`; after source removal they have no image paths.
 
+## Discovery and automation
+
+```python
+import mangate
+
+result = mangate.download_random(
+    output="./output/chapter", original_language="ko", chapter_language="en",
+    min_pages=10, max_attempts=20, timeout=120, manifest="./chapter.json",
+)
+images = result.image_paths
+```
+
+Use individual policy keywords or one typed `SelectionPolicy`. It supports `provider`, `original_language`, `chapter_language`, `min_pages`, optional `max_pages`, inclusive numeric `chapter_min`/`chapter_max`, `max_attempts`, and optional signed 64-bit `seed`. Invalid policies fail before execution. Missing required metadata rejects candidates; unknown page counts are resolved before selection and inconsistent counts fail eligibility. There is no arbitrary-title fallback.
+
+```python
+from threading import Event
+import mangate
+
+cancel = Event()
+policy = mangate.SelectionPolicy(
+    original_language="ko", chapter_language="en", min_pages=10,
+    max_pages=60, chapter_min=1, chapter_max=50, max_attempts=20, seed=42,
+)
+
+def progress(event: mangate.ProgressEvent):
+    print(event.stage, event.status, event.completed_pages, event.expected_pages)
+    # Another thread, or this callback, can call cancel.set().
+
+plan = mangate.plan_random(
+    "./planned-chapter", policy=policy, timeout=120,
+    cancel_event=cancel, progress=progress, manifest="./selection.json",
+)
+result = mangate.execute(
+    plan, options=mangate.DownloadOptions(existing_files="skip"),
+    timeout=120, cancel_event=cancel, progress=progress, manifest="./acquired.json",
+)
+loaded = mangate.load_manifest("./acquired.json")
+replayed = mangate.execute(loaded, output="./replayed-chapter", timeout=120)
+verified = mangate.verify_manifest("./acquired.json")  # Local files only.
+mangate.save_manifest(plan, "./another-selection.json")
+```
+
+`plan_random()` downloads no images and returns a frozen `DownloadPlan` with stable manga/chapter IDs and metadata, policy, strategy, candidate IDs, expected page count, exact output, format, and validation state. `execute()` accepts a plan, an `AcquisitionManifest`, or a manifest path; it revalidates the same selection without discovery. Changed eligibility or counts fail before image transfer, including during URL refresh. `download_random()` performs planning and execution in one subprocess and returns the same `DownloadResult` as explicit downloads. Random/replayed results additionally carry `result.manifest`; `DownloadError.result` preserves finalized partial pages and their manifest when available. `manifest=` saves planned, complete, or incomplete acquisitions atomically. Save manifests outside the chapter directory. Invalid downloaded images retain an incomplete manifest with `format="unknown"` and cannot count as a complete acquisition.
+
+Provider-random selection is nondeterministic. A seed selects from a bounded catalog snapshot and records its seed/candidate IDs; catalog changes can change future selections. Replay preserves the chosen IDs. Chapters within a title use stable ID order. No visual scoring is performed. See the [CLI guide](cli.md#random-acquisition-planning-and-replay) for the shared selection and manifest semantics.
+
+Progress callbacks run synchronously on the calling thread and receive frozen `ProgressEvent` values for discovery, selection, validation, downloading, and completion. Keep callbacks short; callback failures stop the owned subprocess. `cancel_event` and `timeout` cover discovery and selection as well as downloading through the same process-group/job cleanup as Stage A. `Session` also provides `plan_random`, `download_random`, and `execute`, reusing executable/timeout/provider defaults; random operations use the session output directory as an exact destination when no output is supplied. Automation formats are `directory`, `png`, and `jpeg`; a plan's format cannot be overridden on execution. `DownloadOptions.language`, if supplied, must agree with the random policy or selected chapter.
+
 ## Interactive chapter picker
 
 Run this in a real terminal with stdin and stdout attached:
