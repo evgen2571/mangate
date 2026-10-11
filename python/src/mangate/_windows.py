@@ -86,3 +86,28 @@ class ProcessJob:
             finally:
                 self.kernel.CloseHandle(self.handle)
                 self.handle = None
+
+
+def console_modes():
+    """Capture console input/output modes so forced TUI shutdown can restore them."""
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetStdHandle.argtypes = [wintypes.DWORD]
+    kernel.GetStdHandle.restype = wintypes.HANDLE
+    kernel.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel.GetConsoleMode.restype = wintypes.BOOL
+    kernel.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.SetConsoleMode.restype = wintypes.BOOL
+    saved = []
+    for stream in (-10, -11):
+        handle = kernel.GetStdHandle(stream)
+        mode = wintypes.DWORD()
+        if not kernel.GetConsoleMode(handle, ctypes.byref(mode)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        saved.append((handle, mode.value))
+
+    def restore():
+        for handle, mode in saved:
+            if not kernel.SetConsoleMode(handle, mode):
+                raise ctypes.WinError(ctypes.get_last_error())
+
+    return restore

@@ -2,27 +2,34 @@
 
 from __future__ import annotations
 
+import math
 import os
-from pathlib import Path
+from collections.abc import Callable
 from threading import Event
 from typing import Any
 
-from .client import Client, MangateError
+from . import _commands
+from ._results import (
+    _batch_result,
+    _chapter,
+    _download_result,
+    _interactive_result,
+    _manga,
+    _provider,
+)
+from ._transport import Transport
+from .errors import DownloadError, MangateError
 from .models import (
-    AcquisitionStatus,
+    AcquisitionManifest,
     Chapter,
     DownloadOptions,
     DownloadPlan,
     DownloadResult,
+    InteractiveResult,
     Manga,
-    Page,
+    ProgressEvent,
+    ProviderInfo,
 )
-
-
-class DownloadError(MangateError):
-    """An unsuccessful acquisition; result holds any typed partial output."""
-
-    result: DownloadResult | None
 
 
 class Session:
@@ -39,7 +46,7 @@ class Session:
         timeout: float | None = None,
         output_dir: str | os.PathLike[str] | None = None,
     ) -> None:
-        self._client = Client(
+        self._transport = Transport(
             executable=executable,
             provider=provider,
             timeout=timeout,
@@ -48,8 +55,8 @@ class Session:
 
     def search(self, query: str, *, limit: int | None = None) -> list[Manga]:
         return [
-            _manga(item, self._client.provider)
-            for item in self._client.search(query, limit=limit)
+            _manga(item, self._transport.provider)
+            for item in _commands.search(self._transport, query, limit=limit)
         ]
 
     def chapters(
@@ -59,41 +66,72 @@ class Session:
         language: str | None = None,
         limit: int | None = None,
     ) -> list[Chapter]:
-        provider = manga.provider if isinstance(manga, Manga) else self._client.provider
+        provider = (
+            manga.provider if isinstance(manga, Manga) else self._transport.provider
+        )
         title_id = manga.id if isinstance(manga, Manga) else manga
         return [
             _chapter(item, provider)
-            for item in self._client.chapters(
-                title_id, provider=provider, language=language, limit=limit
+            for item in _commands.chapters(
+                self._transport,
+                title_id,
+                provider=provider,
+                language=language,
+                limit=limit,
             )
         ]
 
-    def plan_random(self, output=None, **kwargs) -> DownloadPlan:
+    def plan_random(
+        self, output: str | os.PathLike[str] | None = None, **kwargs: Any
+    ) -> DownloadPlan:
         from .automation import plan_random
 
         return plan_random(**self._automation_defaults(output, kwargs))
 
-    def download_random(self, output=None, **kwargs) -> DownloadResult:
+    def download_random(
+        self, output: str | os.PathLike[str] | None = None, **kwargs: Any
+    ) -> DownloadResult:
         from .automation import download_random
 
         return download_random(**self._automation_defaults(output, kwargs))
 
-    def execute(self, plan, **kwargs) -> DownloadResult:
+    def execute(
+        self,
+        plan: DownloadPlan | AcquisitionManifest | str | os.PathLike[str],
+        **kwargs: Any,
+    ) -> DownloadResult:
         from .automation import execute
 
-        kwargs.setdefault("executable", self._client.executable)
-        kwargs.setdefault("timeout", self._client.timeout)
+        kwargs.setdefault("executable", self._transport.executable)
+        kwargs.setdefault("timeout", self._transport.timeout)
         return execute(plan, **kwargs)
 
     def _automation_defaults(self, output, kwargs):
-        kwargs.setdefault("executable", self._client.executable)
-        kwargs.setdefault("timeout", self._client.timeout)
+        kwargs.setdefault("executable", self._transport.executable)
+        kwargs.setdefault("timeout", self._transport.timeout)
         if kwargs.get("policy") is None:
-            kwargs.setdefault("provider", self._client.provider)
-        kwargs["output"] = output if output is not None else self._client.output_dir
+            kwargs.setdefault("provider", self._transport.provider)
+        kwargs["output"] = output if output is not None else self._transport.output_dir
         if kwargs["output"] is None:
             raise ValueError("output is required")
         return kwargs
+
+    def interactive_download(
+        self,
+        *,
+        max_chapters: int = 0,
+        language: str | None = None,
+        output_dir: str | os.PathLike[str] | None = None,
+        timeout: float | None = None,
+    ) -> InteractiveResult:
+        return interactive_download(
+            executable=self._transport.executable,
+            provider=self._transport.provider,
+            output_dir=self._transport.output_dir if output_dir is None else output_dir,
+            timeout=self._transport.timeout if timeout is None else timeout,
+            max_chapters=max_chapters,
+            language=language,
+        )
 
     def download(
         self,
@@ -105,6 +143,7 @@ class Session:
         chapter_id: str | None = None,
         options: DownloadOptions | None = None,
         cancel_event: Event | None = None,
+        progress: Callable[[ProgressEvent], None] | None = None,
     ) -> DownloadResult:
         """Download one explicit chapter; output is its exact directory.
 
@@ -117,9 +156,23 @@ class Session:
             raise ValueError("provide exactly one of title or title_id")
         if (chapter is None) == (chapter_id is None):
             raise ValueError("provide exactly one of chapter or chapter_id")
+        if title is not None and not isinstance(title, (Manga, str)):
+            raise ValueError("title must be a Manga or title string")
+        if chapter is not None and (
+            isinstance(chapter, bool)
+            or not isinstance(chapter, (Chapter, str, int, float))
+            or isinstance(chapter, float)
+            and not math.isfinite(chapter)
+        ):
+            raise ValueError("chapter must be a Chapter or chapter number")
+        for name, value in (("title_id", title_id), ("chapter_id", chapter_id)):
+            if value is not None:
+                _commands._text_argument(value, name)
         if output is not None and not os.fspath(output).strip():
             raise ValueError("output cannot be empty")
-        provider = title.provider if isinstance(title, Manga) else self._client.provider
+        provider = (
+            title.provider if isinstance(title, Manga) else self._transport.provider
+        )
         if isinstance(chapter, Chapter):
             if chapter.provider != provider:
                 raise ValueError("chapter and manga providers must match")
@@ -128,15 +181,17 @@ class Session:
             title_id = title.id
         elif title is not None:
             try:
-                results = self._client.search(title, cancel_event=cancel_event)
+                results = _commands.search(
+                    self._transport, title, cancel_event=cancel_event
+                )
             except MangateError as error:
                 raise DownloadError(
                     error.category, error.message, error.stderr
                 ) from error
             matches = [
-                _manga(item, provider)
-                for item in results
-                if item["title"].casefold() == title.casefold()
+                item
+                for item in (_manga(raw, provider) for raw in results)
+                if item.title.casefold() == title.casefold()
             ]
             if not matches:
                 raise DownloadError(
@@ -148,17 +203,18 @@ class Session:
                 )
             title_id = matches[0].id
         options = options or DownloadOptions()
-        client = Client(
-            executable=self._client.executable,
+        client = Transport(
+            executable=self._transport.executable,
             provider=provider,
-            timeout=self._client.timeout,
-            output_dir=self._client.output_dir,
+            timeout=self._transport.timeout,
+            output_dir=self._transport.output_dir,
             existing_files=options.existing_files,
             output_format=options.output_format,
             page_downloads=options.page_downloads,
         )
         try:
-            record = client.download(
+            record = _commands.download(
+                client,
                 title_id,
                 chapter_ids=() if chapter_id is None else (chapter_id,),
                 chapter_numbers=() if chapter_id is not None else (str(chapter),),
@@ -166,6 +222,7 @@ class Session:
                 output=output,
                 assume_yes=options.existing_files == "replace",
                 cancel_event=cancel_event,
+                progress=progress,
             )
         except MangateError as error:
             result = None
@@ -197,6 +254,19 @@ def search(
     )
 
 
+def title(
+    title_id: str,
+    *,
+    provider: str = "mangadex",
+    executable: str | os.PathLike[str] | None = None,
+    timeout: float | None = None,
+) -> Manga:
+    """Look up a title by stable ID without title matching."""
+    _commands._text_argument(title_id, "title_id")
+    runner = Transport(executable, provider=provider, timeout=timeout)
+    return _manga(_commands.title(runner, title_id), runner.provider)
+
+
 def chapters(
     manga: Manga | str,
     *,
@@ -223,6 +293,7 @@ def download(
     executable: str | os.PathLike[str] | None = None,
     timeout: float | None = None,
     cancel_event: Event | None = None,
+    progress: Callable[[ProgressEvent], None] | None = None,
 ) -> DownloadResult:
     return Session(executable, provider=provider, timeout=timeout).download(
         title,
@@ -232,122 +303,132 @@ def download(
         chapter_id=chapter_id,
         options=options,
         cancel_event=cancel_event,
+        progress=progress,
     )
 
 
-def _manga(data: dict[str, Any], provider: str) -> Manga:
+def interactive_download(
+    *,
+    output_dir: str | os.PathLike[str] | None = None,
+    max_chapters: int = 0,
+    language: str | None = None,
+    provider: str = "mangadex",
+    executable: str | os.PathLike[str] | None = None,
+    timeout: float | None = None,
+) -> InteractiveResult:
+    """Run the existing Go TUI in the caller's terminal.
+
+    Cancellation and failed acquisition raise DownloadError with typed results
+    when the TUI has written a valid handoff. Terminal errors use MangateError.
+    """
+    from ._terminal import interactive_download as run_interactive
+
+    runner = Transport(
+        executable, provider=provider, timeout=timeout, output_dir=output_dir
+    )
     try:
-        metadata = data.get("metadata") or {}
-        return Manga(
-            id=data["id"],
-            title=data["title"],
-            provider=provider,
-            url=data.get("url", ""),
-            alternative_title=metadata.get("alternativeTitle", ""),
-            language=metadata.get("language", ""),
-            status=metadata.get("status", ""),
-            content_type=metadata.get("contentType", ""),
-            year=metadata.get("year", 0),
+        payload = run_interactive(runner, max_chapters=max_chapters, language=language)
+    except MangateError as error:
+        result = (
+            _interactive_result(error.result, runner.provider)
+            if isinstance(error.result, dict)
+            else None
         )
-    except (KeyError, TypeError, AttributeError) as error:
-        raise MangateError(
-            "invalid_result", f"Invalid manga result: {error}"
-        ) from error
+        if error.category in {"cancelled", "timeout", "partial", "error"}:
+            raise DownloadError(
+                "failed" if error.category == "error" else error.category,
+                error.message,
+                error.stderr,
+                result,
+            ) from error
+        raise
+    return _interactive_result(payload, runner.provider)
 
 
-def _chapter(data: dict[str, Any], provider: str) -> Chapter:
+def download_many(
+    title_id: str,
+    *,
+    chapter_ids: tuple[str, ...] = (),
+    chapter_numbers: tuple[str, ...] = (),
+    chapter_range: str | None = None,
+    first: bool = False,
+    latest: bool = False,
+    all_chapters: bool = False,
+    assume_yes: bool = False,
+    output_dir: str | os.PathLike[str] | None = None,
+    provider: str = "mangadex",
+    options: DownloadOptions | None = None,
+    executable: str | os.PathLike[str] | None = None,
+    timeout: float | None = None,
+    cancel_event: Event | None = None,
+    progress: Callable[[ProgressEvent], None] | None = None,
+) -> InteractiveResult:
+    """Download several explicitly selected chapters into the CLI hierarchy."""
+    options = options or DownloadOptions()
+    runner = Transport(
+        executable,
+        provider=provider,
+        timeout=timeout,
+        output_dir=output_dir,
+        existing_files=options.existing_files,
+        output_format=options.output_format,
+        page_downloads=options.page_downloads,
+    )
     try:
-        return Chapter(
-            id=data["id"],
-            provider=provider,
-            number=data.get("number", ""),
-            title=data.get("title", ""),
-            volume=data.get("volume", ""),
-            language=data.get("language", ""),
-            release_group=data.get("releaseGroup", ""),
-            published_at=data.get("publishedAt", ""),
-            page_count=data.get("pageCount", 0),
-            url=data.get("url", ""),
+        record = _commands.download(
+            runner,
+            title_id,
+            chapter_ids=chapter_ids,
+            chapter_numbers=chapter_numbers,
+            chapter_range=chapter_range,
+            first=first,
+            latest=latest,
+            all_chapters=all_chapters,
+            language=options.language,
+            assume_yes=assume_yes or options.existing_files == "replace",
+            cancel_event=cancel_event,
+            progress=progress,
         )
-    except (KeyError, TypeError, AttributeError) as error:
-        raise MangateError(
-            "invalid_result", f"Invalid chapter result: {error}"
-        ) from error
-
-
-def _download_result(record: dict[str, Any]) -> DownloadResult:
-    try:
-        if len(record["chapters"]) != 1:
-            raise ValueError("expected one chapter")
-        item = record["chapters"][0]
-        provider = record["provider"]
-        manga = _manga(record["title"], provider)
-        chapter = _chapter(item["chapter"], provider)
-        if chapter.id != item["id"]:
-            raise ValueError("chapter identity disagrees with result")
-        output = Path(item["outputPath"])
-        if not output.is_absolute():
-            raise ValueError("output path must be absolute")
-        expected = item.get("expectedPages", 0)
-        if isinstance(expected, bool) or not isinstance(expected, int) or expected < 0:
-            raise ValueError("invalid expected page count")
-        pages = []
-        for raw_path in item["imagePaths"]:
-            path = Path(raw_path)
-            if not path.is_absolute() or path.resolve().parent != output.resolve():
-                raise ValueError("image path escapes chapter directory")
-            if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
-                raise ValueError("missing or empty image")
-            index = int(path.stem)
-            if index < 1 or index > expected or (pages and index <= pages[-1].index):
-                raise ValueError("invalid page ordering")
-            pages.append(Page(index=index, path=path))
-        raw_status = record["status"]
-        if raw_status not in {"complete", "partial", "failed", "cancelled"}:
-            raise ValueError("unknown acquisition status")
-        if item["status"] not in {
-            "complete",
-            "skipped",
-            "incomplete",
-            "failed",
-            "partial",
-            "cancelled",
-        }:
-            raise ValueError("unknown chapter status")
-        status: AcquisitionStatus
-        if raw_status == "cancelled":
-            status = "cancelled"
-        elif raw_status == "complete":
-            if item["status"] not in {"complete", "skipped"}:
-                raise ValueError("complete result has an unsuccessful chapter")
-            if expected <= 0 or len(pages) != expected:
-                raise ValueError("complete download has missing pages")
-            status = "complete"
-        elif raw_status == "failed":
-            status = "failed"
-        elif pages:
-            status = "partial"
-        else:
-            status = "failed"
-        return DownloadResult(
-            manga,
-            chapter,
-            tuple(pages),
-            output,
-            status,
-            expected,
-            record.get("error", ""),
-            _result_manifest(record),
+    except MangateError as error:
+        result = (
+            _batch_result(error.result)
+            if isinstance(error.result, dict) and "chapters" in error.result
+            else None
         )
-    except (KeyError, TypeError, ValueError, OSError) as error:
-        raise MangateError(
-            "invalid_result", f"Invalid download result: {error}"
+        raise DownloadError(
+            error.category, error.message, error.stderr, result
         ) from error
+    result = _batch_result(record)
+    if result.status != "complete":
+        raise DownloadError(
+            result.status, result.error or f"download {result.status}", result=result
+        )
+    return result
 
 
-def _result_manifest(record):
-    if record.get("manifest") is None:
-        return None
-    from .automation import _manifest
+def cli_version(
+    *, executable: str | os.PathLike[str] | None = None, timeout: float | None = None
+) -> str:
+    return _commands.version(Transport(executable, timeout=timeout))
 
-    return _manifest(record["manifest"])
+
+def providers(
+    *, executable: str | os.PathLike[str] | None = None, timeout: float | None = None
+) -> tuple[ProviderInfo, ...]:
+    return tuple(
+        _provider(item)
+        for item in _commands.providers(Transport(executable, timeout=timeout))
+    )
+
+
+def provider_info(
+    provider: str = "mangadex",
+    *,
+    executable: str | os.PathLike[str] | None = None,
+    timeout: float | None = None,
+) -> ProviderInfo:
+    return _provider(
+        _commands.provider_info(
+            Transport(executable, provider=provider, timeout=timeout)
+        )
+    )

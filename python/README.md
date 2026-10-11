@@ -1,33 +1,47 @@
 # Mangate Python package
 
-Python 3.10+ API for the Mangate CLI and TUI. Platform wheels include the Go executable, so you don't need Go installed.
+Python 3.10+ typed API for the Mangate CLI and TUI. Platform wheels include the Go executable.
 
 ```sh
 uv add mangate
-# or: pip install mangate
-uv run mangate tui
 ```
 
 ```python
 import mangate
 
-result = mangate.download(title="Solo Leveling", chapter=1, output="./chapter")
-print(result.manga.title, result.chapter.number)
+titles = mangate.search("Solo Leveling")
+chapters = mangate.chapters(titles[0], language="en")
+result = mangate.download(titles[0], chapters[0], output="./chapter")
 print(result.image_paths)
 ```
 
-`download_random(output="./chapter", original_language="ko", chapter_language="en", min_pages=10, max_attempts=20)` acquires one eligible chapter automatically. `plan_random()` and `execute()` separate selection from downloading; manifests preserve selections for replay.
-
-`search`, `chapters`, and `download` return typed models. `DownloadError.result` preserves available partial output; only complete downloads return normally. `Session` optionally reuses defaults, and the existing dictionary-based `Client` API remains available.
+Acquire an eligible chapter automatically:
 
 ```python
-from mangate import Client
+import mangate
 
-client = Client()
-result = client.interactive_download(output_dir="./chapters", max_chapters=1)
-print(result["chapters"][0]["imagePaths"])
+result = mangate.download_random(
+    output="./chapter",
+    original_language="ko",
+    chapter_language="en",
+    min_pages=10,
+    max_attempts=20,
+)
+print(result.image_paths)
 ```
 
-Linux x86_64/ARM64 (glibc or musl), macOS 12+ x86_64/ARM64, and Windows x86_64 are supported. `Client(executable="/path/to/mangate")` overrides the bundled executable. Source installs from the Git checkout require Go 1.26+; releases publish wheels only.
+Select chapters in the existing terminal interface:
 
-See the [Python API guide](https://github.com/evgen2571/mangate/blob/main/docs/python.md) for metadata, errors, non-interactive downloads, and archive operations.
+```python
+import mangate
+
+result = mangate.interactive_download(output_dir="./chapters", max_chapters=1)
+for download in result.downloads:
+    print(download.manga.title, download.chapter.number, download.image_paths)
+```
+
+Results are immutable typed models. Failed acquisitions raise `DownloadError`, with validated partial output in `error.result` when available. `Session` reuses provider, executable, timeout, and output defaults.
+
+Linux x86_64/ARM64, macOS 12+ x86_64/ARM64, and Windows x86_64 are supported. Source builds require Go 1.26+.
+
+See the [Python guide](https://github.com/evgen2571/mangate/blob/main/docs/python.md) for advanced configuration, planning, manifests, archives, datasets, and errors.

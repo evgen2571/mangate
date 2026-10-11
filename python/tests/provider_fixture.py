@@ -15,6 +15,7 @@ def provider(tmp_path, monkeypatch):
     state = {
         "fail": False,
         "description": {},
+        "chapter_count": 1,
         "random_calls": 0,
         "image_calls": 0,
         "title_calls": 0,
@@ -83,10 +84,22 @@ def provider(tmp_path, monkeypatch):
                     "offset": 0,
                     "total": 1,
                 }
+                for number in range(2, state["chapter_count"] + 1):
+                    payload["data"].append(
+                        {
+                            "id": "chapter-two" if number == 2 else f"chapter-{number}",
+                            "attributes": {
+                                "chapter": str(number),
+                                "pages": 2,
+                                "translatedLanguage": "en",
+                            },
+                        }
+                    )
+                    payload["total"] = state["chapter_count"]
                 if state["missing_chapter"]:
                     payload["data"] = []
                     payload["total"] = 0
-            elif path == "/at-home/server/chapter-id":
+            elif path.startswith("/at-home/server/chapter-"):
                 if state["unavailable"]:
                     self.send_error(404)
                     return

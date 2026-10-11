@@ -5,7 +5,20 @@ Its data and error categories mirror the JSON CLI.
 
 from importlib.metadata import version
 
-from .api import DownloadError, Session, chapters, download, search
+from . import archive, dataset
+from .api import (
+    DownloadError,
+    Session,
+    chapters,
+    cli_version,
+    download,
+    download_many,
+    interactive_download,
+    provider_info,
+    providers,
+    search,
+    title,
+)
 from .automation import (
     download_random,
     execute,
@@ -14,21 +27,32 @@ from .automation import (
     save_manifest,
     verify_manifest,
 )
-from .client import Client, MangateError
+from .errors import MangateError
 from .models import (
     AcquisitionManifest,
     Chapter,
     DownloadOptions,
     DownloadPlan,
     DownloadResult,
+    InteractiveResult,
     Manga,
     ManifestImage,
     Page,
     ProgressEvent,
+    ProviderInfo,
     SelectionPolicy,
 )
 
 __all__ = [
+    "archive",
+    "dataset",
+    "interactive_download",
+    "download_many",
+    "providers",
+    "provider_info",
+    "cli_version",
+    "InteractiveResult",
+    "ProviderInfo",
     "download_random",
     "plan_random",
     "execute",
@@ -40,7 +64,6 @@ __all__ = [
     "AcquisitionManifest",
     "ProgressEvent",
     "ManifestImage",
-    "Client",
     "MangateError",
     "DownloadError",
     "Session",
@@ -50,6 +73,7 @@ __all__ = [
     "DownloadResult",
     "DownloadOptions",
     "search",
+    "title",
     "chapters",
     "download",
     "__version__",

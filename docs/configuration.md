@@ -59,4 +59,4 @@ Standalone archive conversion has its own `--output` flag for the destination ar
 
 Provider endpoints may be configured under `providers.mangadex` with `siteUrl`, `baseUrl`, and `uploadsUrl`. Each must be an HTTP or HTTPS URL. This is useful for controlled integration fixtures; normal use should keep the defaults.
 
-The TUI settings screen can apply settings for the current session or save them to the configured file. See the on-screen key bindings. Python's `Client` forwards its own explicit defaults and options as CLI flags; consult the [Python guide](python.md) rather than assuming it inherits every saved default.
+The TUI settings screen can apply settings for the current session or save them to the configured file. See the on-screen key bindings. Python's `Session` forwards its own explicit defaults and options as CLI flags; consult the [Python guide](python.md) rather than assuming it inherits every saved default.

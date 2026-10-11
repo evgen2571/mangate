@@ -22,7 +22,7 @@ Mangate has one Go executable and a Python subprocess wrapper. Go implementation
 
 `internal/cli` handles arguments, chapter selection, confirmation, text/JSON output, exit codes, standalone archive commands, and dataset commands. Explicit, random, and replay downloads call the application's acquisition service; they do not own transfer or archive lifecycles. The terminal interface in `internal/interactive` is a Bubble Tea state machine. Commands invoke browsing or acquisition services and return messages; the model owns selection, navigation, and rendering. Its file-only integration result maps the shared acquisition result to the existing `success`/`failed` presentation contract. Cover responses carry a request identifier so stale results cannot replace the current selection.
 
-`python/src/mangate` invokes the executable and decodes its JSON envelopes. It does not implement providers or image downloads. Python callers therefore need both the package and a discoverable Mangate executable.
+`python/src/mangate` invokes the executable and decodes its JSON envelopes. It does not implement providers or image downloads. Released wheels bundle the executable; editable checkouts use an explicit path or a separately built executable. Public functions and Session share acquisition operations. Private executable resolution, process/JSON transport, terminal integration, and result decoders have separate modules; archive and dataset operations expose focused typed modules. Public acquisition operations use typed models.
 
 `internal/dataset` adds bounded planning, resumable JSON state, validation, and exports on top of provider browsing and the downloader. Dataset collection is separate from ordinary chapter downloads. See [dataset collection](dataset.md).
 

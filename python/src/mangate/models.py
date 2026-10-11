@@ -21,6 +21,13 @@ class Manga:
     content_type: str = ""
     year: int = 0
 
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (self.id, self.provider)
+        ) or not isinstance(self.title, str):
+            raise ValueError("manga requires string identity, provider, and title")
+
 
 @dataclass(frozen=True, slots=True)
 class Chapter:
@@ -34,6 +41,15 @@ class Chapter:
     published_at: str = ""
     page_count: int = 0
     url: str = ""
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (self.id, self.provider)
+        ):
+            raise ValueError("chapter requires string identity and provider")
+        if type(self.page_count) is not int or self.page_count < 0:
+            raise ValueError("page_count must be a nonnegative integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,3 +203,25 @@ class AcquisitionManifest:
     @property
     def actual_pages(self) -> int:
         return len(self.images)
+
+
+@dataclass(frozen=True, slots=True)
+class InteractiveResult:
+    downloads: tuple[DownloadResult, ...]
+    status: AcquisitionStatus
+    error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderInfo:
+    id: str
+    name: str
+    version: str
+    availability: str
+    description: str
+    authentication: str
+    capabilities: tuple[str, ...]
+    restrictions: tuple[str, ...]
+    download_permitted: bool
+    usable: bool
+    error: str = ""

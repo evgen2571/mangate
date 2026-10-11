@@ -158,7 +158,7 @@ def validate_wheel(path, target):
             raise ValueError("Bundled executable is not executable")
         verify_binary(wheel.read(binary), target)
         if (
-            "mangate = mangate.binary:main"
+            "mangate = mangate._binary:main"
             not in wheel.read(prefix + "entry_points.txt").decode()
         ):
             raise ValueError("Missing console entry point")
@@ -264,10 +264,10 @@ def smoke(directory, integration=False):
                 str(python),
                 "-I",
                 "-c",
-                "from mangate import Client,__version__; from pathlib import Path; "
-                "c=Client(); assert Path(c.executable).is_file(); "
-                "assert c.version().split()[1]==__version__; "
-                "assert c.provider_info()['info']['id']=='mangadex'",
+                "from mangate import cli_version,provider_info,__version__; from mangate._binary import resolve_executable; from pathlib import Path; "
+                "assert Path(resolve_executable()).is_file(); "
+                "assert cli_version().split()[1]==__version__; "
+                "assert provider_info().id=='mangadex'",
             ],
             env=env,
         )

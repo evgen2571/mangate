@@ -6,25 +6,25 @@ from pathlib import Path
 
 import pytest
 
-from mangate import Client, MangateError
+from mangate import MangateError, archive, cli_version, provider_info, providers
 
 
 @pytest.fixture
-def client(binary: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Client:
+def client(binary: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setenv("MANGATE_CONFIG", str(tmp_path / "config.json"))
-    return Client(executable=binary, timeout=10)
+    return dict(executable=binary, timeout=10)
 
 
-def test_binary_version_and_provider_discovery(client: Client) -> None:
-    assert client.version().startswith("mangate ")
-    providers = client.providers()
-    assert any(provider["info"]["id"] == "mangadex" for provider in providers)
-    assert client.provider_info()["info"]["id"] == "mangadex"
+def test_binary_version_and_provider_discovery(client: dict) -> None:
+    assert cli_version(**client).startswith("mangate ")
+    found = providers(**client)
+    assert any(provider.id == "mangadex" for provider in found)
+    assert provider_info(**client).id == "mangadex"
 
 
 @pytest.mark.parametrize("output_format", ["cbz", "zip"])
 def test_binary_archive_round_trip(
-    client: Client, tmp_path: Path, output_format: str
+    client: dict, tmp_path: Path, output_format: str
 ) -> None:
     source = tmp_path / "chapter with spaces"
     source.mkdir()
@@ -33,17 +33,19 @@ def test_binary_archive_round_trip(
     )
     (source / "0001.png").write_bytes(page)
     output = tmp_path / f"chapter.{output_format}"
-    result = client.convert(source, output_format=output_format, output=output)
-    assert result["includedPages"] == 1
+    result = archive.convert(
+        source, output_format=output_format, output=output, **client
+    )
+    assert result.included_pages == 1
     assert source.is_dir()
-    with zipfile.ZipFile(output) as archive:
-        assert archive.read("0001.png") == page
-    assert client.inspect_archive(output)["pageCount"] == 1
-    assert client.verify_archive(output)["valid"] is True
+    with zipfile.ZipFile(output) as zipped:
+        assert zipped.read("0001.png") == page
+    assert archive.inspect(output, **client).page_count == 1
+    assert archive.verify(output, **client).valid is True
 
 
-def test_binary_reports_missing_archive(client: Client, tmp_path: Path) -> None:
+def test_binary_reports_missing_archive(client: dict, tmp_path: Path) -> None:
     with pytest.raises(MangateError) as caught:
-        client.inspect_archive(tmp_path / "missing.cbz")
+        archive.inspect(tmp_path / "missing.cbz", **client)
     assert caught.value.category == "archive"
     assert "missing.cbz" in str(caught.value)

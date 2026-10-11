@@ -11,8 +11,9 @@ from pathlib import Path
 from threading import Event
 from typing import Any
 
-from .api import DownloadError, _chapter, _download_result, _manga
-from .client import Client, MangateError
+from ._results import _chapter, _download_result, _manga
+from ._transport import Transport
+from .errors import DownloadError, MangateError
 from .models import (
     AcquisitionManifest,
     DownloadOptions,
@@ -73,7 +74,7 @@ def _random(
         args.append("--plan")
     if manifest is not None:
         args += ["--manifest", os.fspath(manifest)]
-    client = Client(
+    client = Transport(
         executable,
         provider=policy.provider,
         timeout=timeout,
@@ -219,7 +220,7 @@ def execute(
         raise ValueError("options.language must match the selected chapter")
     if output is not None and not os.fspath(output).strip():
         raise ValueError("output cannot be empty")
-    client = Client(
+    client = Transport(
         executable,
         timeout=timeout,
         existing_files=options.existing_files,
@@ -246,12 +247,20 @@ def execute(
 def _raise_download(error: MangateError) -> None:
     result = None
     if isinstance(error.result, dict) and "chapters" in error.result:
-        result = _download_result(error.result)
+        result = _download_result(
+            error.result,
+            _manifest(error.result["manifest"])
+            if error.result.get("manifest") is not None
+            else None,
+        )
     raise DownloadError(error.category, error.message, error.stderr, result) from error
 
 
 def _result(record: dict[str, Any]) -> DownloadResult:
-    result = _download_result(record)
+    result = _download_result(
+        record,
+        _manifest(record["manifest"]) if record.get("manifest") is not None else None,
+    )
     if not result.complete:
         raise DownloadError(
             result.status, result.error or f"download {result.status}", result=result
@@ -581,7 +590,7 @@ def verify_manifest(
 ) -> AcquisitionManifest:
     """Verify existing downloaded files locally without rediscovering or replaying."""
     source = load_manifest(path)
-    Client(executable, timeout=timeout)._json(
+    Transport(executable, timeout=timeout)._json(
         ["download", "--from-manifest", os.fspath(path), "--verify-manifest"]
     )
     return source

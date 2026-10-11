@@ -6,13 +6,14 @@ from threading import Event, Timer
 
 import pytest
 
-from mangate import Client, MangateError
+from mangate import MangateError
+from mangate._transport import Transport
 
 
 def script_client(tmp_path, script, timeout=3):
     path = tmp_path / "child.py"
     path.write_text(script)
-    client = Client(executable=sys.executable, timeout=timeout)
+    client = Transport(executable=sys.executable, timeout=timeout)
     client._base_args = lambda: [sys.executable, str(path)]
     return client
 
@@ -23,7 +24,7 @@ def test_drains_both_large_streams(tmp_path):
         """
 import json, sys
 sys.stderr.write('warning' * 100000)
-print(json.dumps({'status': 'success', 'data': {'text': 'x' * 1000000}}))
+print(json.dumps({'formatVersion': '1', 'operation': 'probe', 'status': 'success', 'data': {'text': 'x' * 1000000}}))
 """,
     )
     assert len(client._json([])["data"]["text"]) == 1000000
@@ -66,12 +67,17 @@ while True: time.sleep(.01)
 
 def test_failed_download_retains_record(tmp_path):
     record = {"status": "failed", "chapters": [{"id": "broken"}]}
-    payload = {"status": "failed", "data": record}
+    payload = {
+        "formatVersion": "1",
+        "operation": "download",
+        "status": "failed",
+        "data": record,
+    }
     client = script_client(
         tmp_path, f"print({json.dumps(payload)!r})\nraise SystemExit(5)"
     )
     with pytest.raises(MangateError) as caught:
-        client.download("title", first=True)
+        client._json(["download", "--first", "title"])
     assert caught.value.result == record
 
 
@@ -88,7 +94,7 @@ def test_timeout_kills_uncooperative_process(tmp_path, monkeypatch):
         processes.append(proc)
         return proc
 
-    monkeypatch.setattr("mangate.client.subprocess.Popen", start)
+    monkeypatch.setattr("mangate._transport.subprocess.Popen", start)
     client = script_client(
         tmp_path,
         """
@@ -109,13 +115,13 @@ while True: time.sleep(.01)
 @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
 def test_invalid_timeout_rejected(timeout):
     with pytest.raises(ValueError, match="timeout"):
-        Client(executable=sys.executable, timeout=timeout)
+        Transport(executable=sys.executable, timeout=timeout)
 
 
 def test_text_timeout_uses_structured_exception(tmp_path):
     client = script_client(tmp_path, "import time\ntime.sleep(20)", timeout=0.1)
     with pytest.raises(MangateError) as caught:
-        client.version()
+        client._text(["--version"])
     assert caught.value.category == "timeout"
 
 
@@ -147,7 +153,7 @@ def test_windows_stop_uses_group_signal_with_termination_fallback(
 ):
     from types import SimpleNamespace
 
-    from mangate.client import _stop_process
+    from mangate._transport import _stop_process
 
     calls = []
 
@@ -167,8 +173,10 @@ def test_windows_stop_uses_group_signal_with_termination_fallback(
             calls.append(("wait", timeout))
             return 0
 
-    monkeypatch.setattr("mangate.client.os", SimpleNamespace(name="nt"))
-    monkeypatch.setattr("mangate.client.signal", SimpleNamespace(CTRL_BREAK_EVENT=123))
+    monkeypatch.setattr("mangate._transport.os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        "mangate._transport.signal", SimpleNamespace(CTRL_BREAK_EVENT=123)
+    )
     assert _stop_process(Process()) is None
     assert calls[0] == ("signal", 123)
     assert (("terminate",) in calls) == (not signal_available)
@@ -227,7 +235,7 @@ import json, subprocess, sys, time
 from pathlib import Path
 subprocess.Popen([sys.executable, '-c', {child!r}])
 while not Path({str(tmp_path / "descendant.pid")!r}).exists(): time.sleep(.01)
-print(json.dumps({{'status': 'success', 'data': {{'saved': True}}}}), flush=True)
+print(json.dumps({{'formatVersion': '1', 'operation': 'probe', 'status': 'success', 'data': {{'saved': True}}}}), flush=True)
 if {category != "success"!r}: time.sleep(30)
 """,
         timeout=0.7 if category == "timeout" else 5,
@@ -258,7 +266,7 @@ if {category != "success"!r}: time.sleep(30)
 def test_stop_tolerates_process_exiting_during_signal(monkeypatch):
     from types import SimpleNamespace
 
-    from mangate.client import _stop_process
+    from mangate._transport import _stop_process
 
     class Process:
         exited = False
@@ -277,8 +285,10 @@ def test_stop_tolerates_process_exiting_during_signal(monkeypatch):
             assert timeout == 2
             return 0
 
-    monkeypatch.setattr("mangate.client.os", SimpleNamespace(name="nt"))
-    monkeypatch.setattr("mangate.client.signal", SimpleNamespace(CTRL_BREAK_EVENT=123))
+    monkeypatch.setattr("mangate._transport.os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        "mangate._transport.signal", SimpleNamespace(CTRL_BREAK_EVENT=123)
+    )
     _stop_process(Process())
 
 
@@ -286,7 +296,7 @@ def test_forced_cleanup_never_waits_without_deadline(monkeypatch):
     import subprocess
     from types import SimpleNamespace
 
-    from mangate.client import _stop_process
+    from mangate._transport import _stop_process
 
     waits = []
 
@@ -304,8 +314,10 @@ def test_forced_cleanup_never_waits_without_deadline(monkeypatch):
         def kill(self):
             pass
 
-    monkeypatch.setattr("mangate.client.os", SimpleNamespace(name="nt"))
-    monkeypatch.setattr("mangate.client.signal", SimpleNamespace(CTRL_BREAK_EVENT=123))
+    monkeypatch.setattr("mangate._transport.os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        "mangate._transport.signal", SimpleNamespace(CTRL_BREAK_EVENT=123)
+    )
     _stop_process(Process())
     assert waits == [2, 2]
 
@@ -327,7 +339,7 @@ def test_job_assignment_failure_reaps_suspended_child(tmp_path, monkeypatch):
     def reject(self, proc):
         raise OSError("job assignment rejected")
 
-    monkeypatch.setattr("mangate.client.subprocess.Popen", start)
+    monkeypatch.setattr("mangate._transport.subprocess.Popen", start)
     monkeypatch.setattr(ProcessJob, "start", reject)
     client = script_client(tmp_path, "import time; time.sleep(30)")
     with pytest.raises(MangateError) as caught:
@@ -346,3 +358,29 @@ def test_output_keeps_utf8_replacement_and_universal_newlines(tmp_path):
     assert code == 0
     assert stdout == "first\nsecond\n\ufffd"
     assert stderr == "warning\n\ufffd"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "formatVersion": "999",
+            "operation": "search",
+            "status": "success",
+            "data": {},
+        },
+        {"formatVersion": "1", "operation": "search", "status": "success"},
+        {"formatVersion": "1", "operation": "search", "status": "partial", "data": {}},
+        {
+            "formatVersion": "1",
+            "operation": "search",
+            "status": "no_results",
+            "data": {},
+        },
+    ],
+)
+def test_rejects_malformed_json_envelope(tmp_path, payload):
+    client = script_client(tmp_path, f"print({json.dumps(payload)!r})")
+    with pytest.raises(MangateError) as caught:
+        client._json([])
+    assert caught.value.category == "invalid_result"

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -48,7 +49,7 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				}
 				return replayManifest(cmd, a, fromManifest, automation, verifyManifest)
 			}
-			if verifyManifest || automation.jsonl || automation.eventsFile != "" || automation.manifest != "" {
+			if verifyManifest || automation.jsonl || automation.manifest != "" {
 				return fmt.Errorf("unsupported: automation flags on download require --from-manifest")
 			}
 			format, err := archive.ParseFormat(a.Cfg.Download.Format)
@@ -146,7 +147,15 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				writeDownloadPreflight(cmd.ErrOrStderr(), title, provider.Name(), selection, format, record.OutputRoot, a.Cfg.Download.ExistingFileMode)
 			}
 
+			events, finish, err := automation.progress(cmd)
+			if err != nil {
+				return err
+			}
+			defer finish("")
 			notify := func(progress downloader.DownloadProgress) {
+				if events != nil {
+					events(acquisition.ProgressEvent{Stage: "downloading", Status: "progress", MangaID: title.ID, CompletedPages: progress.CompletedPages, ExpectedPages: progress.TotalPages})
+				}
 				if wantsJSON(cmd) || isQuiet(cmd) {
 					return
 				}
@@ -154,6 +163,10 @@ func NewDownloadCmd(a *app.App) *cobra.Command {
 				writeHuman(cmd.ErrOrStderr(), "Downloaded %d/%d pages, %d/%d chapters\r", progress.CompletedPages, progress.TotalPages, progress.CompletedChapters, progress.TotalChapters)
 			}
 			record, err = service.Execute(cmd.Context(), title, selection, chapterOutput, notify)
+			if reportingErr := finish(record.Status); reportingErr != nil {
+				err = errors.Join(err, reportingErr)
+				record.Normalize(cmd.Context(), err)
+			}
 			if err != nil {
 				return reportDownloadResult(cmd, &record, fmt.Errorf("download title %q: %w", titleID, err))
 			}

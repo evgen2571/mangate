@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 [project.scripts]
-mangate = "mangate.binary:main"
+mangate = "mangate._binary:main"
 
 [project.urls]
 Homepage = "https://github.com/evgen2571/mangate"

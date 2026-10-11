@@ -45,13 +45,12 @@ Run `mangate tui` in an interactive terminal, not a redirected pipeline. The int
 
 ## Python executable discovery
 
-The Python package does not install the Go executable. Confirm `mangate --version` works in the same environment that launches Python, or pass the executable path explicitly:
+Platform wheels include the Go executable. Editable source checkouts use a separately built Go executable. Confirm `mangate --version` works in the same environment that launches Python, or pass the executable path explicitly:
 
 ```python
-from mangate import Client
+from mangate import cli_version
 
-client = Client(executable="/absolute/path/to/mangate")
-print(client.version())
+print(cli_version(executable="/absolute/path/to/mangate"))
 ```
 
-On Windows, point to `mangate.exe`. A missing executable raises an OS-level subprocess error. Command failures represented by the CLI JSON protocol raise `MangateError`, with `category`, `message`, and `stderr` fields. Partial download results are returned as data so callers can inspect chapter outcomes.
+On Windows, point to `mangate.exe`. A missing executable raises `MangateError(category="executable")`. Command failures represented by the CLI JSON protocol raise `MangateError`, with `category`, `message`, and `stderr` fields. Acquisition failures retain validated typed partial results in `DownloadError.result` when available.

@@ -11,7 +11,7 @@ pip install mangate
 uv run mangate tui
 ```
 
-Wheels cover Linux x86_64/ARM64 on glibc or musl, macOS 12+ x86_64/ARM64, and Windows x86_64. Other platforms get a clear unsupported-platform error; build Go yourself and pass `Client(executable="/path/to/mangate")` if supported by Go.
+Wheels cover Linux x86_64/ARM64 on glibc or musl, macOS 12+ x86_64/ARM64, and Windows x86_64. Other platforms get a clear unsupported-platform error; build Go yourself and pass `Session(executable="/path/to/mangate")` if supported by Go.
 
 To develop from the checkout, install Go 1.26+ and run `uv pip install ./python`. This builds a native wheel locally. Editable installs (`uv run --project python ...`) use a separately built executable on `PATH`, or an explicit executable override. No source distributions are published because the Python subdirectory alone cannot build the Go application.
 
@@ -51,7 +51,7 @@ if matches:
 
 `search()` returns `list[Manga]`; `chapters()` accepts a `Manga` or stable title ID and returns `list[Chapter]`. `download()` accepts exactly one of `title` (a name or `Manga`) and `title_id`, and exactly one of `chapter` (a number or `Chapter`) and `chapter_id`. It acquires one explicit chapter and returns `DownloadResult`. Provider IDs accompany manga and chapter metadata; chapter numbers stay strings to preserve fractional and nonnumeric labels. `Manga`, `Chapter`, `Page`, `DownloadResult`, and `DownloadOptions` are frozen dataclasses. `Page.index` is one-based and `Page.path` is an absolute filesystem path.
 
-`output=` is the exact chapter directory, implemented by the Go downloader. Omit it to use the CLI's organized title/chapter hierarchy. An empty directory or an identified matching complete/incomplete chapter can be used; unrelated nonempty directories, different chapter/provider identities, files, and symlink destinations are rejected. `DownloadOptions` controls `existing_files` (`skip`, `replace`, `fail`), `output_format` (`directory`, `png`, `jpeg`), chapter `language`, and `page_downloads`. `fail` rejects nonempty chapter destinations before transfer; `skip` reuses matching pages and resumes missing ones. Automatic page-URL refresh retries can reuse files created by the current invocation; a new `fail` invocation rejects partial destinations too. Preflight failures leave existing image bytes and completion metadata unchanged. Replacement is explicit and may overwrite matching chapter pages; failed transfers keep existing finalized files. Archives and multiple-chapter selections remain available through `Client`.
+`output=` is the exact chapter directory, implemented by the Go downloader. Omit it to use the CLI's organized title/chapter hierarchy. An empty directory or an identified matching complete/incomplete chapter can be used; unrelated nonempty directories, different chapter/provider identities, files, and symlink destinations are rejected. `DownloadOptions` controls `existing_files` (`skip`, `replace`, `fail`), `output_format` (`directory`, `png`, `jpeg`), chapter `language`, and `page_downloads`. `fail` rejects nonempty chapter destinations before transfer; `skip` reuses matching pages and resumes missing ones. Automatic page-URL refresh retries can reuse files created by the current invocation; a new `fail` invocation rejects partial destinations too. Preflight failures leave existing image bytes and completion metadata unchanged. Replacement is explicit and may overwrite matching chapter pages; failed transfers keep existing finalized files. Use `archive.convert()` for archives and `download_many()` for multiple chapters.
 
 `DownloadResult` includes `manga`, `chapter`, ordered `pages` and `image_paths`, `output`, `expected_pages`, `status`, `complete`, and `error`. Status is `complete`, `partial`, `failed`, or `cancelled`. Only complete acquisitions return normally. `DownloadError` extends `MangateError`; its `result` holds a typed result when available, including finalized pages from a partial chapter. Missing pages retain gaps in `Page.index`. Timeout and cancellation keep their exception category even when a partial record is available. Forced termination before the executable writes a result can leave `error.result` as `None`; downloaded files remain available for retry.
 
@@ -72,8 +72,6 @@ except mangate.DownloadError as error:
 ```
 
 An optional `Session(executable=None, provider="mangadex", timeout=None, output_dir=None)` reuses defaults for `search`, `chapters`, and `download`; each call still starts a separate bundled executable. Top-level functions also accept `provider`, `executable`, and `timeout`. A timeout bounds each subprocess invocation; cleanup allows two seconds for graceful exit and up to two more seconds to reap a forcibly terminated process. Both output streams are captured in temporary files, so inherited output handles cannot block cleanup. POSIX uses an isolated process group; Windows starts the process in a job that owns its descendants and uses a console break signal where available. Forced cleanup terminates the process group or job, including descendants left after the parent exits.
-
-The existing dictionary-based `Client` remains compatible. New CLI chapter result fields (`chapter`, `imagePaths`) expose the same metadata and ordered filesystem paths as the typed API. Result status is `complete`, `partial`, `failed`, or `cancelled`; existing per-chapter `status` values such as `incomplete` and `skipped` are retained. Archives return `archivePath`; after source removal they have no image paths.
 
 ## Discovery and automation
 
@@ -125,121 +123,73 @@ Provider-random selection is nondeterministic. A seed selects from a bounded cat
 
 Progress callbacks run synchronously on the calling thread and receive frozen `ProgressEvent` values for discovery, selection, validation, downloading, and completion. Keep callbacks short; callback failures stop the owned subprocess. `cancel_event` and `timeout` cover discovery and selection as well as downloading through the same process-group/job cleanup as Stage A. `Session` also provides `plan_random`, `download_random`, and `execute`, reusing executable/timeout/provider defaults; random operations use the session output directory as an exact destination when no output is supplied. Automation formats are `directory`, `png`, and `jpeg`; a plan's format cannot be overridden on execution. `DownloadOptions.language`, if supplied, must agree with the random policy or selected chapter.
 
-## Interactive chapter picker
-
-Run this in a real terminal with stdin and stdout attached:
+## Interactive selection
 
 ```python
-from mangate import Client, MangateError
+import mangate
 
-try:
-    result = Client().interactive_download(
-        output_dir="./chapters",
-        max_chapters=1,
-        timeout=600,
-    )
-    chapter = result["chapters"][0]
-    print(result["title"]["title"], chapter["chapter"]["number"])
-    images = chapter["imagePaths"]
-    # Pass images to your processing pipeline here.
-except MangateError as error:
-    if error.category == "cancelled":
-        print("Selection cancelled")
-    else:
-        print(error.category, error.message)
+session = mangate.Session(provider="mangadex", timeout=600, output_dir="./chapters")
+result = session.interactive_download(max_chapters=1, language="en")
+for download in result.downloads:
+    print(download.manga.title, download.chapter.number, download.image_paths)
 ```
 
-The existing search/title/chapter TUI lets the user select chapters and edit the proposed output directory. Integration mode saves image directories, displays progress, restores the terminal, and exits after the download attempt. `max_chapters=0` (the default) permits several chapters; each has its own sequence. `max_chapters=1` requires at most one. Optional `language` filters the TUI; `timeout` overrides the client's subprocess deadline.
+`interactive_download()` launches the Go Bubble Tea TUI, inherits terminal streams, and reads its version 1 result-file protocol. A real terminal on stdin and stdout is required. `max_chapters=1` limits selection to one chapter; `0` allows unlimited selection. Search, metadata, cover preview, chapter selection, and downloading use the existing Go implementation. Each chapter returns the same `DownloadResult` used by headless acquisition. `InteractiveResult.downloads` is an ordered tuple; its status is `complete`, `partial`, `failed`, or `cancelled`.
 
-The file contract is version `"1"`: `status`, selected `title` metadata, absolute `outputDir`, and `chapters`. Every chapter contains `chapter` metadata, `status` (`success` or `failed`), absolute `outputDir`, `expectedPages`, and `imagePaths` in page order. Successful paths point to existing nonempty files inside that chapter's directory. Chapter ordering is deterministic by number, then label and ID. Chapters are never concatenated.
+Explicit user cancellation raises `DownloadError(category="cancelled")`; partial download failures use `partial`. Completed chapters remain in `error.result.downloads`. A timeout uses category `timeout`. If a valid handoff exists after shutdown, it is retained. Forced termination before the TUI writes a handoff leaves `error.result=None`. Terminal settings and temporary result files are restored/removed in all exit paths; process groups or Windows jobs own and clean up descendants.
 
-Terminal stdin/stdout/stderr are inherited, and a private temporary result file is removed after reading. Only a complete validated download returns normally. `MangateError.category` distinguishes `terminal`, `executable`, `cancelled`, `timeout`, `partial`, `error`, and `invalid_result`. Cancellation or partial failure may provide a validated result through `error.result`; failed chapters expose no image paths. Missing or malformed results, unsafe paths, and contradictory exit statuses are rejected. Interrupted downloads retain files for retry, but aren't reported as complete. Python restores POSIX terminal settings even on a timeout; Bubble Tea performs its normal terminal cleanup on supported platforms.
+## Reusable configuration and metadata
 
-## Search, inspect, and download
+`Session` supports search, chapters, explicit downloads, random downloads, planning, replay, and interactive downloads. It starts no persistent process, so no context manager or close call is needed. All operations use the same implementation as top-level functions.
 
 ```python
-from mangate import Client, MangateError
+import mangate
 
-client = Client(output_dir="./library", timeout=120)
-
-try:
-    results = client.search("title", limit=5)
-    if results:
-        title_id = results[0]["id"]
-        metadata = client.title(title_id)
-        print(metadata["title"]["title"])
-        chapters = client.chapters(title_id, language="en")
-        if chapters:
-            result = client.download(
-                title_id,
-                chapter_ids=[chapters[0]["id"]],
-                output_format="cbz",
-                assume_yes=True,
-            )
-            print(result["status"], result["chapters"])
-except MangateError as error:
-    print(error.category, error.message)
+print(mangate.cli_version())
+for provider in mangate.providers():
+    print(provider.id, provider.capabilities, provider.usable)
+print(mangate.provider_info("mangadex").download_permitted)
 ```
 
-`search` returns a list of manga records and returns an empty list for a valid no-results response. `title` returns a record containing `provider` and `title`. `chapters` returns the chapter list. IDs identify specific releases; chapter numbers can be ambiguous.
+`title(title_id)` retrieves a typed manga by stable ID without search. Provider metadata is returned as frozen `ProviderInfo` models. Functions accept `executable=` and `timeout=` overrides. Unsupported platforms and missing executables raise `MangateError` with category `executable`.
 
-## Client defaults
-
-| Argument | Default | Meaning |
-| --- | --- | --- |
-| `executable` | `None` | Bundled executable; explicit command/path overrides it |
-| `provider` | `"mangadex"` | Default provider |
-| `output_dir` | `None` | Optional chapter output root |
-| `timeout` | `None` | Per-command wrapper deadline in seconds |
-| `page_downloads` | `None` | Optional page-transfer limit |
-| `chapter_downloads` | `None` | Optional chapter-worker limit |
-| `existing_files` | `"skip"` | `skip`, `replace`, or `fail` |
-| `output_format` | `"directory"` | `directory`, `png`, `jpeg`, `cbz`, or `zip` |
-
-The wrapper forwards its explicit defaults as CLI arguments. In particular, its format and existing-file defaults override saved CLI configuration. `timeout` bounds the whole subprocess operation; the Go configuration's `http.timeout` separately bounds requests.
-
-`version()` returns text. `providers()` returns provider records, each containing `info` and `usable`. `provider_info()` returns one such record:
+## Multiple chapters and archives
 
 ```python
-from mangate import Client
+import mangate
 
-client = Client()
-print(client.version())
-print(client.provider_info()["info"]["id"])
-```
-
-## Download selection
-
-`download(title_id, ...)` supports `chapter_ids`, `chapter_numbers`, `chapter_range`, `first`, `latest`, `all_chapters`, and `language`. It also accepts `provider`, `output_format`, `dry_run`, `assume_yes`, `cancel_event`, and `output` (an exact single-chapter image directory).
-
-Use one selection strategy, following the [CLI selection rules](cli.md). `dry_run=True` returns a plan. A `threading.Event` passed as `cancel_event` requests cancellation when set; inspect the resulting error or partial result.
-
-## Local archive operations
-
-```python
-from mangate import Client
-
-client = Client()
-created = client.convert(
-    "./chapter",
-    output_format="cbz",
-    output="./chapter.cbz",
+batch = mangate.download_many(
+    "stable-title-id", chapter_ids=("first-chapter-id", "second-chapter-id"),
+    output_dir="./library", timeout=120,
 )
-print(created["includedPages"])
-print(client.inspect_archive("./chapter.cbz")["pageCount"])
-print(client.verify_archive("./chapter.cbz")["valid"])
+for chapter in batch.downloads:
+    archived = mangate.archive.convert(chapter.output, output_format="cbz")
+    print(archived.output_path, archived.included_pages)
+    print(mangate.archive.verify(archived.output_path).valid)
 ```
 
-The source must be an existing directory containing ordered page files. `convert` accepts `cbz` or `zip`, plus `remove_source`, `dry_run`, and `assume_yes`. Conversion keeps sources by default. `convert_many` processes directories in input order; an optional `outputs` sequence must have exactly the same length.
+`download_many()` accepts stable `chapter_ids`, `chapter_numbers`, `chapter_range`, `first`, `latest`, or `all_chapters`. Go validates incompatible or ambiguous selections. Use `assume_yes=True` to confirm broad selections (10 or more chapters). Results use `InteractiveResult` for the shared ordered chapter batch contract. Partial failures raise `DownloadError` with the completed chapters retained.
 
-## Errors and partial results
+`archive.convert()` returns `Conversion`; `dry_run=True` returns `ConversionPlan` without writing an archive. `output=` sets the destination. `remove_source=True` requires `assume_yes=True` and deletes source pages only after archive validation. `archive.inspect()` and `archive.verify()` return `Inspection`, including validation, entries, and optional typed metadata. Batch conversion is a loop over `convert()`. Acquisition always returns page files; archive conversion is a separate explicit operation.
 
-`MangateError` is a `RuntimeError` with `category`, `message`, `stderr`, and optional `result`. JSON command failures, malformed JSON output, and wrapper cancellation/timeouts are reported through this exception. `version()` uses the same safe subprocess runner. Missing executables and process creation failures raise `MangateError` with category `executable`; timeouts raise category `timeout`. A supplied timeout must be finite and positive.
+## Dataset workflows
 
-Partial download results are returned even though the CLI exits nonzero. Inspect `result["status"]` and each chapter's `status`, `outputPath`, and optional `archivePath`. A fully unsuccessful operation raises `MangateError`. Unsupported output formats and mismatched batch destinations raise `ValueError` before starting a subprocess.
+```python
+from mangate import dataset
 
-## Dataset operations
+planned = dataset.plan(collection_config="./dataset-config.json")
+print(planned.plan.estimated_pages)
+collected = dataset.collect(collection_config="./dataset-config.json", resume=True)
+print(collected.counters.valid_pages)
+info = dataset.status("./dataset")
+verified = dataset.verify("./dataset")
+exported = dataset.export("./dataset", split="train")
+```
 
-The wrapper also exposes `dataset_plan`, `dataset_collect`, `dataset_status`, `dataset_verify`, and `dataset_export`. Plan and collect accept `collection_config`, `resume`, and additional CLI arguments through `extra_args`. Collect supports confirmation, dry-run, and cancellation. Verification can request repair; export can filter a split and include duplicates or rejected records.
+These functions return frozen typed records (`PlanResult`, `CollectResult`, `DatasetInfo`, `Verification`, and `ExportResult`). Nested counters and configuration are typed; split counts are immutable mappings. Use the existing versioned collection configuration and [dataset guide](dataset.md). Planning persists a plan without downloading images. Collection supports `resume`, `dry_run`, cancellation, provider/output overrides, and a per-invocation timeout. Advanced Go flags can be supplied through `extra_args`; collection confirms writes by default (`assume_yes=True`). `verify(repair=True)` repairs local state without provider downloads.
 
-Dataset collection has its own immutable plan and configuration. Follow the [dataset guide](dataset.md) before using these methods.
+## Error contract
+
+Invalid Python arguments raise `ValueError`. CLI failures raise `MangateError` with `category`, `message`, and captured `stderr`. Categories include `invalid_input`, `unknown_provider`, `not_found`, `unsupported_operation`, `network`, `filesystem`, `archive`, `cancelled`, `timeout`, `executable`, `invalid_result`, and `internal`; acquisition-specific failures also include `no_candidate`, `partial`, and `failed`. Malformed/version-incompatible machine responses raise `invalid_result`. Interactive terminal failures use `terminal`.
+
+Acquisition operations raise `DownloadError`, a `MangateError` subclass. `result` contains a validated `DownloadResult` or `InteractiveResult` when available. A successful result always contains existing nonempty paths in page order. Incomplete downloads never return normally; rerun with `existing_files="skip"` to recover matching finalized pages. Failed chapters may have no pages, and partial chapters preserve original page indices. Ordinary headless operations never launch terminal interaction.

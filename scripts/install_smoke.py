@@ -42,10 +42,9 @@ def main() -> None:
                 str(python),
                 "-I",
                 "-c",
-                "from mangate import Client; import sys; "
-                "c = Client(executable=sys.argv[1]); "
-                "assert c.version().startswith('mangate '); "
-                "assert c.provider_info()['info']['id'] == 'mangadex'",
+                "from mangate import cli_version, provider_info; import sys; "
+                "assert cli_version(executable=sys.argv[1]).startswith('mangate '); "
+                "assert provider_info(executable=sys.argv[1]).id == 'mangadex'",
                 str(binary),
             ],
             cwd=directory,

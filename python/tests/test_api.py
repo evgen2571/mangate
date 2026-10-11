@@ -1,7 +1,6 @@
 import json
 import sys
 from dataclasses import FrozenInstanceError
-from pathlib import Path
 from threading import Event, Thread
 
 import pytest
@@ -10,9 +9,10 @@ from provider_fixture import PNG
 import mangate
 
 
-def test_function_download_and_legacy_compatibility(binary, provider, tmp_path):
+def test_function_download_and_session_defaults(binary, provider, tmp_path):
     found = mangate.search("Solo Leveling", executable=binary)
     assert found[0].provider == "mangadex"
+    assert mangate.title(found[0].id, executable=binary) == found[0]
     with pytest.raises(FrozenInstanceError):
         found[0].title = "changed"
     chapters = mangate.chapters(found[0], executable=binary)
@@ -33,15 +33,11 @@ def test_function_download_and_legacy_compatibility(binary, provider, tmp_path):
         found[0], chapters[0], output=output
     )
     assert again.complete
-    legacy = mangate.Client(
+    organized = mangate.Session(
         executable=binary, output_dir=tmp_path / "library"
-    ).download("title-id", chapter_ids=["chapter-id"])
-    assert isinstance(legacy, dict)
-    assert (
-        Path(legacy["chapters"][0]["outputPath"]).parent.name
-        == "Solo-Leveling-title-id"
-    )
-    assert legacy["chapters"][0]["imagePaths"]
+    ).download(title_id="title-id", chapter_id="chapter-id")
+    assert organized.output.parent.name == "Solo-Leveling-title-id"
+    assert organized.image_paths
 
 
 def test_partial_download_raises_with_typed_paths(binary, provider, tmp_path):
@@ -133,7 +129,9 @@ def test_typed_result_rejects_contradictory_contract(tmp_path, monkeypatch, muta
         item["status"] = "incomplete"
     else:
         record["status"] = "unexpected"
-    monkeypatch.setattr("mangate.api.Client.download", lambda *args, **kwargs: record)
+    monkeypatch.setattr(
+        "mangate.api._commands.download", lambda *args, **kwargs: record
+    )
     with pytest.raises(mangate.MangateError) as caught:
         mangate.download(title_id="title", chapter=1, executable="unused")
     assert caught.value.category == "invalid_result"
@@ -261,20 +259,38 @@ def test_rejected_download_preserves_state_and_pages(
     assert not list(directory.glob("*.png"))
 
 
-def test_rejected_archive_download_does_not_remove_original_pages(
-    binary, provider, tmp_path
-):
-    client = mangate.Client(executable=binary, output_dir=tmp_path / "organized")
-    original = client.download("title-id", chapter_ids=["chapter-id"])
-    directory = Path(original["chapters"][0]["outputPath"])
+def test_archive_conversion_does_not_change_original_pages(binary, provider, tmp_path):
+    original = mangate.Session(
+        executable=binary, output_dir=tmp_path / "organized"
+    ).download(title_id="title-id", chapter_id="chapter-id")
+    directory = original.output
     before = {path.name: path.read_bytes() for path in directory.iterdir()}
-    rejecting = mangate.Client(
-        executable=binary, output_dir=tmp_path / "organized", existing_files="fail"
+    converted = mangate.archive.convert(directory, executable=binary)
+    assert converted.included_pages == 2
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+
+
+def test_explicit_download_reports_progress(binary, provider, tmp_path):
+    events = []
+    result = mangate.download(
+        title_id="title-id",
+        chapter_id="chapter-id",
+        output=tmp_path / "progress",
+        executable=binary,
+        progress=events.append,
+    )
+    assert result.complete
+    assert any(
+        event.completed_pages == 2 for event in events if event.stage == "downloading"
+    )
+    assert events[-1].stage == "completion" and events[-1].status == "complete"
+
+
+def test_empty_batch_cannot_report_success(monkeypatch):
+    monkeypatch.setattr(
+        "mangate.api._commands.download",
+        lambda *args, **kwargs: {"status": "complete", "chapters": []},
     )
     with pytest.raises(mangate.MangateError) as caught:
-        rejecting.download(
-            "title-id", chapter_ids=["chapter-id"], output_format="cbz", assume_yes=True
-        )
-    assert caught.value.result["status"] == "failed"
-    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
-    assert not directory.with_suffix(".cbz").exists()
+        mangate.download_many("title", all_chapters=True, executable="unused")
+    assert caught.value.category == "invalid_result"

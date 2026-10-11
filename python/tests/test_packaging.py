@@ -24,7 +24,7 @@ def test_release_targets_have_platform_specific_tags():
 def test_console_launcher_rejects_itself(monkeypatch, tmp_path, capsys):
     import sys
 
-    from mangate import binary
+    from mangate import _binary as binary
 
     launcher = tmp_path / "mangate"
     launcher.write_text("launcher")

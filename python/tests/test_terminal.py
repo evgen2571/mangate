@@ -20,7 +20,15 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.parametrize(
     "outcome",
-    ["success", "cancelled", "partial", "timeout", "standalone", "interrupted"],
+    [
+        "success",
+        "cancelled",
+        "partial",
+        "timeout",
+        "standalone",
+        "interrupted",
+        "multiple",
+    ],
 )
 def test_terminal_handoff(binary, tmp_path, outcome):
     import fcntl
@@ -55,7 +63,7 @@ def test_terminal_handoff(binary, tmp_path, outcome):
                     ],
                     "total": 1,
                 }
-            elif path == "/at-home/server/chapter":
+            elif path in {"/at-home/server/chapter", "/at-home/server/second"}:
                 body = {
                     "baseUrl": f"http://127.0.0.1:{self.server.server_port}",
                     "chapter": {"hash": "hash", "data": ["1.png", "2.png"]},
@@ -71,6 +79,11 @@ def test_terminal_handoff(binary, tmp_path, outcome):
             else:
                 self.send_error(404)
                 return
+            if outcome == "multiple" and path == "/manga/title/feed":
+                body["data"].append(
+                    {"id": "second", "attributes": {"chapter": "2", "pages": 2}}
+                )
+                body["total"] = 2
             self.send_response(200)
             self.end_headers()
             self.wfile.write(json.dumps(body).encode())
@@ -96,10 +109,10 @@ def test_terminal_handoff(binary, tmp_path, outcome):
     script = tmp_path / "caller.py"
     handoff = tmp_path / "handoff.json"
     script.write_text(
-        "import json,sys\nfrom pathlib import Path\nfrom mangate import Client,MangateError\n"
-        "try:\n r=Client(executable=sys.argv[1]).interactive_download(output_dir=sys.argv[2],max_chapters=1,timeout=float(sys.argv[4]))\n"
-        "except MangateError as e:\n r={'status':e.category,'result':e.result}\n"
-        "Path(sys.argv[3]).write_text(json.dumps(r))\nprint('PYTHON RESUMED',flush=True)\n"
+        "import json,sys\nfrom pathlib import Path\nfrom dataclasses import asdict\nfrom mangate import interactive_download,MangateError\n"
+        "try:\n r=interactive_download(executable=sys.argv[1],output_dir=sys.argv[2],max_chapters=int(sys.argv[5]),timeout=float(sys.argv[4]))\n"
+        "except MangateError as e:\n r={'status':e.category,'result':asdict(e.result) if e.result else None}\n"
+        "Path(sys.argv[3]).write_text(json.dumps(asdict(r) if not isinstance(r,dict) else r,default=str))\nprint('PYTHON RESUMED',flush=True)\n"
     )
     master, slave = os.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
@@ -112,6 +125,7 @@ def test_terminal_handoff(binary, tmp_path, outcome):
         str(tmp_path / "downloads"),
         str(handoff),
         "1" if outcome == "timeout" else "15",
+        "0" if outcome == "multiple" else "1",
     ]
     if outcome == "standalone":
         command = [str(binary), "tui"]
@@ -138,10 +152,10 @@ def test_terminal_handoff(binary, tmp_path, outcome):
             until(b"Fixture")
             os.write(master, b"\r")
             until(b"Chapter 1")
-            os.write(master, b" \r")
+            os.write(master, b" \x1b[B \r" if outcome == "multiple" else b" \r")
             until(b"Output directory")
             os.write(master, b"\r")
-            until(b"1 selected")
+            until(b"2 selected" if outcome == "multiple" else b"1 selected")
             os.write(master, b"\r")
         if outcome == "interrupted":
             assert second_page.wait(timeout=5)
@@ -161,14 +175,24 @@ def test_terminal_handoff(binary, tmp_path, outcome):
             assert b"\x1b[?1049l" in output
             data = json.loads(handoff.read_text())
             assert data["status"] == (
-                "cancelled" if outcome == "interrupted" else outcome
+                "cancelled"
+                if outcome == "interrupted"
+                else "complete"
+                if outcome in {"success", "multiple"}
+                else outcome
             )
-            if outcome == "success":
+            if outcome in {"success", "multiple"}:
                 assert [
-                    os.path.basename(p) for p in data["chapters"][0]["imagePaths"]
+                    os.path.basename(p)
+                    for p in [page["path"] for page in data["downloads"][0]["pages"]]
                 ] == ["0001.png", "0002.png"]
+            if outcome == "multiple":
+                assert len(data["downloads"]) == 2
+                assert all(
+                    download["status"] == "complete" for download in data["downloads"]
+                )
             if outcome == "partial":
-                assert data["result"]["chapters"][0]["imagePaths"] == []
+                assert data["result"]["downloads"][0]["pages"] == []
     finally:
         if proc.poll() is None:
             proc.kill()
