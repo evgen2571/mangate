@@ -1,6 +1,49 @@
 package mangadex
 
-import "fmt"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+// MangaDex encodes an absent description as either null or an empty array.
+type mangaDexDescription map[string]string
+
+func (d *mangaDexDescription) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if bytes.Equal(data, []byte("null")) {
+		*d = nil
+		return nil
+	}
+	if len(data) > 0 && data[0] == '[' {
+		var values []json.RawMessage
+		if err := json.Unmarshal(data, &values); err != nil {
+			return fmt.Errorf("description: %w", err)
+		}
+		if len(values) != 0 {
+			return fmt.Errorf("description: expected a localized object or empty array")
+		}
+		*d = nil
+		return nil
+	}
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(data, &values); err != nil {
+		return fmt.Errorf("description: expected a localized object: %w", err)
+	}
+	result := make(mangaDexDescription, len(values))
+	for language, value := range values {
+		var text string
+		if len(value) == 0 || value[0] != '"' {
+			return fmt.Errorf("description[%q]: expected a string", language)
+		}
+		if err := json.Unmarshal(value, &text); err != nil {
+			return fmt.Errorf("description[%q]: %w", language, err)
+		}
+		result[language] = text
+	}
+	*d = result
+	return nil
+}
 
 const maxCollectionResults = 10000
 

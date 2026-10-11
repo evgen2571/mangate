@@ -17,7 +17,7 @@ type mangaDexManga struct {
 	Attributes struct {
 		TitleMap                     map[string]string   `json:"title"`
 		AltTitles                    []map[string]string `json:"altTitles"`
-		DescriptionMap               map[string]string   `json:"description"`
+		DescriptionMap               mangaDexDescription `json:"description"`
 		Status                       string              `json:"status"`
 		ContentRating                string              `json:"contentRating"`
 		OriginalLanguage             string              `json:"originalLanguage"`

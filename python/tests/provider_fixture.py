@@ -14,6 +14,7 @@ PNG = bytes.fromhex(
 def provider(tmp_path, monkeypatch):
     state = {
         "fail": False,
+        "description": {},
         "random_calls": 0,
         "image_calls": 0,
         "title_calls": 0,
@@ -42,6 +43,7 @@ def provider(tmp_path, monkeypatch):
                 "id": "title-id",
                 "attributes": {
                     "title": {"en": "Solo Leveling"},
+                    "description": state["description"],
                     "originalLanguage": state["original_language"],
                 },
             }

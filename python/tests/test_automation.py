@@ -581,3 +581,26 @@ def test_unavailable_events_destination_has_error_envelope(
     assert result.returncode != 0
     assert json.loads(result.stdout)["status"] == "error"
     assert provider["random_calls"] == 0
+
+
+def test_random_empty_array_description_downloads_ordered_images(
+    binary, provider, tmp_path
+):
+    provider["description"] = []
+    provider["original_language"] = "ko"
+    result = mangate.download_random(
+        output=tmp_path / "chapter",
+        original_language="ko",
+        chapter_language="en",
+        min_pages=2,
+        max_attempts=1,
+        executable=binary,
+    )
+    assert result.complete
+    assert result.manga.id == "title-id" and result.chapter.id == "chapter-id"
+    assert result.image_paths == (
+        tmp_path / "chapter" / "0001.png",
+        tmp_path / "chapter" / "0002.png",
+    )
+    assert all(path.read_bytes() for path in result.image_paths)
+    assert provider["random_calls"] == 1 and provider["image_calls"] == 2
