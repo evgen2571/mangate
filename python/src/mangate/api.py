@@ -59,6 +59,50 @@ class Session:
             for item in _commands.search(self._transport, query, limit=limit)
         ]
 
+    def title(self, title_id: str) -> Manga:
+        """Look up a stable title ID using session defaults."""
+        return title(
+            title_id,
+            executable=self._transport.executable,
+            provider=self._transport.provider,
+            timeout=self._transport.timeout,
+        )
+
+    def download_many(
+        self,
+        title_id: str,
+        *,
+        chapter_ids: tuple[str, ...] = (),
+        chapter_numbers: tuple[str, ...] = (),
+        chapter_range: str | None = None,
+        first: bool = False,
+        latest: bool = False,
+        all_chapters: bool = False,
+        assume_yes: bool = False,
+        output_dir: str | os.PathLike[str] | None = None,
+        options: DownloadOptions | None = None,
+        cancel_event: Event | None = None,
+        progress: Callable[[ProgressEvent], None] | None = None,
+    ) -> InteractiveResult:
+        """Download selected chapters using session defaults."""
+        return download_many(
+            title_id,
+            chapter_ids=chapter_ids,
+            chapter_numbers=chapter_numbers,
+            chapter_range=chapter_range,
+            first=first,
+            latest=latest,
+            all_chapters=all_chapters,
+            assume_yes=assume_yes,
+            output_dir=self._transport.output_dir if output_dir is None else output_dir,
+            options=options,
+            executable=self._transport.executable,
+            provider=self._transport.provider,
+            timeout=self._transport.timeout,
+            cancel_event=cancel_event,
+            progress=progress,
+        )
+
     def chapters(
         self,
         manga: Manga | str,

@@ -14,7 +14,9 @@ from mangate import MangateError, Session
 def interactive_client(tmp_path, monkeypatch):
     # Substitute only the terminal check; the child and its files are real.
     monkeypatch.setattr("mangate._terminal._has_terminal", lambda: True, raising=False)
-    if os.name != "nt":
+    if os.name == "nt":
+        monkeypatch.setattr("mangate._windows.console_modes", lambda: lambda: None)
+    else:
         import termios
 
         monkeypatch.setattr(termios, "tcgetattr", lambda _: [])
@@ -133,15 +135,19 @@ def test_timeout_restores_terminal(interactive_client, monkeypatch):
     client, _ = interactive_client
     Path(client._transport._base_args()[1]).write_text("import time\ntime.sleep(60)\n")
     restored = []
-    if os.name != "nt":
+    if os.name == "nt":
+        monkeypatch.setattr(
+            "mangate._windows.console_modes",
+            lambda: lambda: restored.append("console modes"),
+        )
+    else:
         import termios
 
         monkeypatch.setattr(termios, "tcsetattr", lambda *args: restored.append(args))
     with pytest.raises(MangateError) as caught:
         client.interactive_download(timeout=0.05)
     assert caught.value.category == "timeout"
-    if os.name != "nt":
-        assert len(restored) == 1
+    assert len(restored) == 1
 
 
 def test_rejects_truncated_success_sequence(interactive_client, tmp_path):

@@ -21,6 +21,8 @@ func TestDescriptionAcrossDiscoveryEndpoints(t *testing.T) {
 		{"null", `,"description":null`, "", false},
 		{"missing", "", "", false},
 		{"nonempty array", `,"description":["text"]`, "", true},
+		{"string", `,"description":"text"`, "", true},
+		{"boolean", `,"description":true`, "", true},
 		{"number", `,"description":3`, "", true},
 		{"nested object", `,"description":{"en":{}}`, "", true},
 		{"null value", `,"description":{"en":null}`, "", true},

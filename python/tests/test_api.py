@@ -294,3 +294,84 @@ def test_empty_batch_cannot_report_success(monkeypatch):
     with pytest.raises(mangate.MangateError) as caught:
         mangate.download_many("title", all_chapters=True, executable="unused")
     assert caught.value.category == "invalid_result"
+
+
+def test_session_title_and_batch_match_functions(binary, provider, tmp_path):
+    provider["chapter_count"] = 2
+    session = mangate.Session(
+        executable=binary,
+        provider="MangaDex",
+        timeout=5,
+        output_dir=tmp_path / "library",
+    )
+    assert session.title("title-id") == mangate.title(
+        "title-id", executable=binary, timeout=5
+    )
+    expected = mangate.download_many(
+        "title-id",
+        chapter_ids=("chapter-id", "chapter-two"),
+        executable=binary,
+        timeout=5,
+        output_dir=tmp_path / "library",
+    )
+    assert (
+        session.download_many("title-id", chapter_ids=("chapter-id", "chapter-two"))
+        == expected
+    )
+    overridden = session.download_many(
+        "title-id", first=True, output_dir=tmp_path / "override"
+    )
+    assert overridden.downloads[0].output.is_relative_to(tmp_path / "override")
+    provider["fail"] = True
+    for download in (session.download_many, mangate.download_many):
+        with pytest.raises(mangate.DownloadError) as caught:
+            download(
+                "title-id",
+                first=True,
+                output_dir=tmp_path / "partial-batch",
+                **({"executable": binary} if download == mangate.download_many else {}),
+            )
+        assert caught.value.result.status == "partial"
+        assert caught.value.result.downloads[0].pages[0].index == 1
+
+
+def test_session_title_and_batch_forward_defaults(monkeypatch, tmp_path):
+    session = mangate.Session(
+        executable="custom", provider="other", timeout=3, output_dir=tmp_path
+    )
+    calls = []
+
+    def capture(*args, **kwargs):
+        calls.append((args, kwargs))
+        return "result"
+
+    monkeypatch.setattr(mangate.api, "title", capture)
+    monkeypatch.setattr(mangate.api, "download_many", capture)
+    assert session.title("stable-id") == "result"
+    assert calls[-1] == (
+        ("stable-id",),
+        {"executable": "custom", "provider": "other", "timeout": 3},
+    )
+    cancellation = Event()
+    assert (
+        session.download_many(
+            "stable-id", chapter_ids=("chapter",), cancel_event=cancellation
+        )
+        == "result"
+    )
+    assert calls[-1][1] == {
+        "executable": "custom",
+        "provider": "other",
+        "timeout": 3,
+        "output_dir": str(tmp_path),
+        "chapter_ids": ("chapter",),
+        "chapter_numbers": (),
+        "chapter_range": None,
+        "first": False,
+        "latest": False,
+        "all_chapters": False,
+        "assume_yes": False,
+        "options": None,
+        "progress": None,
+        "cancel_event": cancellation,
+    }

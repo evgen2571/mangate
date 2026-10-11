@@ -14,7 +14,6 @@ For Python projects:
 
 ```sh
 uv add mangate
-# or: pip install mangate
 uv run mangate tui
 ```
 

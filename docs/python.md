@@ -6,8 +6,6 @@ The Python package runs its bundled Go executable as a subprocess. Python 3.10+ 
 
 ```sh
 uv add mangate
-# or, inside an activated environment:
-pip install mangate
 uv run mangate tui
 ```
 
@@ -71,7 +69,7 @@ except mangate.DownloadError as error:
         print(error.result.status, error.result.image_paths)
 ```
 
-An optional `Session(executable=None, provider="mangadex", timeout=None, output_dir=None)` reuses defaults for `search`, `chapters`, and `download`; each call still starts a separate bundled executable. Top-level functions also accept `provider`, `executable`, and `timeout`. A timeout bounds each subprocess invocation; cleanup allows two seconds for graceful exit and up to two more seconds to reap a forcibly terminated process. Both output streams are captured in temporary files, so inherited output handles cannot block cleanup. POSIX uses an isolated process group; Windows starts the process in a job that owns its descendants and uses a console break signal where available. Forced cleanup terminates the process group or job, including descendants left after the parent exits.
+An optional `Session(executable=None, provider="mangadex", timeout=None, output_dir=None)` reuses defaults for `search`, `title`, `chapters`, `download`, and `download_many`; each call still starts a separate bundled executable. Top-level functions also accept `provider`, `executable`, and `timeout`. A timeout bounds each subprocess invocation; cleanup allows two seconds for graceful exit and up to two more seconds to reap a forcibly terminated process. Both output streams are captured in temporary files, so inherited output handles cannot block cleanup. POSIX uses an isolated process group; Windows starts the process in a job that owns its descendants and uses a console break signal where available. Forced cleanup terminates the process group or job, including descendants left after the parent exits.
 
 ## Discovery and automation
 
@@ -117,7 +115,7 @@ mangate.save_manifest(plan, "./another-selection.json")
 
 `plan_random()` downloads no images and returns a frozen `DownloadPlan` with stable manga/chapter IDs and metadata, policy, strategy, candidate IDs, expected page count, exact output, format, and validation state. `execute()` accepts a plan, an `AcquisitionManifest`, or a manifest path; it revalidates the same selection without discovery. Changed eligibility or counts fail before image transfer, including during URL refresh. `download_random()` performs planning and execution in one subprocess and returns the same `DownloadResult` as explicit downloads. Random/replayed results additionally carry `result.manifest`; `DownloadError.result` preserves finalized partial pages and their manifest when available. `manifest=` saves planned, complete, or incomplete acquisitions atomically. Save manifests outside the chapter directory. Invalid downloaded images retain an incomplete manifest with `format="unknown"` and cannot count as a complete acquisition.
 
-Manifest version 2 includes `ManifestImage.bytes` and `ManifestImage.sha256`. Go and Python can load/save both versions 1 and 2; local verification requires version 2 and verifies chapter identity/completion/page count as well as image checksums. Replay upgrades legacy manifests to version 2; plans remain version 1. Reporting failures retain available `DownloadError.result` and its acquisition manifest.
+Manifest image paths are relative filenames: resolve them against `manifest.plan.output`, or use the absolute ordered `result.image_paths` for acquisition consumers. Manifest version 2 includes `ManifestImage.bytes` and `ManifestImage.sha256`. Go and Python can load/save both versions 1 and 2; local verification requires version 2 and verifies chapter identity/completion/page count as well as image checksums. Replay upgrades legacy manifests to version 2; plans remain version 1. Reporting failures retain available `DownloadError.result` and its acquisition manifest.
 
 Provider-random selection is nondeterministic. A seed selects from a bounded catalog snapshot and records its seed/candidate IDs; catalog changes can change future selections. Replay preserves the chosen IDs. Chapters within a title use stable ID order. No visual scoring is performed. See the [CLI guide](cli.md#random-acquisition-planning-and-replay) for the shared selection and manifest semantics.
 
@@ -140,7 +138,7 @@ Explicit user cancellation raises `DownloadError(category="cancelled")`; partial
 
 ## Reusable configuration and metadata
 
-`Session` supports search, chapters, explicit downloads, random downloads, planning, replay, and interactive downloads. It starts no persistent process, so no context manager or close call is needed. All operations use the same implementation as top-level functions.
+`Session` supports search, stable-ID title lookup, chapters, explicit and batch downloads, random downloads, planning, replay, and interactive downloads. It starts no persistent process, so no context manager or close call is needed. All operations use the same implementation as top-level functions.
 
 ```python
 import mangate
@@ -168,7 +166,7 @@ for chapter in batch.downloads:
     print(mangate.archive.verify(archived.output_path).valid)
 ```
 
-`download_many()` accepts stable `chapter_ids`, `chapter_numbers`, `chapter_range`, `first`, `latest`, or `all_chapters`. Go validates incompatible or ambiguous selections. Use `assume_yes=True` to confirm broad selections (10 or more chapters). Results use `InteractiveResult` for the shared ordered chapter batch contract. Partial failures raise `DownloadError` with the completed chapters retained.
+`download_many()` accepts stable `chapter_ids`, `chapter_numbers`, `chapter_range`, `first`, `latest`, or `all_chapters`. Go validates incompatible or ambiguous selections. Use `assume_yes=True` to confirm broad selections (25 or more chapters). `Session.download_many()` applies the same selections with session provider, executable, timeout, and output-root defaults. Results use `InteractiveResult` for the shared ordered chapter batch contract. Partial failures raise `DownloadError` with the completed chapters retained.
 
 `archive.convert()` returns `Conversion`; `dry_run=True` returns `ConversionPlan` without writing an archive. `output=` sets the destination. `remove_source=True` requires `assume_yes=True` and deletes source pages only after archive validation. `archive.inspect()` and `archive.verify()` return `Inspection`, including validation, entries, and optional typed metadata. Batch conversion is a loop over `convert()`. Acquisition always returns page files; archive conversion is a separate explicit operation.
 
