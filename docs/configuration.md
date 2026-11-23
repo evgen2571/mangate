@@ -1,62 +1,34 @@
 # Configuration
 
-Mangate works without a configuration file. Defaults use MangaDex, English text where available, original image files in directories, eight page transfers, six chapter workers, and a 30-second HTTP timeout.
+You don't need a config file to get started. Run `mangate config` to see the settings in use.
 
-## File location and precedence
+To save defaults, open **Settings** in the TUI or create `mangate/config.json` inside your OS's user config directory (usually `~/.config` on Linux). Set `MANGATE_CONFIG` to use a different file. CLI flags override the file; omitted fields keep their defaults. Unknown fields are errors.
 
-Set `MANGATE_CONFIG` to choose an explicit JSON file. Otherwise Mangate uses the operating system's user configuration directory followed by `mangate/config.json`. On Linux this normally follows `XDG_CONFIG_HOME` or `~/.config`.
-
-Defaults are applied first, then fields from the configuration file, then explicit CLI flags. Unknown JSON fields and invalid values are errors. A missing configuration file uses defaults. `MANGATE_CONFIG` selects the file; there are no general environment-variable overrides for individual options.
-
-Provider, language, format, and existing-file values are trimmed and lowercased. Filesystem paths retain their spelling. The application checks provider names against its registry. Saving settings writes a temporary file in the configuration directory before replacing the previous file.
-
-Inspect effective settings:
-
-```sh
-mangate config
-mangate --json config
-mangate --format cbz --output ./library config
-```
-
-The JSON command wraps the configuration in `data.config`; extract that object before using it as a configuration file. HTTP timeout values use duration strings such as `30s` or `2m`.
-
-## Example file
-
-Paths below are examples; choose directories writable by your account.
+## Example: save CBZ files by default
 
 ```json
 {
-  "provider": "mangadex",
-  "language": "en",
-  "http": {"timeout": "30s"},
   "download": {
     "dir": "./library",
     "format": "cbz",
     "existingFileMode": "skip"
   },
-  "concurrency": {"pageDownloads": 8, "chapterDownloads": 6},
-  "search": {"historyMax": 100},
-  "dirs": {"cache": "./cache"}
+  "http": {"timeout": "1m"}
 }
 ```
 
-## Option mapping
+## What to change
 
-| JSON field | CLI flag | Meaning |
+| To change… | JSON field | CLI override |
 | --- | --- | --- |
-| `provider` | `--provider` | Registered provider identifier |
-| `language` | `--language` | Preferred text language; explicitly passing the flag also filters supported CLI/TUI search workflows |
-| `download.dir` | `--output`, `--download-dir` | Root directory for chapter downloads |
-| `download.format` | `--format` | `directory`, `png`, `jpeg`, `cbz`, or `zip` |
-| `download.existingFileMode` | `--existing-files` | `skip`, `replace`, or `fail` |
-| `concurrency.pageDownloads` | `--page-downloads` | Positive global page-transfer limit |
-| `concurrency.chapterDownloads` | `--chapter-downloads` | Positive chapter-worker limit |
-| `search.historyMax` | `--search-history-max` | Nonnegative history limit; zero disables history |
-| `dirs.cache` | `--cache-dir` | Cover and history cache directory |
-| `http.timeout` | None | Positive HTTP/request timeout |
+| Download location | `download.dir` | `--output` |
+| File format | `download.format` | `--format` |
+| What happens to existing files | `download.existingFileMode` | `--existing-files` |
+| Provider or preferred text language | `provider`, `language` | `--provider`, `--language` |
+| Parallel downloads | `concurrency.pageDownloads`, `concurrency.chapterDownloads` | `--page-downloads`, `--chapter-downloads` |
+| Cache location or history size | `dirs.cache`, `search.historyMax` | `--cache-dir`, `--search-history-max` |
+| Request timeout (default `30s`) | `http.timeout` | — |
 
-Standalone archive conversion has its own `--output` flag for the destination archive file. Dataset commands use `--output` as the dataset root and have a separate collection configuration; see [dataset collection](dataset.md).
+Set `search.historyMax` to `0` to turn off search history. If you script `mangate --json config`, use `data.config`, not the entire response, as your config file.
 
-Provider endpoints may be configured under `providers.mangadex` with `siteUrl`, `baseUrl`, and `uploadsUrl`. Each must be an HTTP or HTTPS URL. This is useful for controlled integration fixtures; normal use should keep the defaults.
-
-The TUI settings screen can apply settings for the current session or save them to the configured file. See the on-screen key bindings. Python's `Session` forwards its own explicit defaults and options as CLI flags; consult the [Python guide](python.md) rather than assuming it inherits every saved default.
+[Dataset collection](dataset.md) has its own config file. Python's [`Session`](python.md) can pass its own overrides.
